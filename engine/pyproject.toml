@@ -7,8 +7,13 @@ dependencies = [
     "accelerate==1.16.0",
     "chatterbox-tts==0.1.7",
     "diffusers==0.43.0",
-    "fastapi>=0.115",
-    "pillow>=11",
+    "fastapi>=0.165",
+    "huggingface-hub>=1.32",
+    "pillow>=13.0.0",
+    # resemble-perth (Chatterbox's watermarker) imports pkg_resources without
+    # declaring setuptools, and setuptools 81 removed pkg_resources. Without this
+    # the watermarker silently becomes None and Chatterbox fails to construct.
+    "setuptools<81",
     "soundfile>=0.13",
     "torch==2.15.0",
     "torchaudio==2.11.1",
@@ -36,6 +41,10 @@ override-dependencies = [
     "torchaudio==2.11.1",
 ]
 
+# Chatterbox depends on gradio only for its demo apps; the library never imports
+# it. Leaving it in would hold the HTTP stack (starlette, fastapi) at old versions.
+exclude-dependencies = ["gradio"]
+
 [tool.uv.sources]
 torch = { index = "pytorch-cu132" }
 
@@ -46,6 +55,7 @@ explicit = true
 
 [dependency-groups]
 dev = [
+    "httpx2==2.16.2",
     "pyright==1.1.414",
     "pytest==9.2.0",
     "ruff==0.17.6",
@@ -67,6 +77,8 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = [
+    "D101",    # fakes are named for the role they stand in for
+    "D102",    # fakes mirror the documented production signatures
     "D103",    # test names describe the behaviour; docstrings would repeat them
     "INP001",  # tests are collected by path, not imported as a package
     "PLR2004", # literal expected values are clearer than named constants in assertions
@@ -83,4 +95,6 @@ reportMissingTypeStubs = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Deliberately serial for now: the suite runs in about 2 s, and starting xdist
+# workers took it to 5 s. Turn on `-n auto` once the suite outgrows worker start-up.
 filterwarnings = ["error"]
