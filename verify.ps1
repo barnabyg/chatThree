@@ -1,6 +1,7 @@
 #!/usr/bin/env pwsh
 # Canonical verification for the repository: every gate, in order, changing no tracked file.
 # Needs only `uv` on PATH. No GPU or model files are required.
+# CI runs this same script (.github/workflows/verify.yml).
 #
 # Gates that do not apply: there is no separate compile step for Python, and
 # secret scanning is left to GitHub push protection.

@@ -113,4 +113,3 @@ waited 17 s behind the image queue.
   minutes here and has no progress reporting beyond the console.
 - **Upstream deprecations.** Chatterbox uses a diffusers class due for removal
   in diffusers 1.0, and `pkg_resources` is already gone from current setuptools.
-- **No CI.** `verify.ps1` passes locally; no workflow runs it on push yet.
