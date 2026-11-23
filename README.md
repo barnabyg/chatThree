@@ -9,8 +9,9 @@ A local roleplay chat app. Two parts sit side by side:
 
 ## Start it
 
-Prerequisites: [Node.js](https://nodejs.org) 24.12 or newer and
-[PowerShell 7](https://learn.microsoft.com/powershell/).
+Prerequisites: [Node.js](https://nodejs.org) 24.12 or newer,
+[PowerShell 7](https://learn.microsoft.com/powershell/), and for the engine
+[uv](https://docs.astral.sh/uv/) and an NVIDIA GPU with 24 GB of VRAM.
 
 ```powershell
 cd C:\docs\git\chatThree; pwsh ./start.ps1
@@ -20,10 +21,29 @@ That installs the app's dependencies (first run, and whenever they change),
 builds the UI, starts the server on <http://127.0.0.1:3210> and opens it in
 your browser. Press Ctrl+C to stop.
 
+Starting the app also starts the engine, on a port the app chooses; there is
+no separate step. The UI shows the engine as loading, ready or failed, and
+offers a restart when it has failed. The first run downloads about 18 GB of
+models, and later starts take about 45 seconds to reach ready. The app works
+without the engine: if uv or the GPU is missing, the UI says so. Stopping the
+app ends the engine's whole process tree.
+
 | Option | Effect |
 |---|---|
 | `--port 4000` | Listen on another port (or set `CHATTHREE_PORT`) |
 | `--no-open` | Do not open the browser |
+
+## Manual check: the engine stops with the app
+
+1. Start the app: `cd C:\docs\git\chatThree; pwsh ./start.ps1`
+2. Wait until the page shows **Engine ready**.
+3. In a second terminal, run
+   `nvidia-smi --query-gpu=memory.used --format=csv`. Expect about 14 to 16 GB
+   in use.
+4. Press Ctrl+C in the first terminal.
+5. Run the `nvidia-smi` command again. Expect the figure to be back to what
+   the desktop alone uses (about 1.5 GB), and this to print nothing:
+   `Get-CimInstance Win32_Process | Where-Object CommandLine -like '*chatthree_engine*'`
 
 ## Check it
 

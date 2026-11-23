@@ -50,3 +50,56 @@ body {
   padding: 0 1rem;
   text-align: center;
 }
+
+button {
+  font: inherit;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.engine-state {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.engine-state::before {
+  content: '';
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+.engine-ready::before {
+  background: var(--ok);
+}
+
+.engine-failed::before,
+.engine-disconnected::before {
+  background: var(--danger);
+}
+
+.engine-error {
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: var(--surface);
+  color: var(--danger);
+  font-size: 0.8rem;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

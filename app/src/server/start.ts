@@ -2,18 +2,24 @@ import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
 import { createApp } from './app.ts';
 import type { AppConfig } from './config.ts';
+import { EngineSupervisor } from './engine/supervisor.ts';
 
 export const LOOPBACK = '127.0.0.1';
 
 export interface RunningApp {
   url: string;
-  /** Stop serving and release everything the app started. */
+  /** Stop serving and end everything the app started, including the engine. */
   stop(): Promise<void>;
 }
 
-/** Start the app and resolve once it is listening. */
+/** Start the app and resolve once it is listening. The engine loads in the background. */
 export async function startApp(config: AppConfig): Promise<RunningApp> {
-  const app = createApp({ uiDir: config.uiDir });
+  const engine = new EngineSupervisor({
+    ...config.engine,
+    // The engine never calls OpenAI, so it is not given the key.
+    env: { OPENAI_API_KEY: undefined },
+  });
+  const app = createApp({ uiDir: config.uiDir, engine });
   const server = serve({
     fetch: app.fetch,
     hostname: LOOPBACK,
@@ -32,11 +38,12 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
     });
   });
   const { port } = server.address() as AddressInfo;
+  await engine.start();
 
   return {
     url: `http://${LOOPBACK}:${String(port)}`,
     async stop() {
-      await new Promise<void>((resolve, reject) => {
+      const closed = new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) reject(error);
           else resolve();
@@ -44,6 +51,9 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
         // Long-lived connections (event streams) would otherwise hold the server open.
         if ('closeAllConnections' in server) server.closeAllConnections();
       });
+      // The engine must be ended even if closing the server fails.
+      await Promise.allSettled([closed, engine.stop()]);
+      await closed;
     },
   };
 }
