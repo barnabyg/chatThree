@@ -20,6 +20,7 @@ import librosa
 import torch
 
 from chatthree_engine.audio import Speech
+from chatthree_engine.cpu import run_at_full_speed
 from chatthree_engine.gate import GpuGate
 from chatthree_engine.image import ImageModel
 from chatthree_engine.speech import SpeechModel, Variant
@@ -272,6 +273,7 @@ def main() -> None:
     logging.basicConfig(format="%(message)s")
     LOG.setLevel(logging.INFO)
     OUT.mkdir(exist_ok=True)
+    full_speed = run_at_full_speed()
 
     result: dict[str, Any]
     compact = not args.full_precision
@@ -281,6 +283,7 @@ def main() -> None:
         voice = reference_voice(args.voice)
         result = bench_speech(voice) if args.stage == "speech" else bench_both(voice, args.variant, compact=compact)
     result["gpu"] = torch.cuda.get_device_name(0)
+    result["unthrottled_and_pinned"] = full_speed
     text = json.dumps(result, indent=2)
     (OUT / f"results-{args.stage}.json").write_text(text + "\n", encoding="utf-8")
     LOG.info(text)

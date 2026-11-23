@@ -20,6 +20,7 @@ from PIL import Image
 from pydantic import BaseModel, Field
 
 from chatthree_engine.audio import Speech
+from chatthree_engine.cpu import run_at_full_speed
 from chatthree_engine.gate import GpuGate
 
 LOOPBACK = "127.0.0.1"
@@ -181,6 +182,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     args = parser.parse_args()
+    run_at_full_speed()
     uvicorn.run(create_app(), host=LOOPBACK, port=args.port)
 
 
