@@ -4,6 +4,8 @@ import { z } from 'zod';
 import type { Chat, ChatSummary, ReplyEvent } from '../../shared/api.ts';
 import { BUILT_IN_CHARACTER, BUILT_IN_SCENARIO } from '../chat/builtin.ts';
 import type { ReplyService } from '../chat/replies.ts';
+import { countNotSent } from '../chat/trim.ts';
+import type { SettingsStore } from '../settings.ts';
 import type { ChatStore } from '../store/chats.ts';
 import { ApiError, readBody } from './errors.ts';
 
@@ -41,7 +43,11 @@ function streamReply(
   });
 }
 
-export function chatRoutes(chats: ChatStore, replies: ReplyService): Hono {
+export function chatRoutes(
+  chats: ChatStore,
+  replies: ReplyService,
+  settings: SettingsStore,
+): Hono {
   const routes = new Hono();
 
   const existing = (c: Context): ChatSummary => {
@@ -51,13 +57,17 @@ export function chatRoutes(chats: ChatStore, replies: ReplyService): Hono {
     return chat;
   };
 
-  const view = ({ id }: ChatSummary): Chat => ({
-    id,
-    character: { name: BUILT_IN_CHARACTER.name },
-    scenario: { title: BUILT_IN_SCENARIO.title },
-    messages: chats.messages(id),
-    replying: replies.isReplying(id),
-  });
+  const view = ({ id }: ChatSummary): Chat => {
+    const messages = chats.messages(id);
+    return {
+      id,
+      character: { name: BUILT_IN_CHARACTER.name },
+      scenario: { title: BUILT_IN_SCENARIO.title },
+      messages,
+      notSent: countNotSent(messages, settings.contextTokenBudget()),
+      replying: replies.isReplying(id),
+    };
+  };
 
   routes.get('/', (c) => c.json(chats.list()));
 

@@ -153,6 +153,7 @@ export class ReplyService {
         BUILT_IN_CHARACTER,
         BUILT_IN_SCENARIO,
         conversation,
+        this.#settings.contextTokenBudget(),
       );
       const pieces = this.#provider.streamReply({
         model: this.#settings.model(),

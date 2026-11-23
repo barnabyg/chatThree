@@ -2,7 +2,11 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { expect, test } from 'vitest';
-import { DEFAULT_MODEL, SettingsStore } from './settings.ts';
+import {
+  DEFAULT_CONTEXT_TOKEN_BUDGET,
+  DEFAULT_MODEL,
+  SettingsStore,
+} from './settings.ts';
 
 async function settingsFile(): Promise<string> {
   const directory = await mkdtemp(path.join(tmpdir(), 'chatthree-settings-'));
@@ -14,6 +18,7 @@ test('with nothing saved, the model is the default and the key comes from the en
 
   expect(settings.view()).toEqual({
     model: DEFAULT_MODEL,
+    contextTokenBudget: DEFAULT_CONTEXT_TOKEN_BUDGET,
     apiKey: 'environment',
   });
   expect(settings.apiKey()).toBe('sk-from-env');
@@ -56,6 +61,13 @@ test('forgetting the saved key falls back to the environment key', async () => {
 
   expect(settings.view().apiKey).toBe('environment');
   expect(settings.apiKey()).toBe('sk-from-env');
+});
+
+test('the conversation token budget can be changed and survives a restart', async () => {
+  const file = await settingsFile();
+  new SettingsStore(file, undefined).update({ contextTokenBudget: 4_000 });
+
+  expect(new SettingsStore(file, undefined).contextTokenBudget()).toBe(4_000);
 });
 
 test('changing the model leaves the saved key alone', async () => {

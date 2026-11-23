@@ -19,6 +19,11 @@ export interface Chat {
   scenario: { title: string };
   /** The whole conversation, oldest first. */
   messages: Message[];
+  /**
+   * How many messages, counted from the oldest, are no longer sent to the
+   * model because the conversation has outgrown its token budget.
+   */
+  notSent: number;
   /** True while the server is still writing a reply in this chat. */
   replying: boolean;
 }
@@ -45,6 +50,8 @@ export type ReplyEvent =
 
 export interface Settings {
   model: string;
+  /** How many tokens of conversation are sent to the model each turn, at most. */
+  contextTokenBudget: number;
   /**
    * Where the OpenAI API key in use comes from. The key itself never leaves
    * the server.
@@ -54,6 +61,7 @@ export interface Settings {
 
 export interface SettingsUpdate {
   model?: string;
+  contextTokenBudget?: number;
   /** A new key to save, or `null` to forget the saved one. */
   apiKey?: string | null;
 }

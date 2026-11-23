@@ -12,6 +12,7 @@ export function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState('');
+  const [budget, setBudget] = useState('');
   const [notice, setNotice] = useState<{
     kind: 'status' | 'alert';
     text: string;
@@ -20,6 +21,7 @@ export function SettingsPage() {
   const show = (loaded: Settings): void => {
     setSettings(loaded);
     setModel(loaded.model);
+    setBudget(String(loaded.contextTokenBudget));
     setApiKey('');
   };
 
@@ -59,7 +61,11 @@ export function SettingsPage() {
   const save = (event: SyntheticEvent): void => {
     event.preventDefault();
     update(
-      { model, ...(apiKey.trim() !== '' && { apiKey: apiKey.trim() }) },
+      {
+        model,
+        contextTokenBudget: Number(budget),
+        ...(apiKey.trim() !== '' && { apiKey: apiKey.trim() }),
+      },
       'Settings saved.',
     );
   };
@@ -105,6 +111,25 @@ export function SettingsPage() {
           />
         </label>
         <p className="hint">The OpenAI model that writes the replies.</p>
+
+        <label>
+          Conversation budget (tokens)
+          <input
+            type="number"
+            required
+            min={100}
+            step={1}
+            value={budget}
+            onChange={(event) => {
+              setBudget(event.target.value);
+            }}
+          />
+        </label>
+        <p className="hint">
+          How much of a conversation is sent to the model each turn, counted
+          back from the newest message. Older messages stay in the chat but are
+          no longer sent. The count is an estimate of four characters per token.
+        </p>
 
         <div className="form-actions">
           <button type="submit" className="primary">

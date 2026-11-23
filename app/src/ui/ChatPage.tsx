@@ -1,4 +1,5 @@
 import {
+  Fragment,
   type SyntheticEvent,
   type KeyboardEvent,
   useEffect,
@@ -129,6 +130,8 @@ export function ChatPage() {
     }
     setArriving(null);
     setReplacing(null);
+    // The conversation has changed, so where it stops being sent may have too.
+    api.getChat(chat.id).then(setChat, () => undefined);
   };
 
   const last = chat.messages.at(-1);
@@ -175,13 +178,19 @@ export function ChatPage() {
 
       <div className="conversation-scroll">
         <ol className="conversation" aria-label="Conversation">
-          {shown.map((message) => (
-            <MessageItem
-              key={message.id}
-              author={message.role === 'user' ? 'You' : chat.character.name}
-              role={message.role}
-              content={message.content}
-            />
+          {shown.map((message, index) => (
+            <Fragment key={message.id}>
+              {index === chat.notSent && index > 0 && (
+                <li className="not-sent-marker">
+                  Messages above this line are no longer sent to the model.
+                </li>
+              )}
+              <MessageItem
+                author={message.role === 'user' ? 'You' : chat.character.name}
+                role={message.role}
+                content={message.content}
+              />
+            </Fragment>
           ))}
           {arriving !== null && (
             <MessageItem

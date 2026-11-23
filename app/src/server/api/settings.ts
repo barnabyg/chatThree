@@ -3,12 +3,26 @@ import { z } from 'zod';
 import type { SettingsStore } from '../settings.ts';
 import { readBody } from './errors.ts';
 
+const MIN_TOKEN_BUDGET = 100;
+const MAX_TOKEN_BUDGET = 1_000_000;
+
 const update = z.strictObject({
   model: z
     .string()
     .trim()
     .min(1, 'The model name cannot be empty.')
     .max(200, 'The model name is too long.')
+    .optional(),
+  contextTokenBudget: z
+    .int('The conversation budget must be a whole number of tokens.')
+    .min(
+      MIN_TOKEN_BUDGET,
+      `The conversation budget must be at least ${String(MIN_TOKEN_BUDGET)} tokens.`,
+    )
+    .max(
+      MAX_TOKEN_BUDGET,
+      `The conversation budget can be at most ${String(MAX_TOKEN_BUDGET)} tokens.`,
+    )
     .optional(),
   apiKey: z
     .string()
@@ -26,10 +40,11 @@ export function settingsRoutes(settings: SettingsStore): Hono {
   routes.get('/', (c) => c.json(settings.view()));
 
   routes.put('/', async (c) => {
-    const { model, apiKey } = await readBody(c, update);
+    const { model, contextTokenBudget, apiKey } = await readBody(c, update);
     return c.json(
       settings.update({
         ...(model !== undefined && { model }),
+        ...(contextTokenBudget !== undefined && { contextTokenBudget }),
         ...(apiKey !== undefined && { apiKey }),
       }),
     );

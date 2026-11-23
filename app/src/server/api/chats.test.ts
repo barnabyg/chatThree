@@ -372,3 +372,45 @@ test('while a reply is being written, the last reply can be neither regenerated 
     ['assistant', 'Who goes'],
   ]);
 });
+
+describe('a chat longer than the token budget', () => {
+  // Estimated at 53 tokens: 196 characters / 4, plus 4.
+  const long = (label: string): string => label.padEnd(196, '.');
+
+  test('sends only the newest messages that fit, after the same instructions, and keeps them all', async () => {
+    const app = testApp();
+    // Room for two long messages (106 tokens) but not three.
+    app.settings.update({ contextTokenBudget: 110 });
+    app.provider.script(
+      { pieces: [long('reply one')] },
+      { pieces: [long('reply two')] },
+    );
+    const chat = await newChat(app);
+    await replyEvents(await send(app, chat, long('message one')));
+    await replyEvents(await send(app, chat, long('message two')));
+
+    await replyEvents(await send(app, chat, long('message three')));
+
+    const [first, , third] = app.provider.requests;
+    expect(third?.messages).toEqual([
+      { role: 'assistant', content: long('reply two') },
+      { role: 'user', content: long('message three') },
+    ]);
+    expect(third?.instructions).toBe(first?.instructions);
+
+    // The short last reply (6 tokens) and the message before it are what
+    // would be sent next: the four before them are not.
+    const saved = await readChat(app, chat.id);
+    expect(saved.messages).toHaveLength(6);
+    expect(saved.notSent).toBe(4);
+  });
+
+  test('a chat within the budget has every message sent', async () => {
+    const app = testApp();
+    const chat = await newChat(app);
+
+    await replyEvents(await send(app, chat, long('message one')));
+
+    expect((await readChat(app, chat.id)).notSent).toBe(0);
+  });
+});

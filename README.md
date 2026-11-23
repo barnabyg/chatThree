@@ -40,6 +40,11 @@ Replies come from OpenAI, so chat needs an OpenAI API key. Either set
 key saved in Settings is used in place of the environment variable, is sent
 only to OpenAI, and is never shown again. The model is also a setting.
 
+A long chat is not sent whole. Each turn sends the character and scenario,
+then as much of the conversation as fits a token budget (a setting, 16,000 by
+default), counted back from the newest message. Older messages stay in the
+chat, and a line in the conversation marks where sending now starts.
+
 Chats and settings are kept on this computer, outside the repository:
 
 | File | Holds |

@@ -6,9 +6,12 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import type { Settings, SettingsUpdate } from '../shared/api.ts';
 
 export const DEFAULT_MODEL = 'gpt-5.5';
+/** Roughly 60,000 characters of conversation per turn. */
+export const DEFAULT_CONTEXT_TOKEN_BUDGET = 16_000;
 
 interface Saved {
   model?: string;
+  contextTokenBudget?: number;
   openaiApiKey?: string;
 }
 
@@ -20,9 +23,10 @@ function load(file: string): Saved {
       unknown
     > | null;
     if (typeof saved !== 'object' || saved === null) throw new Error();
-    const { model, openaiApiKey } = saved;
+    const { model, contextTokenBudget, openaiApiKey } = saved;
     return {
       ...(typeof model === 'string' && { model }),
+      ...(typeof contextTokenBudget === 'number' && { contextTokenBudget }),
       ...(typeof openaiApiKey === 'string' && { openaiApiKey }),
     };
   } catch {
@@ -50,6 +54,11 @@ export class SettingsStore {
     return this.#saved.model ?? DEFAULT_MODEL;
   }
 
+  /** How many tokens of conversation to send each turn, at most. */
+  contextTokenBudget(): number {
+    return this.#saved.contextTokenBudget ?? DEFAULT_CONTEXT_TOKEN_BUDGET;
+  }
+
   /** The key to use: the saved one if there is one, else the environment's. */
   apiKey(): string | undefined {
     return this.#saved.openaiApiKey ?? this.#environmentApiKey;
@@ -59,6 +68,7 @@ export class SettingsStore {
   view(): Settings {
     return {
       model: this.model(),
+      contextTokenBudget: this.contextTokenBudget(),
       apiKey:
         this.#saved.openaiApiKey !== undefined
           ? 'saved'
@@ -71,6 +81,9 @@ export class SettingsStore {
   update(update: SettingsUpdate): Settings {
     const next: Saved = { ...this.#saved };
     if (update.model !== undefined) next.model = update.model;
+    if (update.contextTokenBudget !== undefined) {
+      next.contextTokenBudget = update.contextTokenBudget;
+    }
     if (update.apiKey === null) delete next.openaiApiKey;
     else if (update.apiKey !== undefined) next.openaiApiKey = update.apiKey;
 

@@ -3,10 +3,12 @@
 // The instructions are the character, then the scenario, and depend on
 // nothing else: the same chat sends the same text on every turn. Providers
 // cache a prompt by its leading text, so a fixed prefix is what makes every
-// turn after the first cheaper and faster.
+// turn after the first cheaper and faster. A long conversation is cut to a
+// token budget from its oldest end (trim.ts); the prefix is never cut.
 
 import type { Message } from '../../shared/api.ts';
 import type { PromptMessage } from './provider.ts';
+import { countNotSent } from './trim.ts';
 
 export interface PromptCharacter {
   name: string;
@@ -20,6 +22,7 @@ export interface PromptScenario {
 
 export interface Prompt {
   instructions: string;
+  /** The newest part of the conversation that fits the token budget. */
   messages: PromptMessage[];
 }
 
@@ -43,9 +46,12 @@ export function buildPrompt(
   character: PromptCharacter,
   scenario: PromptScenario,
   conversation: readonly Message[],
+  tokenBudget: number,
 ): Prompt {
   return {
     instructions: buildInstructions(character, scenario),
-    messages: conversation.map(({ role, content }) => ({ role, content })),
+    messages: conversation
+      .slice(countNotSent(conversation, tokenBudget))
+      .map(({ role, content }) => ({ role, content })),
   };
 }

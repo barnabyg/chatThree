@@ -4,6 +4,8 @@ import { buildPrompt } from './prompt.ts';
 
 const character = { name: 'Mara', persona: 'Keeper of the lighthouse.' };
 const scenario = { title: 'The Storm', premise: 'A stranger knocks.' };
+/** Far more than any conversation in these tests. */
+const BUDGET = 10_000;
 
 function conversation(...turns: [Message['role'], string][]): Message[] {
   return turns.map(([role, content], index) => ({
@@ -15,7 +17,7 @@ function conversation(...turns: [Message['role'], string][]): Message[] {
 }
 
 test('the instructions put the character first, then the scenario', () => {
-  const { instructions } = buildPrompt(character, scenario, []);
+  const { instructions } = buildPrompt(character, scenario, [], BUDGET);
 
   const persona = instructions.indexOf('Keeper of the lighthouse.');
   const premise = instructions.indexOf('A stranger knocks.');
@@ -32,6 +34,7 @@ test('the instructions are the same on every turn of a chat', () => {
     character,
     scenario,
     conversation(['user', 'Hello?']),
+    BUDGET,
   );
   const later = buildPrompt(
     character,
@@ -41,6 +44,7 @@ test('the instructions are the same on every turn of a chat', () => {
       ['assistant', 'Who goes there?'],
       ['user', 'A traveller.'],
     ),
+    BUDGET,
   );
 
   expect(later.instructions).toBe(first.instructions);
@@ -51,10 +55,26 @@ test('the conversation follows, oldest first, with only roles and text', () => {
     character,
     scenario,
     conversation(['user', 'Hello?'], ['assistant', 'Who goes there?']),
+    BUDGET,
   );
 
   expect(messages).toEqual([
     { role: 'user', content: 'Hello?' },
     { role: 'assistant', content: 'Who goes there?' },
   ]);
+});
+
+test('a conversation over the token budget loses its oldest messages, and nothing else changes', () => {
+  // Each message is estimated at 13 tokens (36 characters / 4, plus 4).
+  const long = conversation(
+    ['user', 'one'.padEnd(36, '.')],
+    ['assistant', 'two'.padEnd(36, '.')],
+    ['user', 'three'.padEnd(36, '.')],
+  );
+
+  const whole = buildPrompt(character, scenario, long, BUDGET);
+  const trimmed = buildPrompt(character, scenario, long, 26);
+
+  expect(trimmed.messages).toEqual(whole.messages.slice(1));
+  expect(trimmed.instructions).toBe(whole.instructions);
 });

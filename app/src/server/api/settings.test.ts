@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { DEFAULT_MODEL } from '../settings.ts';
+import { DEFAULT_CONTEXT_TOKEN_BUDGET, DEFAULT_MODEL } from '../settings.ts';
 import { testApp } from '../testing.ts';
 
 test('settings start with the default model and say where the key comes from', async () => {
@@ -9,6 +9,7 @@ test('settings start with the default model and say where the key comes from', a
 
   expect(await response.json()).toEqual({
     model: DEFAULT_MODEL,
+    contextTokenBudget: DEFAULT_CONTEXT_TOKEN_BUDGET,
     apiKey: 'environment',
   });
 });
@@ -44,6 +45,29 @@ test('the model can be changed', async () => {
   });
 
   expect(await response.json()).toMatchObject({ model: 'another-model' });
+});
+
+test('the conversation token budget can be changed', async () => {
+  const app = testApp();
+
+  const response = await app.call('PUT', '/api/settings', {
+    contextTokenBudget: 4_000,
+  });
+
+  expect(await response.json()).toMatchObject({ contextTokenBudget: 4_000 });
+});
+
+test('a conversation token budget too small to be useful is refused with a reason', async () => {
+  const app = testApp();
+
+  const response = await app.call('PUT', '/api/settings', {
+    contextTokenBudget: 5,
+  });
+
+  expect(response.status).toBe(400);
+  expect(await response.json()).toEqual({
+    error: 'The conversation budget must be at least 100 tokens.',
+  });
 });
 
 test('an empty model name is refused with a reason', async () => {

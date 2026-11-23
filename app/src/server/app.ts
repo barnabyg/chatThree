@@ -30,7 +30,7 @@ export function createApp(dependencies: AppDependencies): Hono {
 
   app.get('/api/health', (c) => c.json({ status: 'ok' }));
   app.route('/api/engine', engineRoutes(engine));
-  app.route('/api/chats', chatRoutes(chats, replies));
+  app.route('/api/chats', chatRoutes(chats, replies, settings));
   app.route('/api/settings', settingsRoutes(settings));
   app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));
 
