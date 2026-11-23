@@ -11,6 +11,7 @@ import type { ChatProvider, ReplyRequest } from './chat/provider.ts';
 import { ReplyService } from './chat/replies.ts';
 import type { EngineControl } from './engine/supervisor.ts';
 import { SettingsStore } from './settings.ts';
+import { CharacterStore } from './store/characters.ts';
 import { ChatStore } from './store/chats.ts';
 import { openDatabase } from './store/database.ts';
 
@@ -92,6 +93,7 @@ export interface TestApp {
   app: Hono;
   provider: ScriptedProvider;
   chats: ChatStore;
+  characters: CharacterStore;
   settings: SettingsStore;
   /** Send a JSON request as the app's own UI would. */
   call(method: string, url: string, body?: unknown): Promise<Response>;
@@ -105,7 +107,9 @@ export function testApp(
   } = {},
 ): TestApp {
   const directory = mkdtempSync(path.join(tmpdir(), 'chatthree-api-'));
-  const chats = new ChatStore(openDatabase(':memory:'));
+  const database = openDatabase(':memory:');
+  const chats = new ChatStore(database);
+  const characters = new CharacterStore(database);
   const settings = new SettingsStore(
     path.join(directory, 'settings.json'),
     options.environmentApiKey,
@@ -115,13 +119,15 @@ export function testApp(
     uiDir: options.uiDir ?? path.join(directory, 'no-ui'),
     engine: options.engine ?? stubEngine({ state: 'ready' }),
     chats,
+    characters,
     settings,
-    replies: new ReplyService(chats, settings, provider),
+    replies: new ReplyService(chats, characters, settings, provider),
   });
   return {
     app,
     provider,
     chats,
+    characters,
     settings,
     call: async (method, url, body) =>
       app.request(url, {

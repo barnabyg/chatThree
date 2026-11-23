@@ -2,14 +2,19 @@ import { type Context, Hono } from 'hono';
 import { stream } from 'hono/streaming';
 import { z } from 'zod';
 import type { Chat, ChatSummary, ReplyEvent } from '../../shared/api.ts';
-import { BUILT_IN_CHARACTER, BUILT_IN_SCENARIO } from '../chat/builtin.ts';
+import { BUILT_IN_SCENARIO } from '../chat/builtin.ts';
 import type { ReplyService } from '../chat/replies.ts';
 import { countNotSent } from '../chat/trim.ts';
 import type { SettingsStore } from '../settings.ts';
+import type { CharacterStore } from '../store/characters.ts';
 import type { ChatStore } from '../store/chats.ts';
 import { ApiError, readBody } from './errors.ts';
 
 const MAX_MESSAGE_LENGTH = 20_000;
+
+const newChat = z.strictObject({
+  characterId: z.string('Choose a character for the chat.'),
+});
 
 const newMessage = z.strictObject({
   content: z
@@ -45,6 +50,7 @@ function streamReply(
 
 export function chatRoutes(
   chats: ChatStore,
+  characters: CharacterStore,
   replies: ReplyService,
   settings: SettingsStore,
 ): Hono {
@@ -57,11 +63,11 @@ export function chatRoutes(
     return chat;
   };
 
-  const view = ({ id }: ChatSummary): Chat => {
+  const view = ({ id, character }: ChatSummary): Chat => {
     const messages = chats.messages(id);
     return {
       id,
-      character: { name: BUILT_IN_CHARACTER.name },
+      character,
       scenario: { title: BUILT_IN_SCENARIO.title },
       messages,
       notSent: countNotSent(messages, settings.contextTokenBudget()),
@@ -71,7 +77,13 @@ export function chatRoutes(
 
   routes.get('/', (c) => c.json(chats.list()));
 
-  routes.post('/', (c) => c.json(view(chats.create()), 201));
+  routes.post('/', async (c) => {
+    const { characterId } = await readBody(c, newChat);
+    if (characters.find(characterId) === undefined) {
+      throw new ApiError(400, 'That character does not exist.');
+    }
+    return c.json(view(chats.create(characterId)), 201);
+  });
 
   routes.get('/:id', (c) => c.json(view(existing(c))));
 

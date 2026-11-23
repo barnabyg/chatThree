@@ -2,10 +2,11 @@
 // provider's reply, and saving what was written.
 
 import { setTimeout as delay } from 'node:timers/promises';
-import type { Message, ReplyEvent } from '../../shared/api.ts';
+import type { Character, Message, ReplyEvent } from '../../shared/api.ts';
 import type { SettingsStore } from '../settings.ts';
 import type { ChatStore } from '../store/chats.ts';
-import { BUILT_IN_CHARACTER, BUILT_IN_SCENARIO } from './builtin.ts';
+import type { CharacterStore } from '../store/characters.ts';
+import { BUILT_IN_SCENARIO } from './builtin.ts';
 import { buildPrompt } from './prompt.ts';
 import { type ChatProvider, ProviderError } from './provider.ts';
 
@@ -29,6 +30,7 @@ function userMessage(error: unknown): string {
 
 export class ReplyService {
   readonly #chats: ChatStore;
+  readonly #characters: CharacterStore;
   readonly #settings: SettingsStore;
   readonly #provider: ChatProvider;
   /** One entry per chat that has a reply in progress. */
@@ -36,10 +38,12 @@ export class ReplyService {
 
   constructor(
     chats: ChatStore,
+    characters: CharacterStore,
     settings: SettingsStore,
     provider: ChatProvider,
   ) {
     this.#chats = chats;
+    this.#characters = characters;
     this.#settings = settings;
     this.#provider = provider;
   }
@@ -107,6 +111,16 @@ export class ReplyService {
     }
   }
 
+  #character(chatId: string): Character {
+    const chat = this.#chats.find(chatId);
+    const character =
+      chat === undefined ? undefined : this.#characters.find(chat.character.id);
+    if (character === undefined) {
+      throw new Error(`Chat ${chatId} has no character.`);
+    }
+    return character;
+  }
+
   /** Mark `chatId` as replying, or throw `ChatBusyError` if it already is. */
   #begin(chatId: string): AbortController {
     if (this.#inProgress.has(chatId)) throw new ChatBusyError();
@@ -150,7 +164,7 @@ export class ReplyService {
     let text = '';
     try {
       const prompt = buildPrompt(
-        BUILT_IN_CHARACTER,
+        this.#character(chatId),
         BUILT_IN_SCENARIO,
         conversation,
         this.#settings.contextTokenBudget(),

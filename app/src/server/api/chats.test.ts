@@ -3,8 +3,13 @@ import type { Chat, ChatSummary } from '../../shared/api.ts';
 import { ProviderError } from '../chat/provider.ts';
 import { readReply, replyEvents, type TestApp, testApp } from '../testing.ts';
 
+/** Start a chat with the built-in character. */
 async function newChat(app: TestApp): Promise<Chat> {
-  return (await (await app.call('POST', '/api/chats')).json()) as Chat;
+  const [character] = app.characters.list();
+  const response = await app.call('POST', '/api/chats', {
+    characterId: character?.id,
+  });
+  return (await response.json()) as Chat;
 }
 
 async function readChat(app: TestApp, id: string): Promise<Chat> {

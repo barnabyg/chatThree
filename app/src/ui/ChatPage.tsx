@@ -7,13 +7,7 @@ import {
   useState,
 } from 'react';
 import type { Chat, Message, ReplyEvent } from '../shared/api.ts';
-import { api } from './api.ts';
-
-/** The most recent chat, or a new one if there is none yet. */
-async function currentChat(): Promise<Chat> {
-  const [latest] = await api.listChats();
-  return latest === undefined ? api.createChat() : api.getChat(latest.id);
-}
+import { api, errorMessage } from './api.ts';
 
 function MessageItem({
   author,
@@ -34,7 +28,7 @@ function MessageItem({
   );
 }
 
-export function ChatPage() {
+export function ChatPage({ chatId }: { chatId: string }) {
   const [chat, setChat] = useState<Chat | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -47,18 +41,18 @@ export function ChatPage() {
 
   useEffect(() => {
     let current = true;
-    currentChat().then(
+    api.getChat(chatId).then(
       (loaded) => {
         if (current) setChat(loaded);
       },
       (reason: unknown) => {
-        if (current) setLoadError(String(reason));
+        if (current) setLoadError(errorMessage(reason));
       },
     );
     return () => {
       current = false;
     };
-  }, []);
+  }, [chatId]);
 
   // A reply still being written by an earlier page (one that was reloaded
   // mid-reply) is saved when it ends: wait for it, then show it.
@@ -77,8 +71,14 @@ export function ChatPage() {
     end.current?.scrollIntoView({ block: 'end' });
   }, [chat?.messages.length, arriving]);
 
-  if (loadError !== null) return <p role="alert">{loadError}</p>;
-  if (chat === null) return <p>Loading…</p>;
+  if (loadError !== null) {
+    return (
+      <p className="page" role="alert">
+        {loadError}
+      </p>
+    );
+  }
+  if (chat === null) return <p className="page">Loading…</p>;
 
   const replying = arriving !== null || chat.replying;
 
@@ -146,7 +146,7 @@ export function ChatPage() {
   const deleteLast = (): void => {
     setError(null);
     api.deleteLastMessage(chat.id).then(setChat, (reason: unknown) => {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      setError(errorMessage(reason));
     });
   };
 

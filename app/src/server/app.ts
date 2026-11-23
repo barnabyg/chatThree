@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { characterRoutes } from './api/characters.ts';
 import { chatRoutes } from './api/chats.ts';
 import { engineRoutes } from './api/engine.ts';
 import { ApiError } from './api/errors.ts';
@@ -12,25 +13,28 @@ import type { EngineControl } from './engine/supervisor.ts';
 import { localOnly } from './localOnly.ts';
 import type { SettingsStore } from './settings.ts';
 import { staticFiles } from './staticFiles.ts';
+import type { CharacterStore } from './store/characters.ts';
 import type { ChatStore } from './store/chats.ts';
 
 export interface AppDependencies {
   uiDir: string;
   engine: EngineControl;
   chats: ChatStore;
+  characters: CharacterStore;
   settings: SettingsStore;
   replies: ReplyService;
 }
 
 /** The HTTP application: the JSON API under `/api`, the UI everywhere else. */
 export function createApp(dependencies: AppDependencies): Hono {
-  const { uiDir, engine, chats, settings, replies } = dependencies;
+  const { uiDir, engine, chats, characters, settings, replies } = dependencies;
   const app = new Hono();
   app.use(localOnly);
 
   app.get('/api/health', (c) => c.json({ status: 'ok' }));
   app.route('/api/engine', engineRoutes(engine));
-  app.route('/api/chats', chatRoutes(chats, replies, settings));
+  app.route('/api/chats', chatRoutes(chats, characters, replies, settings));
+  app.route('/api/characters', characterRoutes(characters, chats, replies));
   app.route('/api/settings', settingsRoutes(settings));
   app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));
 

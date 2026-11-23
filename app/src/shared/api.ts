@@ -13,9 +13,28 @@ export interface Message {
   createdAt: string;
 }
 
+/** What the user writes about a character. Only the name is required. */
+export interface CharacterInput {
+  name: string;
+  /** Who the character is: history, personality, what they want. */
+  persona: string;
+  /** How the character talks. */
+  speakingStyle: string;
+  /** Sample exchanges that show the character's voice. */
+  exampleDialogue: string;
+  /** What the character looks like. For pictures; not part of the chat prompt. */
+  appearance: string;
+}
+
+export interface Character extends CharacterInput {
+  id: string;
+  /** How many chats are with this character. Deleting it deletes them too. */
+  chatCount: number;
+}
+
 export interface Chat {
   id: string;
-  character: { name: string };
+  character: { id: string; name: string };
   scenario: { title: string };
   /** The whole conversation, oldest first. */
   messages: Message[];
@@ -30,6 +49,7 @@ export interface Chat {
 
 export interface ChatSummary {
   id: string;
+  character: { id: string; name: string };
   /** When a message was last added. */
   lastActivityAt: string;
 }

@@ -1,6 +1,8 @@
 // The UI's view of the server's HTTP API.
 
 import type {
+  Character,
+  CharacterInput,
   Chat,
   ChatSummary,
   ReplyEvent,
@@ -10,6 +12,11 @@ import type {
 
 const NOT_RUNNING =
   'chatThree is not running. Start it again, then reload this page.';
+
+/** A failure as text to show the user. */
+export function errorMessage(reason: unknown): string {
+  return reason instanceof Error ? reason.message : String(reason);
+}
 
 async function send(
   method: string,
@@ -102,7 +109,8 @@ async function* reply(url: string, body?: unknown): AsyncGenerator<ReplyEvent> {
 
 export const api = {
   listChats: () => request<ChatSummary[]>('GET', '/api/chats'),
-  createChat: () => request<Chat>('POST', '/api/chats'),
+  createChat: (characterId: string) =>
+    request<Chat>('POST', '/api/chats', { characterId }),
   getChat: (id: string) => request<Chat>('GET', `/api/chats/${id}`),
   sendMessage: (chatId: string, content: string) =>
     reply(`/api/chats/${chatId}/messages`, { content }),
@@ -111,6 +119,15 @@ export const api = {
     request<Chat>('DELETE', `/api/chats/${chatId}/messages/last`),
   stopReply: (chatId: string) =>
     request<undefined>('POST', `/api/chats/${chatId}/stop`),
+  listCharacters: () => request<Character[]>('GET', '/api/characters'),
+  getCharacter: (id: string) =>
+    request<Character>('GET', `/api/characters/${id}`),
+  createCharacter: (character: CharacterInput) =>
+    request<Character>('POST', '/api/characters', character),
+  updateCharacter: (id: string, character: CharacterInput) =>
+    request<Character>('PUT', `/api/characters/${id}`, character),
+  deleteCharacter: (id: string) =>
+    request<undefined>('DELETE', `/api/characters/${id}`),
   getSettings: () => request<Settings>('GET', '/api/settings'),
   updateSettings: (update: SettingsUpdate) =>
     request<Settings>('PUT', '/api/settings', update),

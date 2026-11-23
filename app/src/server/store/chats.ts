@@ -18,6 +18,30 @@ function toMessage(row: MessageRow): Message {
   };
 }
 
+interface ChatRow {
+  id: string;
+  lastActivityAt: string;
+  characterId: string;
+  characterName: string;
+}
+
+const SELECT = `
+  SELECT
+    chats.id,
+    chats.updated_at AS lastActivityAt,
+    characters.id AS characterId,
+    characters.name AS characterName
+  FROM chats
+  JOIN characters ON characters.id = chats.character_id`;
+
+function toSummary(row: ChatRow): ChatSummary {
+  return {
+    id: row.id,
+    character: { id: row.characterId, name: row.characterName },
+    lastActivityAt: row.lastActivityAt,
+  };
+}
+
 /** Chats and their messages, saved in the database. */
 export class ChatStore {
   readonly #db: Db;
@@ -26,32 +50,35 @@ export class ChatStore {
     this.#db = db;
   }
 
-  create(): ChatSummary {
+  /** Start a chat with the character `characterId`, which must exist. */
+  create(characterId: string): ChatSummary {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.#db
       .prepare(
-        'INSERT INTO chats (id, created_at, updated_at) VALUES (?, ?, ?)',
+        'INSERT INTO chats (id, character_id, created_at, updated_at) VALUES (?, ?, ?, ?)',
       )
-      .run(id, now, now);
-    return { id, lastActivityAt: now };
+      .run(id, characterId, now, now);
+    const created = this.find(id);
+    if (created === undefined) throw new Error('The new chat was not saved.');
+    return created;
   }
 
   /** Every chat, the most recently active first. */
   list(): ChatSummary[] {
     return this.#db
-      .prepare<[], ChatSummary>(
-        'SELECT id, updated_at AS lastActivityAt FROM chats ORDER BY updated_at DESC, rowid DESC',
+      .prepare<[], ChatRow>(
+        `${SELECT} ORDER BY chats.updated_at DESC, chats.rowid DESC`,
       )
-      .all();
+      .all()
+      .map(toSummary);
   }
 
   find(id: string): ChatSummary | undefined {
-    return this.#db
-      .prepare<[string], ChatSummary>(
-        'SELECT id, updated_at AS lastActivityAt FROM chats WHERE id = ?',
-      )
+    const row = this.#db
+      .prepare<[string], ChatRow>(`${SELECT} WHERE chats.id = ?`)
       .get(id);
+    return row === undefined ? undefined : toSummary(row);
   }
 
   /** The chat's whole conversation, oldest first. */

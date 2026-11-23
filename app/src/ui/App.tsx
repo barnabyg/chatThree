@@ -1,39 +1,42 @@
-import { useSyncExternalStore } from 'react';
+import { CharacterEditor } from './CharacterEditor.tsx';
+import { CharactersPage } from './CharactersPage.tsx';
 import { ChatPage } from './ChatPage.tsx';
 import { EngineStatusPanel } from './EngineStatus.tsx';
+import { Home } from './Home.tsx';
+import { useRoute } from './router.ts';
 import { SettingsPage } from './SettingsPage.tsx';
 
-function subscribeToHash(onChange: () => void): () => void {
-  window.addEventListener('hashchange', onChange);
-  return () => {
-    window.removeEventListener('hashchange', onChange);
-  };
-}
-
-/** The current route: the part of the URL after `#`, such as `/settings`. */
-function useRoute(): string {
-  return useSyncExternalStore(
-    subscribeToHash,
-    () => window.location.hash.slice(1) || '/',
-  );
-}
-
 function Page({ route }: { route: string }) {
-  if (route === '/settings') return <SettingsPage />;
-  return <ChatPage />;
+  const [, section, id] = route.split('/');
+  switch (section) {
+    case 'chats':
+      // Keyed, so that moving between chats starts each with a clean page.
+      return id === undefined ? <Home /> : <ChatPage key={id} chatId={id} />;
+    case 'characters':
+      if (id === undefined) return <CharactersPage />;
+      return id === 'new' ? (
+        <CharacterEditor key="new" />
+      ) : (
+        <CharacterEditor key={id} id={id} />
+      );
+    case 'settings':
+      return <SettingsPage />;
+    default:
+      return <Home />;
+  }
 }
 
 function NavLink({
   to,
-  route,
+  current,
   children,
 }: {
   to: string;
-  route: string;
+  current: boolean;
   children: string;
 }) {
   return (
-    <a href={`#${to}`} aria-current={route === to ? 'page' : undefined}>
+    <a href={`#${to}`} aria-current={current ? 'page' : undefined}>
       {children}
     </a>
   );
@@ -41,15 +44,19 @@ function NavLink({
 
 export function App() {
   const route = useRoute();
+  const section = route.split('/')[1] ?? '';
   return (
     <div className="shell">
       <aside className="sidebar">
         <p className="brand">chatThree</p>
         <nav aria-label="Main">
-          <NavLink to="/" route={route}>
+          <NavLink to="/" current={section === '' || section === 'chats'}>
             Chat
           </NavLink>
-          <NavLink to="/settings" route={route}>
+          <NavLink to="/characters" current={section === 'characters'}>
+            Characters
+          </NavLink>
+          <NavLink to="/settings" current={section === 'settings'}>
             Settings
           </NavLink>
         </nav>

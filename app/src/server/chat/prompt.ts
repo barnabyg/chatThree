@@ -6,14 +6,14 @@
 // turn after the first cheaper and faster. A long conversation is cut to a
 // token budget from its oldest end (trim.ts); the prefix is never cut.
 
-import type { Message } from '../../shared/api.ts';
+import type { CharacterInput, Message } from '../../shared/api.ts';
 import type { PromptMessage } from './provider.ts';
 import { countNotSent } from './trim.ts';
 
-export interface PromptCharacter {
-  name: string;
-  persona: string;
-}
+export type PromptCharacter = Pick<
+  CharacterInput,
+  'name' | 'persona' | 'speakingStyle' | 'exampleDialogue'
+>;
 
 export interface PromptScenario {
   title: string;
@@ -26,6 +26,11 @@ export interface Prompt {
   messages: PromptMessage[];
 }
 
+/** A headed section, or nothing when the user left that part blank. */
+function section(heading: string, text: string): string[] {
+  return text.trim() === '' ? [] : [`${heading}\n${text.trim()}`];
+}
+
 /** The fixed prefix: the character first, then the scenario. */
 export function buildInstructions(
   character: PromptCharacter,
@@ -34,7 +39,9 @@ export function buildInstructions(
   return [
     `# Character: ${character.name}`,
     `You are ${character.name}, a character in an interactive story. The user plays the other part.`,
-    character.persona,
+    ...section('## Persona', character.persona),
+    ...section('## Speaking style', character.speakingStyle),
+    ...section('## Example dialogue', character.exampleDialogue),
     `# Scenario: ${scenario.title}`,
     scenario.premise,
     '# How to reply',

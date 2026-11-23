@@ -8,6 +8,7 @@ import { ReplyService } from './chat/replies.ts';
 import type { AppConfig } from './config.ts';
 import { EngineSupervisor } from './engine/supervisor.ts';
 import { SettingsStore } from './settings.ts';
+import { CharacterStore } from './store/characters.ts';
 import { ChatStore } from './store/chats.ts';
 import { openDatabase } from './store/database.ts';
 
@@ -24,12 +25,14 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
   mkdirSync(config.dataDir, { recursive: true });
   const database = openDatabase(path.join(config.dataDir, 'chatthree.db'));
   const chats = new ChatStore(database);
+  const characters = new CharacterStore(database);
   const settings = new SettingsStore(
     path.join(config.dataDir, 'settings.json'),
     config.openai.apiKey,
   );
   const replies = new ReplyService(
     chats,
+    characters,
     settings,
     openAIProvider({
       baseUrl: config.openai.baseUrl,
@@ -45,6 +48,7 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
     uiDir: config.uiDir,
     engine,
     chats,
+    characters,
     settings,
     replies,
   });

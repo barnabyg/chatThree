@@ -2,7 +2,12 @@ import { expect, test } from 'vitest';
 import type { Message } from '../../shared/api.ts';
 import { buildPrompt } from './prompt.ts';
 
-const character = { name: 'Mara', persona: 'Keeper of the lighthouse.' };
+const character = {
+  name: 'Mara',
+  persona: 'Keeper of the lighthouse.',
+  speakingStyle: 'Plain and dry.',
+  exampleDialogue: 'User: Rough night?\nMara: I have seen worse.',
+};
 const scenario = { title: 'The Storm', premise: 'A stranger knocks.' };
 /** Far more than any conversation in these tests. */
 const BUDGET = 10_000;
@@ -27,6 +32,32 @@ test('the instructions put the character first, then the scenario', () => {
     persona,
   );
   expect(premise).toBeGreaterThan(instructions.indexOf('# Scenario'));
+});
+
+test("the character's persona, speaking style and example dialogue come before the scenario, in that order", () => {
+  const { instructions } = buildPrompt(character, scenario, [], BUDGET);
+
+  const positions = [
+    'Keeper of the lighthouse.',
+    'Plain and dry.',
+    'Mara: I have seen worse.',
+    '# Scenario: The Storm',
+  ].map((part) => instructions.indexOf(part));
+  expect(positions).not.toContain(-1);
+  expect(positions).toEqual([...positions].sort((a, b) => a - b));
+});
+
+test('a part of the character left blank has no heading in the instructions', () => {
+  const { instructions } = buildPrompt(
+    { ...character, speakingStyle: '  ' },
+    scenario,
+    [],
+    BUDGET,
+  );
+
+  expect(instructions).toContain('## Persona');
+  expect(instructions).toContain('## Example dialogue');
+  expect(instructions).not.toContain('## Speaking style');
 });
 
 test('the instructions are the same on every turn of a chat', () => {

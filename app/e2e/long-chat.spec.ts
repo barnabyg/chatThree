@@ -24,10 +24,11 @@ test('a chat over the token budget stops sending its oldest messages, but keeps 
   const items = page
     .getByRole('list', { name: 'Conversation' })
     .getByRole('listitem');
+  const replies = items.filter({ hasText: REPLY });
   await send(page, long('first message'));
-  await expect(items).toHaveCount(2);
+  await expect(replies).toHaveCount(1);
   await send(page, long('second message'));
-  await expect(items).toHaveCount(4);
+  await expect(replies).toHaveCount(2);
   await send(page, long('third message'));
 
   // Everything is still shown, with a line where sending now starts:

@@ -40,6 +40,12 @@ Replies come from OpenAI, so chat needs an OpenAI API key. Either set
 key saved in Settings is used in place of the environment variable, is sent
 only to OpenAI, and is never shown again. The model is also a setting.
 
+The app starts with one character, Mara Quill. **Characters** is where you
+edit her or create your own: a name, a persona, a speaking style, example
+dialogue and an appearance. The first three after the name go into the
+prompt; the appearance is kept for pictures. Deleting a character deletes the
+chats with it, after asking.
+
 A long chat is not sent whole. Each turn sends the character and scenario,
 then as much of the conversation as fits a token budget (a setting, 16,000 by
 default), counted back from the newest message. Older messages stay in the
