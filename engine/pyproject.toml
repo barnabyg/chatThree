@@ -28,17 +28,19 @@ build-backend = "uv_build"
 module-name = "chatthree_engine"
 
 [tool.uv]
-# chatterbox-tts 0.1.7 pins exact versions that are years behind what the image
-# pipeline needs. It only touches five diffusers symbols, all still present, so
-# these overrides replace its pins. transformers is deliberately NOT overridden:
-# Chatterbox's speech model depends on transformers internals, so its pin wins
-# and the image side has to work with it.
+# chatterbox-tts 0.1.7 pins exact versions that are far behind what the image
+# pipeline needs, and its transformers pin (5.2.0) carries known advisories.
+# These overrides replace its pins. Each was checked by running the benchmark
+# and transcribing the generated speech: Chatterbox imports only five diffusers
+# symbols, all still present, and both variants run unchanged on transformers
+# 5.24. Re-run `python -m chatthree_engine.bench speech` after changing any.
 # Review when chatterbox-tts publishes a release with relaxed pins.
 override-dependencies = [
     "diffusers==0.43.0",
     "safetensors>=0.8.0",
     "torch==2.15.0",
     "torchaudio==2.11.1",
+    "transformers==5.24.0",
 ]
 
 # Chatterbox depends on gradio only for its demo apps; the library never imports
