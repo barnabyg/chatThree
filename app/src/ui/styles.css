@@ -44,12 +44,85 @@ body {
   color: var(--text);
 }
 
-.placeholder {
-  max-width: 40rem;
-  margin: 20vh auto 0;
-  padding: 0 1rem;
-  text-align: center;
+h1 {
+  margin: 0;
+  font-size: 1.25rem;
 }
+
+p {
+  margin: 0;
+}
+
+/* Layout: a sidebar beside the page. */
+
+.shell {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  height: 100vh;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  overflow-y: auto;
+}
+
+.brand {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.sidebar nav a {
+  padding: 0.35rem 0.6rem;
+  border-radius: 0.4rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.sidebar nav a:hover {
+  background: var(--bg);
+}
+
+.sidebar nav a[aria-current='page'] {
+  background: var(--bg);
+  font-weight: 600;
+}
+
+.sidebar .engine {
+  margin-top: auto;
+}
+
+.main {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.page {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem;
+}
+
+.page-header {
+  padding-bottom: 0.75rem;
+}
+
+.page-header p {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* Controls. */
 
 button {
   font: inherit;
@@ -61,13 +134,142 @@ button {
   cursor: pointer;
 }
 
+button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
 button:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
-.engine-state {
+input,
+textarea,
+select {
+  font: inherit;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: var(--surface);
+  color: var(--text);
+}
+
+textarea {
+  resize: vertical;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.75rem;
+  font-weight: 600;
+}
+
+.form label > * {
+  font-weight: 400;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.form-error {
+  color: var(--danger);
+  font-size: 0.875rem;
+}
+
+/* Chat. */
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 1rem 1rem 0;
+}
+
+.conversation-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
   margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.message {
+  max-width: 85%;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  background: var(--surface);
+}
+
+.message-user {
+  align-self: flex-end;
+  border-color: transparent;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+}
+
+.message-author {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.message-content {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-error {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--danger);
+  border-radius: 0.5rem;
+  color: var(--danger);
+  white-space: pre-wrap;
+}
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 0 1rem;
+}
+
+.composer textarea {
+  flex: 1;
+  resize: none;
+}
+
+/* Engine status. */
+
+.engine-state {
   font-size: 0.875rem;
   color: var(--muted);
 }
@@ -92,14 +294,15 @@ button:disabled {
 }
 
 .engine-error {
+  max-height: 12rem;
   margin: 0.5rem 0;
   padding: 0.5rem;
   border: 1px solid var(--border);
   border-radius: 0.4rem;
-  background: var(--surface);
+  background: var(--bg);
   color: var(--danger);
-  font-size: 0.8rem;
-  text-align: left;
+  font-size: 0.75rem;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  overflow-y: auto;
 }

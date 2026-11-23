@@ -2,9 +2,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { beforeAll, describe, expect, test } from 'vitest';
-import type { EngineStatus } from '../shared/api.ts';
-import { createApp } from './app.ts';
-import type { EngineControl } from './engine/supervisor.ts';
+import { stubEngine, testApp as buildApp } from './testing.ts';
 
 let uiDir: string;
 
@@ -19,34 +17,8 @@ beforeAll(async () => {
 
 const local = { headers: { host: '127.0.0.1:3210' } };
 
-function stubEngine(
-  initial: EngineStatus,
-): EngineControl & { set(status: EngineStatus): void } {
-  let current = initial;
-  const listeners = new Set<(status: EngineStatus) => void>();
-  const set = (status: EngineStatus): void => {
-    current = status;
-    for (const listener of listeners) listener(status);
-  };
-  return {
-    status: () => current,
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    restart() {
-      set({ state: 'loading' });
-      return Promise.resolve();
-    },
-    set,
-  };
-}
-
-function testApp(options: { uiDir?: string; engine?: EngineControl } = {}) {
-  return createApp({
-    uiDir: options.uiDir ?? uiDir,
-    engine: options.engine ?? stubEngine({ state: 'ready' }),
-  });
+function testApp(options: Parameters<typeof buildApp>[0] = {}) {
+  return buildApp({ uiDir, ...options }).app;
 }
 
 describe('serving the UI', () => {

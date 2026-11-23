@@ -1,51 +1,48 @@
 import { Hono } from 'hono';
-import { streamSSE } from 'hono/streaming';
-import type { EngineStatus } from '../shared/api.ts';
+import { chatRoutes } from './api/chats.ts';
+import { engineRoutes } from './api/engine.ts';
+import { ApiError } from './api/errors.ts';
+import { settingsRoutes } from './api/settings.ts';
+import { ChatBusyError, type ReplyService } from './chat/replies.ts';
 import type { EngineControl } from './engine/supervisor.ts';
 import { localOnly } from './localOnly.ts';
+import type { SettingsStore } from './settings.ts';
 import { staticFiles } from './staticFiles.ts';
+import type { ChatStore } from './store/chats.ts';
 
 export interface AppDependencies {
   uiDir: string;
   engine: EngineControl;
-}
-
-function engineRoutes(engine: EngineControl): Hono {
-  const routes = new Hono();
-
-  routes.get('/', (c) => c.json(engine.status()));
-
-  // A stream of status changes, starting with the current status, so the UI
-  // follows the engine without reloading.
-  routes.get('/events', (c) =>
-    streamSSE(c, async (stream) => {
-      const send = (status: EngineStatus): void => {
-        void stream.writeSSE({ event: 'status', data: JSON.stringify(status) });
-      };
-      send(engine.status());
-      const unsubscribe = engine.subscribe(send);
-      await new Promise<void>((resolve) => {
-        stream.onAbort(resolve);
-      });
-      unsubscribe();
-    }),
-  );
-
-  routes.post('/restart', async (c) => {
-    await engine.restart();
-    return c.json(engine.status());
-  });
-
-  return routes;
+  chats: ChatStore;
+  settings: SettingsStore;
+  replies: ReplyService;
 }
 
 /** The HTTP application: the JSON API under `/api`, the UI everywhere else. */
-export function createApp({ uiDir, engine }: AppDependencies): Hono {
+export function createApp(dependencies: AppDependencies): Hono {
+  const { uiDir, engine, chats, settings, replies } = dependencies;
   const app = new Hono();
   app.use(localOnly);
+
   app.get('/api/health', (c) => c.json({ status: 'ok' }));
   app.route('/api/engine', engineRoutes(engine));
+  app.route('/api/chats', chatRoutes(chats, replies));
+  app.route('/api/settings', settingsRoutes(settings));
   app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));
+
+  // Every API failure is `{ "error": "<message for the user>" }`.
+  app.onError((error, c) => {
+    if (error instanceof ApiError) {
+      return c.json({ error: error.message }, error.status);
+    }
+    if (error instanceof ChatBusyError) {
+      return c.json({ error: error.message }, 409);
+    }
+    // Only the error is logged, never the request: it may hold an API key.
+    console.error(error);
+    return c.json({ error: 'Something went wrong in chatThree.' }, 500);
+  });
+
   app.use(staticFiles(uiDir));
   return app;
 }

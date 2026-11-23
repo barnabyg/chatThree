@@ -1,5 +1,7 @@
+import os from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
+import { OPENAI_BASE_URL } from './chat/openai.ts';
 
 export const DEFAULT_PORT = 3210;
 
@@ -14,6 +16,16 @@ export interface AppConfig {
     /** The engine's command line. The app adds `--port <n>`. */
     command: string[];
     cwd: string;
+  };
+  /**
+   * Where chats and settings are kept. Outside the repository, so that
+   * nothing the user writes or saves can end up in a commit.
+   */
+  dataDir: string;
+  openai: {
+    baseUrl: string;
+    /** The value of OPENAI_API_KEY, if set. */
+    apiKey: string | undefined;
   };
 }
 
@@ -30,6 +42,28 @@ const ENGINE_COMMAND = [
   '-m',
   'chatthree_engine.server',
 ];
+
+function defaultDataDir(env: NodeJS.ProcessEnv): string {
+  switch (process.platform) {
+    case 'win32':
+      return path.join(
+        env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'),
+        'chatThree',
+      );
+    case 'darwin':
+      return path.join(
+        os.homedir(),
+        'Library',
+        'Application Support',
+        'chatThree',
+      );
+    default:
+      return path.join(
+        env.XDG_DATA_HOME ?? path.join(os.homedir(), '.local', 'share'),
+        'chatthree',
+      );
+  }
+}
 
 function parsePort(value: string): number {
   const port = Number(value);
@@ -81,6 +115,11 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv): AppConfig {
           ? ENGINE_COMMAND
           : parseCommand(env.CHATTHREE_ENGINE_COMMAND),
       cwd: env.CHATTHREE_ENGINE_DIR ?? path.join(REPO_ROOT, 'engine'),
+    },
+    dataDir: env.CHATTHREE_DATA_DIR ?? defaultDataDir(env),
+    openai: {
+      baseUrl: env.OPENAI_BASE_URL ?? OPENAI_BASE_URL,
+      apiKey: env.OPENAI_API_KEY,
     },
   };
 }

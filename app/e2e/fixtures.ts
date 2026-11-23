@@ -3,6 +3,11 @@ import { once } from 'node:events';
 import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { test as base } from '@playwright/test';
+import {
+  FAKE_API_KEY,
+  type FakeOpenAI,
+  startFakeOpenAI,
+} from '../test-support/fake-openai.ts';
 
 const APP_ROOT = path.resolve(import.meta.dirname, '..');
 const START_TIMEOUT_MS = 15_000;
@@ -69,6 +74,7 @@ export async function startApp(
 ): Promise<RunningApp> {
   await mkdir(directory, { recursive: true });
   const pidFile = path.join(directory, 'engine-pids.txt');
+  const dataDir = path.join(directory, 'data');
   const child = spawn(
     process.execPath,
     ['src/server/main.ts', '--port', '0', '--no-open'],
@@ -79,6 +85,8 @@ export async function startApp(
         CHATTHREE_ENGINE_COMMAND: FAKE_ENGINE_COMMAND,
         CHATTHREE_ENGINE_DIR: APP_ROOT,
         FAKE_ENGINE_PID_FILE: pidFile,
+        // Chats and settings go to a directory of the test's own.
+        CHATTHREE_DATA_DIR: dataDir,
         ...env,
       },
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
@@ -101,6 +109,8 @@ export async function startApp(
 interface Fixtures {
   /** Extra environment for this test's app: set with `test.use({ appEnv })`. */
   appEnv: NodeJS.ProcessEnv;
+  /** The fake OpenAI server this test's app talks to. */
+  openai: FakeOpenAI;
   app: RunningApp;
 }
 
@@ -110,8 +120,18 @@ interface Fixtures {
  */
 export const test = base.extend<Fixtures>({
   appEnv: [{}, { option: true }],
-  app: async ({ appEnv }, use, testInfo) => {
-    const app = await startApp(testInfo.outputPath(), appEnv);
+  // eslint-disable-next-line no-empty-pattern -- Playwright requires fixtures to destructure their dependencies.
+  openai: async ({}, use) => {
+    const openai = await startFakeOpenAI();
+    await use(openai);
+    await openai.close();
+  },
+  app: async ({ appEnv, openai }, use, testInfo) => {
+    const app = await startApp(testInfo.outputPath(), {
+      OPENAI_BASE_URL: openai.baseUrl,
+      OPENAI_API_KEY: FAKE_API_KEY,
+      ...appEnv,
+    });
     await use(app);
     await app.stop();
   },

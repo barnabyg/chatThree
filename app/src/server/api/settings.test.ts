@@ -1,0 +1,58 @@
+import { expect, test } from 'vitest';
+import { DEFAULT_MODEL } from '../settings.ts';
+import { testApp } from '../testing.ts';
+
+test('settings start with the default model and say where the key comes from', async () => {
+  const app = testApp({ environmentApiKey: 'sk-from-env' });
+
+  const response = await app.call('GET', '/api/settings');
+
+  expect(await response.json()).toEqual({
+    model: DEFAULT_MODEL,
+    apiKey: 'environment',
+  });
+});
+
+test('a key can be saved, and is never sent back', async () => {
+  const app = testApp();
+
+  const saved = await app.call('PUT', '/api/settings', {
+    apiKey: 'sk-secret-123',
+  });
+  const read = await app.call('GET', '/api/settings');
+
+  const texts = [await saved.text(), await read.text()];
+  expect(JSON.parse(texts[1] ?? '')).toMatchObject({ apiKey: 'saved' });
+  expect(texts.join()).not.toContain('sk-secret-123');
+  expect(app.settings.apiKey()).toBe('sk-secret-123');
+});
+
+test('the saved key can be forgotten', async () => {
+  const app = testApp();
+  await app.call('PUT', '/api/settings', { apiKey: 'sk-secret-123' });
+
+  const response = await app.call('PUT', '/api/settings', { apiKey: null });
+
+  expect(await response.json()).toMatchObject({ apiKey: 'missing' });
+});
+
+test('the model can be changed', async () => {
+  const app = testApp();
+
+  const response = await app.call('PUT', '/api/settings', {
+    model: '  another-model ',
+  });
+
+  expect(await response.json()).toMatchObject({ model: 'another-model' });
+});
+
+test('an empty model name is refused with a reason', async () => {
+  const app = testApp();
+
+  const response = await app.call('PUT', '/api/settings', { model: ' ' });
+
+  expect(response.status).toBe(400);
+  expect(await response.json()).toEqual({
+    error: 'The model name cannot be empty.',
+  });
+});

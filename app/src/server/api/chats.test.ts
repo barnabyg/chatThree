@@ -1,0 +1,229 @@
+import { describe, expect, test } from 'vitest';
+import type { Chat, ChatSummary } from '../../shared/api.ts';
+import { ProviderError } from '../chat/provider.ts';
+import { readReply, replyEvents, type TestApp, testApp } from '../testing.ts';
+
+async function newChat(app: TestApp): Promise<Chat> {
+  return (await (await app.call('POST', '/api/chats')).json()) as Chat;
+}
+
+async function readChat(app: TestApp, id: string): Promise<Chat> {
+  return (await (await app.call('GET', `/api/chats/${id}`)).json()) as Chat;
+}
+
+function send(app: TestApp, chat: Chat, content: string): Promise<Response> {
+  return app.call('POST', `/api/chats/${chat.id}/messages`, { content });
+}
+
+function turns(chat: Chat): [string, string][] {
+  return chat.messages.map(({ role, content }) => [role, content]);
+}
+
+describe('starting a chat', () => {
+  test('a new chat is with the built-in character in the built-in scenario, and empty', async () => {
+    const app = testApp();
+
+    const chat = await newChat(app);
+
+    expect(chat).toMatchObject({
+      character: { name: 'Mara Quill' },
+      scenario: { title: 'The Storm at Gull Point' },
+      messages: [],
+      replying: false,
+    });
+  });
+
+  test('a chat that was started is listed', async () => {
+    const app = testApp();
+    const chat = await newChat(app);
+
+    const list = (await (
+      await app.call('GET', '/api/chats')
+    ).json()) as ChatSummary[];
+
+    expect(list.map(({ id }) => id)).toEqual([chat.id]);
+  });
+
+  test('an unknown chat is a 404 with a message', async () => {
+    const response = await testApp().call('GET', '/api/chats/no-such-chat');
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      error: 'That chat does not exist.',
+    });
+  });
+});
+
+describe('sending a message', () => {
+  test('streams the saved message, the reply piece by piece, then the saved reply', async () => {
+    const app = testApp();
+    app.provider.script({ pieces: ['Who goes', ' there?'] });
+    const chat = await newChat(app);
+
+    const events = await replyEvents(await send(app, chat, 'Hello?'));
+
+    expect(events).toMatchObject([
+      { type: 'user-message', message: { role: 'user', content: 'Hello?' } },
+      { type: 'delta', text: 'Who goes' },
+      { type: 'delta', text: ' there?' },
+      {
+        type: 'done',
+        message: { role: 'assistant', content: 'Who goes there?' },
+      },
+    ]);
+  });
+
+  test('the conversation is saved', async () => {
+    const app = testApp();
+    app.provider.script({ pieces: ['Who goes there?'] });
+    const chat = await newChat(app);
+
+    await replyEvents(await send(app, chat, 'Hello?'));
+
+    expect(turns(await readChat(app, chat.id))).toEqual([
+      ['user', 'Hello?'],
+      ['assistant', 'Who goes there?'],
+    ]);
+  });
+
+  test('the provider is given the character, then the scenario, then the whole conversation', async () => {
+    const app = testApp();
+    const chat = await newChat(app);
+    await replyEvents(await send(app, chat, 'Hello?'));
+
+    await replyEvents(await send(app, chat, 'A traveller.'));
+
+    const [first, second] = app.provider.requests;
+    expect(second?.instructions).toBe(first?.instructions);
+    expect(second?.instructions.indexOf('Mara Quill')).toBeLessThan(
+      second?.instructions.indexOf('The Storm at Gull Point') ?? -1,
+    );
+    expect(second?.messages).toEqual([
+      { role: 'user', content: 'Hello?' },
+      { role: 'assistant', content: 'Hello.' },
+      { role: 'user', content: 'A traveller.' },
+    ]);
+  });
+
+  test('the model named in settings is the one asked', async () => {
+    const app = testApp();
+    app.settings.update({ model: 'another-model' });
+    const chat = await newChat(app);
+
+    await replyEvents(await send(app, chat, 'Hello?'));
+
+    expect(app.provider.requests[0]?.model).toBe('another-model');
+  });
+
+  test('an empty message is refused', async () => {
+    const app = testApp();
+    const chat = await newChat(app);
+
+    const response = await send(app, chat, '   ');
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Type a message first.' });
+    expect((await readChat(app, chat.id)).messages).toEqual([]);
+  });
+});
+
+describe('when no reply can be produced', () => {
+  test("the provider's reason is reported and the user's message is kept", async () => {
+    const app = testApp();
+    app.provider.script({
+      pieces: [],
+      thenFail: new ProviderError('OpenAI rejected the API key.'),
+    });
+    const chat = await newChat(app);
+
+    const events = await replyEvents(await send(app, chat, 'Hello?'));
+
+    expect(events.at(-1)).toEqual({
+      type: 'error',
+      message: 'OpenAI rejected the API key.',
+    });
+    expect(turns(await readChat(app, chat.id))).toEqual([['user', 'Hello?']]);
+  });
+
+  test('a reply that fails part-way is not saved', async () => {
+    const app = testApp();
+    app.provider.script({
+      pieces: ['Who goes'],
+      thenFail: new ProviderError('Could not reach OpenAI.'),
+    });
+    const chat = await newChat(app);
+
+    await replyEvents(await send(app, chat, 'Hello?'));
+
+    expect(turns(await readChat(app, chat.id))).toEqual([['user', 'Hello?']]);
+  });
+
+  test('a later message can still be sent', async () => {
+    const app = testApp();
+    app.provider.script({
+      pieces: [],
+      thenFail: new ProviderError('Could not reach OpenAI.'),
+    });
+    const chat = await newChat(app);
+    await replyEvents(await send(app, chat, 'Hello?'));
+
+    const events = await replyEvents(await send(app, chat, 'Anyone?'));
+
+    expect(events.at(-1)).toMatchObject({ type: 'done' });
+  });
+});
+
+describe('stopping a reply', () => {
+  test('ends the reply and keeps what had been written', async () => {
+    const app = testApp();
+    app.provider.script({ pieces: ['Who goes'], thenWait: true });
+    const chat = await newChat(app);
+    const reply = readReply(await send(app, chat, 'Hello?'));
+    await reply.next(); // the saved user message
+    await reply.next(); // the first piece
+
+    const stopped = await app.call('POST', `/api/chats/${chat.id}/stop`);
+    const last = await reply.next();
+
+    expect(stopped.status).toBe(204);
+    expect(last.value).toMatchObject({
+      type: 'done',
+      message: { role: 'assistant', content: 'Who goes' },
+    });
+    expect(turns(await readChat(app, chat.id))).toEqual([
+      ['user', 'Hello?'],
+      ['assistant', 'Who goes'],
+    ]);
+  });
+
+  test('a reply stopped before any text arrives leaves no reply', async () => {
+    const app = testApp();
+    app.provider.script({ pieces: [], thenWait: true });
+    const chat = await newChat(app);
+    const reply = readReply(await send(app, chat, 'Hello?'));
+    await reply.next(); // the saved user message
+
+    await app.call('POST', `/api/chats/${chat.id}/stop`);
+
+    expect((await reply.next()).value).toEqual({ type: 'done', message: null });
+    expect(turns(await readChat(app, chat.id))).toEqual([['user', 'Hello?']]);
+  });
+
+  test('while a reply is being written the chat says so and takes no other message', async () => {
+    const app = testApp();
+    app.provider.script({ pieces: ['Who goes'], thenWait: true });
+    const chat = await newChat(app);
+    const reply = readReply(await send(app, chat, 'Hello?'));
+    await reply.next();
+
+    const second = await send(app, chat, 'Hello again?');
+
+    expect(second.status).toBe(409);
+    expect((await readChat(app, chat.id)).replying).toBe(true);
+
+    await app.call('POST', `/api/chats/${chat.id}/stop`);
+    await reply.next();
+    await reply.next();
+    expect((await readChat(app, chat.id)).replying).toBe(false);
+  });
+});

@@ -33,6 +33,24 @@ app ends the engine's whole process tree.
 | `--port 4000` | Listen on another port (or set `CHATTHREE_PORT`) |
 | `--no-open` | Do not open the browser |
 
+## Chat
+
+Replies come from OpenAI, so chat needs an OpenAI API key. Either set
+`OPENAI_API_KEY` before starting the app, or paste a key into **Settings**. A
+key saved in Settings is used in place of the environment variable, is sent
+only to OpenAI, and is never shown again. The model is also a setting.
+
+Chats and settings are kept on this computer, outside the repository:
+
+| File | Holds |
+|---|---|
+| `%LOCALAPPDATA%\chatThree\chatthree.db` | Chats and messages (SQLite) |
+| `%LOCALAPPDATA%\chatThree\settings.json` | The model and a saved API key |
+
+Set `CHATTHREE_DATA_DIR` to keep them somewhere else. On macOS the default is
+`~/Library/Application Support/chatThree`, and on Linux
+`~/.local/share/chatthree`.
+
 ## Manual check: the engine stops with the app
 
 1. Start the app: `cd C:\docs\git\chatThree; pwsh ./start.ps1`
