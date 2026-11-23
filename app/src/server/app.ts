@@ -3,7 +3,11 @@ import { chatRoutes } from './api/chats.ts';
 import { engineRoutes } from './api/engine.ts';
 import { ApiError } from './api/errors.ts';
 import { settingsRoutes } from './api/settings.ts';
-import { ChatBusyError, type ReplyService } from './chat/replies.ts';
+import {
+  ChatBusyError,
+  ChatRequestError,
+  type ReplyService,
+} from './chat/replies.ts';
 import type { EngineControl } from './engine/supervisor.ts';
 import { localOnly } from './localOnly.ts';
 import type { SettingsStore } from './settings.ts';
@@ -37,6 +41,9 @@ export function createApp(dependencies: AppDependencies): Hono {
     }
     if (error instanceof ChatBusyError) {
       return c.json({ error: error.message }, 409);
+    }
+    if (error instanceof ChatRequestError) {
+      return c.json({ error: error.message }, 400);
     }
     // Only the error is logged, never the request: it may hold an API key.
     console.error(error);

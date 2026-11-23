@@ -2,7 +2,7 @@
 // provider's reply, and saving what was written.
 
 import { setTimeout as delay } from 'node:timers/promises';
-import type { ReplyEvent } from '../../shared/api.ts';
+import type { Message, ReplyEvent } from '../../shared/api.ts';
 import type { SettingsStore } from '../settings.ts';
 import type { ChatStore } from '../store/chats.ts';
 import { BUILT_IN_CHARACTER, BUILT_IN_SCENARIO } from './builtin.ts';
@@ -17,6 +17,9 @@ export class ChatBusyError extends Error {
     super('A reply is already being written in this chat.');
   }
 }
+
+/** A request that makes no sense for the chat as it stands. */
+export class ChatRequestError extends Error {}
 
 function userMessage(error: unknown): string {
   if (error instanceof ProviderError) return error.message;
@@ -66,7 +69,42 @@ export class ReplyService {
    */
   send(chatId: string, content: string): AsyncGenerator<ReplyEvent> {
     const controller = this.#begin(chatId);
-    return this.#run(chatId, controller, content);
+    return this.#untilFinished(
+      chatId,
+      this.#sendAndReply(chatId, content, controller.signal),
+    );
+  }
+
+  /**
+   * Stream a new reply to the conversation as it stood before the last
+   * reply, and put it in that reply's place. The old reply stays until the
+   * new one has been written, so a failure loses nothing. If the last
+   * message is the user's, this writes the reply it never got. The caller
+   * must read the events to the end, as for `send`.
+   */
+  regenerate(chatId: string): AsyncGenerator<ReplyEvent> {
+    if (this.isReplying(chatId)) throw new ChatBusyError();
+    const messages = this.#chats.messages(chatId);
+    const last = messages.at(-1);
+    const replacing = last?.role === 'assistant' ? last : undefined;
+    const conversation =
+      replacing === undefined ? messages : messages.slice(0, -1);
+    if (conversation.length === 0) {
+      throw new ChatRequestError('There is no message to reply to yet.');
+    }
+    const controller = this.#begin(chatId);
+    return this.#untilFinished(
+      chatId,
+      this.#reply(chatId, controller.signal, conversation, replacing),
+    );
+  }
+
+  /** Remove the last message in the chat, whoever wrote it. */
+  deleteLastMessage(chatId: string): void {
+    if (this.isReplying(chatId)) throw new ChatBusyError();
+    if (this.#chats.deleteLastMessage(chatId) === undefined) {
+      throw new ChatRequestError('This chat has no messages to delete.');
+    }
   }
 
   /** Mark `chatId` as replying, or throw `ChatBusyError` if it already is. */
@@ -77,30 +115,44 @@ export class ReplyService {
     return controller;
   }
 
-  async *#run(
+  /** Pass `events` on, and mark the chat as no longer replying at their end. */
+  async *#untilFinished(
     chatId: string,
-    controller: AbortController,
-    content: string,
+    events: AsyncGenerator<ReplyEvent>,
   ): AsyncGenerator<ReplyEvent> {
     try {
-      const message = this.#chats.addMessage(chatId, 'user', content);
-      yield { type: 'user-message', message };
-      yield* this.#reply(chatId, controller.signal);
+      yield* events;
     } finally {
       this.#inProgress.delete(chatId);
     }
   }
 
+  async *#sendAndReply(
+    chatId: string,
+    content: string,
+    signal: AbortSignal,
+  ): AsyncGenerator<ReplyEvent> {
+    const message = this.#chats.addMessage(chatId, 'user', content);
+    yield { type: 'user-message', message };
+    yield* this.#reply(chatId, signal, this.#chats.messages(chatId));
+  }
+
+  /**
+   * Stream a reply to `conversation` and save it: in place of `replacing`
+   * if given, else as a new message.
+   */
   async *#reply(
     chatId: string,
     signal: AbortSignal,
+    conversation: readonly Message[],
+    replacing?: Message,
   ): AsyncGenerator<ReplyEvent> {
     let text = '';
     try {
       const prompt = buildPrompt(
         BUILT_IN_CHARACTER,
         BUILT_IN_SCENARIO,
-        this.#chats.messages(chatId),
+        conversation,
       );
       const pieces = this.#provider.streamReply({
         model: this.#settings.model(),
@@ -126,7 +178,10 @@ export class ReplyService {
     }
     yield {
       type: 'done',
-      message: this.#chats.addMessage(chatId, 'assistant', text),
+      message:
+        replacing === undefined
+          ? this.#chats.addMessage(chatId, 'assistant', text)
+          : this.#chats.replaceMessage(chatId, replacing, text),
     };
   }
 }

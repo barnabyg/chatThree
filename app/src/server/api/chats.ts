@@ -74,6 +74,20 @@ export function chatRoutes(chats: ChatStore, replies: ReplyService): Hono {
     });
   });
 
+  // Replace the last reply with a new one. The answer is a stream of reply events.
+  routes.post('/:id/regenerate', (c) => {
+    const chat = existing(c);
+    return streamReply(c, replies.regenerate(chat.id), () => {
+      replies.stop(chat.id);
+    });
+  });
+
+  routes.delete('/:id/messages/last', (c) => {
+    const chat = existing(c);
+    replies.deleteLastMessage(chat.id);
+    return c.json(view(chat));
+  });
+
   // Stop the reply being written. What has arrived so far is kept.
   routes.post('/:id/stop', (c) => {
     replies.stop(existing(c).id);

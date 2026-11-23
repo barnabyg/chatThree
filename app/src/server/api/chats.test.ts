@@ -227,3 +227,148 @@ describe('stopping a reply', () => {
     expect((await readChat(app, chat.id)).replying).toBe(false);
   });
 });
+
+function regenerate(app: TestApp, chat: Chat): Promise<Response> {
+  return app.call('POST', `/api/chats/${chat.id}/regenerate`);
+}
+
+function deleteLast(app: TestApp, chat: Chat): Promise<Response> {
+  return app.call('DELETE', `/api/chats/${chat.id}/messages/last`);
+}
+
+describe('regenerating the last reply', () => {
+  test('replaces it with a new reply to the same conversation', async () => {
+    const app = testApp();
+    app.provider.script(
+      { pieces: ['First answer.'] },
+      { pieces: ['Second', ' answer.'] },
+    );
+    const chat = await newChat(app);
+    await replyEvents(await send(app, chat, 'Hello?'));
+
+    const events = await replyEvents(await regenerate(app, chat));
+
+    expect(events).toMatchObject([
+      { type: 'delta', text: 'Second' },
+      { type: 'delta', text: ' answer.' },
+      {
+        type: 'done',
+        message: { role: 'assistant', content: 'Second answer.' },
+      },
+    ]);
+    expect(turns(await readChat(app, chat.id))).toEqual([
+      ['user', 'Hello?'],
+      ['assistant', 'Second answer.'],
+    ]);
+    expect(app.provider.requests[1]?.messages).toEqual(
+      app.provider.requests[0]?.messages,
+    );
+  });
+
+  test('keeps the old reply when the new one fails', async () => {
+    const app = testApp();
+    app.provider.script(
+      { pieces: ['First answer.'] },
+      {
+        pieces: ['Sec'],
+        thenFail: new ProviderError('Could not reach OpenAI.'),
+      },
+    );
+    const chat = await newChat(app);
+    await replyEvents(await send(app, chat, 'Hello?'));
+
+    const events = await replyEvents(await regenerate(app, chat));
+
+    expect(events.at(-1)).toEqual({
+      type: 'error',
+      message: 'Could not reach OpenAI.',
+    });
+    expect(turns(await readChat(app, chat.id))).toEqual([
+      ['user', 'Hello?'],
+      ['assistant', 'First answer.'],
+    ]);
+  });
+
+  test("writes the missing reply when the last message is the user's", async () => {
+    const app = testApp();
+    app.provider.script(
+      { pieces: [], thenFail: new ProviderError('Could not reach OpenAI.') },
+      { pieces: ['Here now.'] },
+    );
+    const chat = await newChat(app);
+    await replyEvents(await send(app, chat, 'Hello?'));
+
+    await replyEvents(await regenerate(app, chat));
+
+    expect(turns(await readChat(app, chat.id))).toEqual([
+      ['user', 'Hello?'],
+      ['assistant', 'Here now.'],
+    ]);
+  });
+
+  test('is refused in a chat with nothing to reply to', async () => {
+    const app = testApp();
+    const chat = await newChat(app);
+
+    const response = await regenerate(app, chat);
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'There is no message to reply to yet.',
+    });
+  });
+});
+
+describe('deleting the last message', () => {
+  test('removes only the last message, and the change is saved', async () => {
+    const app = testApp();
+    const chat = await newChat(app);
+    await replyEvents(await send(app, chat, 'Hello?'));
+
+    const response = await deleteLast(app, chat);
+
+    expect(turns((await response.json()) as Chat)).toEqual([
+      ['user', 'Hello?'],
+    ]);
+    expect(turns(await readChat(app, chat.id))).toEqual([['user', 'Hello?']]);
+  });
+
+  test("removes the user's message when that is the last one", async () => {
+    const app = testApp();
+    const chat = await newChat(app);
+    await replyEvents(await send(app, chat, 'Hello?'));
+    await deleteLast(app, chat);
+
+    await deleteLast(app, chat);
+
+    expect((await readChat(app, chat.id)).messages).toEqual([]);
+  });
+
+  test('is refused in an empty chat', async () => {
+    const app = testApp();
+    const chat = await newChat(app);
+
+    const response = await deleteLast(app, chat);
+
+    expect(response.status).toBe(400);
+  });
+});
+
+test('while a reply is being written, the last reply can be neither regenerated nor deleted', async () => {
+  const app = testApp();
+  app.provider.script({ pieces: ['Who goes'], thenWait: true });
+  const chat = await newChat(app);
+  const reply = readReply(await send(app, chat, 'Hello?'));
+  await reply.next();
+
+  const responses = [await regenerate(app, chat), await deleteLast(app, chat)];
+
+  expect(responses.map(({ status }) => status)).toEqual([409, 409]);
+  await app.call('POST', `/api/chats/${chat.id}/stop`);
+  await reply.next();
+  await reply.next();
+  expect(turns(await readChat(app, chat.id))).toEqual([
+    ['user', 'Hello?'],
+    ['assistant', 'Who goes'],
+  ]);
+});

@@ -78,4 +78,21 @@ export class ChatStore {
       return { id: Number(lastInsertRowid), role, content, createdAt: now };
     })();
   }
+
+  /** Remove the chat's last message. Returns it, or `undefined` in an empty chat. */
+  deleteLastMessage(chatId: string): Message | undefined {
+    const last = this.messages(chatId).at(-1);
+    if (last !== undefined) {
+      this.#db.prepare('DELETE FROM messages WHERE id = ?').run(last.id);
+    }
+    return last;
+  }
+
+  /** Put a new reply in place of `old`, in one step. */
+  replaceMessage(chatId: string, old: Message, content: string): Message {
+    return this.#db.transaction(() => {
+      this.#db.prepare('DELETE FROM messages WHERE id = ?').run(old.id);
+      return this.addMessage(chatId, old.role, content);
+    })();
+  }
 }

@@ -40,6 +40,8 @@ export function ChatPage() {
   /** The reply's text so far while one is arriving, else `null`. */
   const [arriving, setArriving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The reply being regenerated: hidden while its replacement arrives. */
+  const [replacing, setReplacing] = useState<Message | null>(null);
   const end = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -87,9 +89,25 @@ export function ChatPage() {
     );
   };
 
-  const follow = async (events: AsyncIterable<ReplyEvent>): Promise<void> => {
+  const removeMessage = (message: Message): void => {
+    setChat((before) =>
+      before === null
+        ? before
+        : {
+            ...before,
+            messages: before.messages.filter(({ id }) => id !== message.id),
+          },
+    );
+  };
+
+  /** Show a reply as it arrives. `old` is the reply it replaces, if any. */
+  const follow = async (
+    events: AsyncIterable<ReplyEvent>,
+    old: Message | null = null,
+  ): Promise<void> => {
     setError(null);
     setArriving('');
+    setReplacing(old);
     for await (const event of events) {
       switch (event.type) {
         case 'user-message':
@@ -99,7 +117,10 @@ export function ChatPage() {
           setArriving((text) => (text ?? '') + event.text);
           break;
         case 'done':
-          if (event.message !== null) addMessage(event.message);
+          if (event.message !== null) {
+            if (old !== null) removeMessage(old);
+            addMessage(event.message);
+          }
           break;
         case 'error':
           setError(event.message);
@@ -107,6 +128,23 @@ export function ChatPage() {
       }
     }
     setArriving(null);
+    setReplacing(null);
+  };
+
+  const last = chat.messages.at(-1);
+
+  const regenerate = (): void => {
+    void follow(
+      api.regenerate(chat.id),
+      last?.role === 'assistant' ? last : null,
+    );
+  };
+
+  const deleteLast = (): void => {
+    setError(null);
+    api.deleteLastMessage(chat.id).then(setChat, (reason: unknown) => {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    });
   };
 
   const submit = (event?: SyntheticEvent): void => {
@@ -124,6 +162,10 @@ export function ChatPage() {
     }
   };
 
+  const shown = chat.messages.filter(({ id }) => id !== replacing?.id);
+  // A reply needs a message to answer: an opening message alone has none.
+  const canRegenerate = last?.role === 'user' || chat.messages.length > 1;
+
   return (
     <div className="chat">
       <header className="page-header">
@@ -133,7 +175,7 @@ export function ChatPage() {
 
       <div className="conversation-scroll">
         <ol className="conversation" aria-label="Conversation">
-          {chat.messages.map((message) => (
+          {shown.map((message) => (
             <MessageItem
               key={message.id}
               author={message.role === 'user' ? 'You' : chat.character.name}
@@ -154,6 +196,18 @@ export function ChatPage() {
           <p className="chat-error" role="alert">
             {error}
           </p>
+        )}
+        {!replying && last !== undefined && (
+          <div className="conversation-actions">
+            {canRegenerate && (
+              <button type="button" onClick={regenerate}>
+                {last.role === 'assistant' ? 'Regenerate' : 'Try again'}
+              </button>
+            )}
+            <button type="button" onClick={deleteLast}>
+              Delete last message
+            </button>
+          </div>
         )}
         <div ref={end} />
       </div>

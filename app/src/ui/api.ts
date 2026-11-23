@@ -106,6 +106,9 @@ export const api = {
   getChat: (id: string) => request<Chat>('GET', `/api/chats/${id}`),
   sendMessage: (chatId: string, content: string) =>
     reply(`/api/chats/${chatId}/messages`, { content }),
+  regenerate: (chatId: string) => reply(`/api/chats/${chatId}/regenerate`),
+  deleteLastMessage: (chatId: string) =>
+    request<Chat>('DELETE', `/api/chats/${chatId}/messages/last`),
   stopReply: (chatId: string) =>
     request<undefined>('POST', `/api/chats/${chatId}/stop`),
   getSettings: () => request<Settings>('GET', '/api/settings'),
