@@ -1,0 +1,86 @@
+[project]
+name = "chatthree-engine"
+version = "0.1.0"
+description = "Local inference engine: voice-cloning TTS and reference-image generation in one process."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "accelerate==1.16.0",
+    "chatterbox-tts==0.1.7",
+    "diffusers==0.43.0",
+    "fastapi>=0.115",
+    "pillow>=11",
+    "soundfile>=0.13",
+    "torch==2.15.0",
+    "torchaudio==2.11.1",
+    "uvicorn>=0.34",
+]
+
+[build-system]
+requires = ["uv_build>=0.13,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "chatthree_engine"
+
+[tool.uv]
+# chatterbox-tts 0.1.7 pins exact versions that are years behind what the image
+# pipeline needs. It only touches five diffusers symbols, all still present, so
+# these overrides replace its pins. transformers is deliberately NOT overridden:
+# Chatterbox's speech model depends on transformers internals, so its pin wins
+# and the image side has to work with it.
+# Review when chatterbox-tts publishes a release with relaxed pins.
+override-dependencies = [
+    "diffusers==0.43.0",
+    "safetensors>=0.8.0",
+    "torch==2.15.0",
+    "torchaudio==2.11.1",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu132" }
+
+[[tool.uv.index]]
+name = "pytorch-cu132"
+url = "https://download.pytorch.org/whl/cu132"
+explicit = true
+
+[dependency-groups]
+dev = [
+    "pyright==1.1.414",
+    "pytest==9.2.0",
+    "ruff==0.17.6",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "COM812", # conflicts with the formatter
+    "CPY001", # this project does not use per-file copyright headers
+    "D107",   # the class docstring documents construction
+    "D203",   # incompatible with D211 (no blank line before class docstring)
+    "D213",   # incompatible with D212 (summary on the first docstring line)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "D103",    # test names describe the behaviour; docstrings would repeat them
+    "INP001",  # tests are collected by path, not imported as a package
+    "PLR2004", # literal expected values are clearer than named constants in assertions
+    "S101",    # pytest uses bare assert
+]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+# chatterbox-tts and diffusers publish no usable type information, so their
+# objects are held as Any at the boundary in speech.py and image.py.
+reportMissingTypeStubs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["error"]
