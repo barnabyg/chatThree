@@ -20,6 +20,7 @@ import type { MediaStore } from '../store/media.ts';
 import type { SceneStore, StoredLocation } from '../store/scenes.ts';
 import type { ScenarioStore } from '../store/scenarios.ts';
 import {
+  type Place,
   placePrompt,
   readScene,
   SceneAnswerError,
@@ -27,6 +28,7 @@ import {
   sceneRequest,
   startingPlace,
 } from './describe.ts';
+import { nextPlace, type PlaceReport } from './state.ts';
 
 /** Landscape, as a scene is wider than it is tall. Multiples of 16, as the engine needs. */
 export const SCENE_SIZE = { width: 1152, height: 768 };
@@ -189,22 +191,28 @@ export class Illustrator {
       const messages = this.#chats.messages(chatId);
       const upTo = messages.findIndex(({ id }) => id === messageId);
       if (upTo === -1) return;
-      const location = this.#scenes.currentLocation(
-        chatId,
-        startingPlace(scenario),
-      );
+      const start = startingPlace(scenario);
+      const before = this.#scenes.currentLocation(chatId, start);
 
-      const picture = readScene(
+      const { picture, place } = readScene(
         await this.#provider.structured({
           model: this.#settings.sceneModel(),
           ...sceneRequest({
             character,
             scenario,
             messages: messages.slice(0, upTo + 1),
-            place: location,
+            place: before,
+            places: this.#scenes.locations(chatId),
           }),
         }),
       );
+      // Only the latest of the character's messages says where the story is
+      // now; an earlier one is pictured where it took place.
+      const latest =
+        this.#chats
+          .messages(chatId)
+          .findLast(({ role }) => role === 'assistant')?.id === messageId;
+      const location = this.#follow(chatId, start, place, latest);
 
       if (location.imageFile === undefined) {
         this.#set(chatId, { messageId, state: 'painting-location' });
@@ -234,6 +242,47 @@ export class Illustrator {
         error: describeFailure(error),
       });
     }
+  }
+
+  /**
+   * The place a scene call's report puts the scene in, recorded among the
+   * chat's places if it is new. With `move`, the chat's story is there now.
+   */
+  #follow(
+    chatId: string,
+    start: Place,
+    report: PlaceReport,
+    move: boolean,
+  ): StoredLocation {
+    // Read again: the story may have moved while the scene was described.
+    const current = this.#scenes.currentLocation(chatId, start);
+    const next = nextPlace(current, this.#scenes.locations(chatId), report);
+    const location =
+      next.kind === 'stay'
+        ? current
+        : next.kind === 'return'
+          ? (this.#scenes.location(chatId, next.id) ?? current)
+          : this.#scenes.addLocation(chatId, next);
+    if (move) this.#scenes.moveTo(chatId, location.id);
+    return location;
+  }
+
+  /**
+   * Paint a new reference picture of one of the chat's places, in place of
+   * any it has. Resolves once it is saved.
+   */
+  async repaintPlace(chatId: string, locationId: number): Promise<void> {
+    const location = this.#scenes.location(chatId, locationId);
+    if (location === undefined) {
+      throw new IllustrationRequestError('That place is not in this chat.');
+    }
+    // Waits for one already being painted, so the newest is kept.
+    await this.#paintingPlaces.get(locationId)?.catch(() => undefined);
+    const painting = this.#paintPlace(location).finally(() => {
+      this.#paintingPlaces.delete(locationId);
+    });
+    this.#paintingPlaces.set(locationId, painting);
+    await painting;
   }
 
   /** The file of the place's reference picture, painting it first if it has none. */

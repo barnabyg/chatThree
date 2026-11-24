@@ -10,12 +10,26 @@ import {
 import type { Chat, Message, ReplyEvent, Settings } from '../shared/api.ts';
 import { api, errorMessage } from './api.ts';
 import { MessageIllustrations } from './Illustrations.tsx';
+import { Locations } from './Locations.tsx';
 import { useSpeech } from './speech/useSpeech.ts';
 
 /** The server's limit on one message. */
 const MAX_MESSAGE_LENGTH = 20_000;
 /** How often the chat is looked at again while a picture is being made. */
 const ILLUSTRATION_POLL_MS = 1_000;
+
+/** What belongs to a chat's pictures and places, which change in the background. */
+function scenePart({
+  illustrations,
+  illustrating,
+  location,
+  locations,
+}: Chat): Pick<
+  Chat,
+  'illustrations' | 'illustrating' | 'location' | 'locations'
+> {
+  return { illustrations, illustrating, location, locations };
+}
 
 function MessageItem({
   author,
@@ -112,11 +126,8 @@ export function ChatPage({ chatId }: { chatId: string }) {
     if (!illustrating) return;
     const timer = setInterval(() => {
       api.getChat(chatId).then(
-        ({ illustrations, illustrating: progress }) => {
-          setChat(
-            (before) =>
-              before && { ...before, illustrations, illustrating: progress },
-          );
+        (loaded) => {
+          setChat((before) => before && { ...before, ...scenePart(loaded) });
         },
         () => undefined,
       );
@@ -244,11 +255,8 @@ export function ChatPage({ chatId }: { chatId: string }) {
   const illustrate = (messageId: number): void => {
     setError(null);
     api.illustrate(chat.id, messageId).then(
-      ({ illustrations, illustrating: progress }) => {
-        setChat(
-          (before) =>
-            before && { ...before, illustrations, illustrating: progress },
-        );
+      (loaded) => {
+        setChat((before) => before && { ...before, ...scenePart(loaded) });
       },
       (reason: unknown) => {
         setError(errorMessage(reason));
@@ -293,6 +301,19 @@ export function ChatPage({ chatId }: { chatId: string }) {
         <div>
           <h1>{chat.character.name}</h1>
           <p>{chat.scenario.title}</p>
+          <p className="chat-location" data-testid="current-location">
+            At {chat.location.name}
+          </p>
+          <Locations
+            chatId={chat.id}
+            current={chat.location}
+            locations={chat.locations}
+            onChange={(loaded) => {
+              setChat(
+                (before) => before && { ...before, ...scenePart(loaded) },
+              );
+            }}
+          />
         </div>
         {settings !== null && (
           <label className="toggle">

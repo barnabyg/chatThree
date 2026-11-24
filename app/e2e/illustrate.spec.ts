@@ -1,44 +1,12 @@
 import type { Page } from '@playwright/test';
-import { solidPng } from '../test-support/png.ts';
 import { expect, test } from './fixtures.ts';
-import { engineReady, messages, send } from './helpers.ts';
-
-interface Created {
-  id: string;
-}
-
-/** Give the built-in character a reference picture, through the app's API. */
-async function giveMaraAPicture(page: Page): Promise<void> {
-  const [mara] = (await (
-    await page.request.get('/api/characters')
-  ).json()) as Created[];
-  const response = await page.request.put(
-    `/api/characters/${mara?.id ?? ''}/image`,
-    {
-      headers: { 'Content-Type': 'application/octet-stream' },
-      data: Buffer.from(solidPng(24, 32, [200, 40, 40])),
-    },
-  );
-  expect(response.ok()).toBe(true);
-}
-
-/**
- * Open a new chat with the built-in character in the built-in scenario, which
- * begins with Mara's opening message in the lighthouse kitchen.
- */
-async function openLighthouseChat(page: Page): Promise<void> {
-  const [mara] = (await (
-    await page.request.get('/api/characters')
-  ).json()) as Created[];
-  const [storm] = (await (
-    await page.request.get('/api/scenarios')
-  ).json()) as Created[];
-  const response = await page.request.post('/api/chats', {
-    data: { characterId: mara?.id, scenarioId: storm?.id },
-  });
-  const chat = (await response.json()) as Created;
-  await page.goto(`/#/chats/${chat.id}`);
-}
+import {
+  engineReady,
+  giveMaraAPicture,
+  messages,
+  openLighthouseChat,
+  send,
+} from './helpers.ts';
 
 function opening(page: Page) {
   return messages(page).first();
@@ -154,6 +122,8 @@ test('a failed illustration shows why, can be tried again, and the chat carries 
       expression: 'grim',
       framing: 'medium shot',
       lighting: 'storm light',
+      moved: false,
+      location: { name: '', description: '' },
     },
   });
   await failure.getByRole('button', { name: 'Try again' }).click();

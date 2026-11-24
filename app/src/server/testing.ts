@@ -151,6 +151,8 @@ export const PLAIN_SCENE = {
   expression: 'intent',
   framing: 'medium shot',
   lighting: 'lamplight',
+  moved: false,
+  location: { name: '', description: '' },
 };
 
 export type ScriptedProvider = ChatProvider & {

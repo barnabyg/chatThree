@@ -1,17 +1,31 @@
 import { type Context, Hono } from 'hono';
 import { stream } from 'hono/streaming';
 import { z } from 'zod';
-import type { Chat, ChatSummary, ReplyEvent } from '../../shared/api.ts';
+import path from 'node:path';
+import type {
+  Chat,
+  ChatSummary,
+  Location,
+  ReplyEvent,
+} from '../../shared/api.ts';
 import type { ReplyService } from '../chat/replies.ts';
 import { countNotSent } from '../chat/trim.ts';
+import { startingPlace } from '../scene/describe.ts';
 import type { Illustrator } from '../scene/illustrator.ts';
 import type { SettingsStore } from '../settings.ts';
 import type { CharacterStore } from '../store/characters.ts';
 import type { ChatStore } from '../store/chats.ts';
 import type { MediaStore } from '../store/media.ts';
 import type { ScenarioStore } from '../store/scenarios.ts';
-import type { SceneStore } from '../store/scenes.ts';
+import type { SceneStore, StoredLocation } from '../store/scenes.ts';
+import { engineFailure, type EngineFailureWords } from './engineFailures.ts';
 import { ApiError, readBody } from './errors.ts';
+
+const NOT_PAINTED: EngineFailureWords = {
+  unavailable: 'A picture cannot be made because the engine is not ready.',
+  refused: (reason) => `The engine refused to make the picture: ${reason}`,
+  failed: 'The engine could not make the picture.',
+};
 
 const MAX_MESSAGE_LENGTH = 20_000;
 
@@ -72,6 +86,21 @@ function servePng(c: Context, picture: Uint8Array<ArrayBuffer>): Response {
   });
 }
 
+/** A place as the browser sees it. */
+function toLocation(
+  chatId: string,
+  { imageFile, ...place }: StoredLocation,
+): Location {
+  return {
+    ...place,
+    // The file's name is in the address, as for a character's picture.
+    imageUrl:
+      imageFile === undefined
+        ? null
+        : `/api/chats/${chatId}/locations/${String(place.id)}/image?v=${encodeURIComponent(path.parse(imageFile).name)}`,
+  };
+}
+
 export interface ChatRouteDependencies {
   chats: ChatStore;
   characters: CharacterStore;
@@ -105,6 +134,14 @@ export function chatRoutes({
   const view = ({ id, character, scenario }: ChatSummary): Chat => {
     const messages = chats.messages(id);
     const ids = new Set(messages.map((message) => message.id));
+    const start = scenarios.find(scenario.id);
+    if (start === undefined)
+      throw new Error(`Chat ${id} has lost its scenario.`);
+    // A chat records where it began the first time it is looked at.
+    const current = toLocation(
+      id,
+      scenes.currentLocation(id, startingPlace(start)),
+    );
     return {
       id,
       character: {
@@ -113,6 +150,8 @@ export function chatRoutes({
       },
       scenario,
       messages,
+      location: current,
+      locations: scenes.locations(id).map((place) => toLocation(id, place)),
       illustrations: scenes.illustrations(id),
       // A failure stays until it is tried again, unless its message has gone.
       illustrating: illustrator
@@ -197,6 +236,41 @@ export function chatRoutes({
     }
     illustrator.illustrate(chat.id, messageId);
     return c.json(view(chat), 202);
+  });
+
+  // A place's reference picture. As for a character's, an address with a
+  // version only ever serves that picture.
+  routes.get('/:id/locations/:locationId/image', (c) => {
+    const chat = existing(c);
+    const id = idParam(c.req.param('locationId'));
+    const file =
+      id === undefined ? undefined : scenes.location(chat.id, id)?.imageFile;
+    const version = c.req.query('v');
+    const picture =
+      file === undefined ||
+      (version !== undefined && version !== path.parse(file).name)
+        ? undefined
+        : media.read(file);
+    if (picture === undefined) {
+      throw new ApiError(404, 'That place has no such picture.');
+    }
+    return servePng(c, picture);
+  });
+
+  // Paint a new reference picture of one of the chat's places. Later
+  // illustrations there are painted from it.
+  routes.post('/:id/locations/:locationId/image/generate', async (c) => {
+    const chat = existing(c);
+    const id = idParam(c.req.param('locationId'));
+    if (id === undefined || scenes.location(chat.id, id) === undefined) {
+      throw new ApiError(404, 'That place is not in this chat.');
+    }
+    try {
+      await illustrator.repaintPlace(chat.id, id);
+    } catch (error) {
+      throw engineFailure(error, NOT_PAINTED);
+    }
+    return c.json(view(existing(c)));
   });
 
   routes.get('/:id/illustrations/:illustrationId/image', (c) => {

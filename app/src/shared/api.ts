@@ -67,6 +67,19 @@ export interface Scenario extends ScenarioInput {
   chatCount: number;
 }
 
+/** A place a chat's story has been. */
+export interface Location {
+  id: number;
+  name: string;
+  /** How it looks, which is what its reference picture is made from. */
+  description: string;
+  /**
+   * Where its reference picture is served from, or `null` until one is
+   * needed. The address changes whenever the picture does.
+   */
+  imageUrl: string | null;
+}
+
 /** A picture of a moment in a chat, made from one of the character's messages. */
 export interface Illustration {
   id: number;
@@ -102,6 +115,10 @@ export interface Chat {
   scenario: { id: string; title: string };
   /** The whole conversation, oldest first. */
   messages: Message[];
+  /** Where the story is now. */
+  location: Location;
+  /** Every place the story has been, in the order it reached them. */
+  locations: Location[];
   /** Pictures of the conversation's moments, oldest first. */
   illustrations: Illustration[];
   /** Illustrations being made, or that failed, one per message at most. */

@@ -109,9 +109,22 @@ a picture of that moment under the message. It takes two steps:
   the light. Its model is **Settings > Scene model**, `gpt-5-mini` unless
   changed.
 - The engine paints the scene from that description and two reference
-  pictures: the character's, and one of the place. The place's picture is
-  painted from the scenario's starting location the first time a chat
-  needs it, and reused after that.
+  pictures: the character's, and one of the place the scene is in.
+
+The scene call also says where the moment takes place, so that pictures
+follow the story. A chat begins at its scenario's starting location (or, if
+that was left blank, its premise). When the scene call reports somewhere
+new, the chat adds that place, with the name and description the call gave
+it; when it reports a place the story has already been, by name, the chat
+goes back to it. Illustrating the character's latest message moves the
+chat there; an earlier message is pictured where it took place, without
+moving the chat. A place's reference picture is painted the first time an
+illustration there needs it, and reused after that.
+
+The chat's header shows where the story is now. **Locations** lists every
+place the chat has been, with its reference picture; **Generate another**
+paints a place's picture again, and later illustrations there use the new
+one.
 
 The message shows how far the picture has got, and speech carries on while
 it is painted. Choosing a picture opens it at full size. Pictures are kept
@@ -299,6 +312,7 @@ Needs the real engine, so a GPU, and an OpenAI API key.
    **Speak replies** on. Expect the reply to be spoken as promptly as usual.
 7. Choose **Illustrate** under the reply. Expect no **Painting the
    location…** step this time, and the same kitchen in the new picture.
+   The header still says **At The lighthouse kitchen**.
 8. Choose a picture. Expect it at full size over the page; **Close** or
    Escape ends that.
 9. Reload the page. Expect both pictures still there.
@@ -306,6 +320,30 @@ Needs the real engine, so a GPU, and an OpenAI API key.
     Choose **Illustrate** again. Expect an error from OpenAI under the
     message with **Try again**. Put the scene model back, choose **Try
     again**, and expect a picture.
+
+## Manual check: scenes follow the story
+
+Needs the real engine, an OpenAI API key, and Mara Quill's reference
+picture (see the previous check).
+
+1. Start the app: `cd C:\docs\git\chatThree; pwsh ./start.ps1`
+2. Choose **New chat**, then **Start chat**. Expect the header to say
+   **At The lighthouse kitchen**.
+3. Send `Show me the lamp. Let's go up to the lamp room now.` and wait for
+   a reply in which Mara takes you up the tower.
+4. Choose **Illustrate** under the reply. Expect **Painting the location…**
+   and then a picture of Mara in a glass lamp room at the top of a tower.
+   The header now names the lamp room (the scene call chooses the exact
+   name).
+5. Open **Locations**. Expect two places, each with its picture, the second
+   marked **(here now)**.
+6. Send `Let's go back down to the kitchen and warm up.`, wait for the reply,
+   and choose **Illustrate** under it. Expect no **Painting the location…**
+   step, the header back at **At The lighthouse kitchen**, and the kitchen of
+   the first pictures in the new one.
+7. Under the kitchen in **Locations**, choose **Generate another**. Expect a
+   different picture of the kitchen in its place.
+8. Reload the page. Expect the same places and pictures.
 
 ## Check it
 

@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import type { Character, Message, Scenario } from '../../shared/api.ts';
 import type { StructuredRequest } from '../chat/provider.ts';
+import type { PlaceReport } from './state.ts';
 
 /** How many messages, up to the one illustrated, the scene call reads. */
 export const SCENE_MESSAGES = 8;
@@ -22,11 +23,19 @@ export interface ScenePicture {
   lighting: string;
 }
 
-const scenePicture = z.object({
+/** Everything the scene call says about a moment. */
+export interface Scene {
+  picture: ScenePicture;
+  place: PlaceReport;
+}
+
+const sceneAnswer = z.object({
   action: z.string().trim().min(1),
   expression: z.string().trim(),
   framing: z.string().trim(),
   lighting: z.string().trim(),
+  moved: z.boolean(),
+  location: z.object({ name: z.string(), description: z.string() }),
 });
 
 export const SCENE_SCHEMA = {
@@ -49,8 +58,31 @@ export const SCENE_SCHEMA = {
       type: 'string',
       description: 'The light, time of day and weather.',
     },
+    moved: {
+      type: 'boolean',
+      description:
+        'Whether the moment takes place somewhere other than the current place.',
+    },
+    location: {
+      type: 'object',
+      description:
+        'Where the moment takes place. One of the known places by its exact name, or a new place with a short name and a description of how it looks.',
+      properties: {
+        name: { type: 'string' },
+        description: { type: 'string' },
+      },
+      required: ['name', 'description'],
+      additionalProperties: false,
+    },
   },
-  required: ['action', 'expression', 'framing', 'lighting'],
+  required: [
+    'action',
+    'expression',
+    'framing',
+    'lighting',
+    'moved',
+    'location',
+  ],
   additionalProperties: false,
 } as const;
 
@@ -89,6 +121,8 @@ export interface SceneContext {
   messages: readonly Message[];
   /** Where the story is. */
   place: Place;
+  /** Every place the story has been, including `place`. */
+  places: readonly Place[];
 }
 
 /** The scene call for a moment, without the model. */
@@ -97,6 +131,7 @@ export function sceneRequest({
   scenario,
   messages,
   place,
+  places,
 }: SceneContext): Omit<StructuredRequest, 'model' | 'signal'> {
   const userName = scenario.userPersona.name.trim() || 'The user';
   const instructions = [
@@ -104,7 +139,12 @@ export function sceneRequest({
     'Read the latest messages and describe the moment of the last one as a single picture of the character, for a painter who has a reference picture of the character and one of the place.',
     "Describe only what can be seen. Do not describe the character's face, body or clothes beyond what the moment changes: the reference picture shows them.",
     `The story: ${scenario.premise.trim() || scenario.title}`,
-    `The place: ${place.name}. ${place.description}`,
+    `The current place: ${place.name}. ${place.description}`,
+    [
+      'The places the story has been:',
+      ...places.map(({ name }) => `- ${name}`),
+    ].join('\n'),
+    'Say where the moment takes place. If it is still the current place, set moved to false and repeat its name. If it has moved to one of the places the story has been, use that exact name. If it has moved somewhere new, give the new place a short name and describe how it looks, without any people in it.',
   ].join('\n\n');
   const input = messages
     .slice(-SCENE_MESSAGES)
@@ -117,10 +157,11 @@ export function sceneRequest({
 }
 
 /** The scene call's answer, checked. Throws `SceneAnswerError`. */
-export function readScene(answer: unknown): ScenePicture {
-  const result = scenePicture.safeParse(answer);
+export function readScene(answer: unknown): Scene {
+  const result = sceneAnswer.safeParse(answer);
   if (!result.success) throw new SceneAnswerError();
-  return result.data;
+  const { moved, location, ...picture } = result.data;
+  return { picture, place: { moved, ...location } };
 }
 
 /** What the engine is asked to paint for a place's reference picture. */

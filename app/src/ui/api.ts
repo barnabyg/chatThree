@@ -188,6 +188,12 @@ export const api = {
       'POST',
       `/api/chats/${chatId}/messages/${String(messageId)}/illustrate`,
     ),
+  /** Paint a new reference picture of one of a chat's places. Resolves to the chat. */
+  repaintLocation: (chatId: string, locationId: number) =>
+    request<Chat>(
+      'POST',
+      `/api/chats/${chatId}/locations/${String(locationId)}/image/generate`,
+    ),
   stopReply: (chatId: string) =>
     request<undefined>('POST', `/api/chats/${chatId}/stop`),
   listCharacters: () => request<Character[]>('GET', '/api/characters'),

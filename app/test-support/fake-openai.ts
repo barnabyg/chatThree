@@ -93,6 +93,8 @@ export const DEFAULT_SCENE = {
   expression: 'calm and watchful',
   framing: 'medium shot',
   lighting: 'grey storm light',
+  moved: false,
+  location: { name: '', description: '' },
 };
 
 const DEFAULT_STRUCTURED: StructuredBehaviour = {
