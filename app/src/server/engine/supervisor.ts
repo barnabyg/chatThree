@@ -87,7 +87,6 @@ export class EngineSupervisor implements EngineControl {
   readonly #listeners = new Set<(status: EngineStatus) => void>();
   #status: EngineStatus = { state: 'loading' };
   #run: Run | undefined;
-  #port: number | undefined;
   /** Starts and stops run one at a time, in the order they were asked for. */
   #queue: Promise<void> = Promise.resolve();
 
@@ -97,13 +96,6 @@ export class EngineSupervisor implements EngineControl {
 
   status(): EngineStatus {
     return this.#status;
-  }
-
-  /** Where the engine's HTTP API is, once it has been started. */
-  baseUrl(): string | undefined {
-    return this.#port === undefined
-      ? undefined
-      : `http://${LOOPBACK}:${String(this.#port)}`;
   }
 
   subscribe(listener: (status: EngineStatus) => void): () => void {
@@ -195,7 +187,6 @@ export class EngineSupervisor implements EngineControl {
       }),
     };
     this.#run = run;
-    this.#port = port;
     void this.#pollUntilSettled(run, port);
   }
 
