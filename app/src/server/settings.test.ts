@@ -5,6 +5,7 @@ import { temporaryDirectory } from '../../test-support/temporary.ts';
 import {
   DEFAULT_CONTEXT_TOKEN_BUDGET,
   DEFAULT_MODEL,
+  DEFAULT_SCENE_MODEL,
   SettingsStore,
 } from './settings.ts';
 
@@ -17,6 +18,9 @@ test('with nothing saved, the model is the default and the key comes from the en
 
   expect(settings.view()).toEqual({
     model: DEFAULT_MODEL,
+    sceneModel: DEFAULT_SCENE_MODEL,
+    illustrationMode: 'key-moments',
+    illustrationCooldown: 3,
     contextTokenBudget: DEFAULT_CONTEXT_TOKEN_BUDGET,
     speechMuted: false,
     speechScope: 'dialogue',
@@ -111,3 +115,26 @@ test('a damaged settings file is reported by path, without echoing its content',
   expect(open).toThrow(file);
   expect(open).not.toThrow(/sk-saved/);
 });
+
+test('the illustration mode and cooldown are saved, and read back by a later run', () => {
+  const file = settingsFile();
+  new SettingsStore(file, undefined).update({
+    illustrationMode: 'off',
+    illustrationCooldown: 7,
+  });
+
+  const restarted = new SettingsStore(file, undefined);
+
+  expect(restarted.illustrationMode()).toBe('off');
+  expect(restarted.illustrationCooldown()).toBe(7);
+});
+
+test.each([0, -2, 2.5, 101, '3'])(
+  'a hand-edited cooldown of %j is ignored for the default',
+  async (cooldown) => {
+    const file = settingsFile();
+    await writeFile(file, JSON.stringify({ illustrationCooldown: cooldown }));
+
+    expect(new SettingsStore(file, undefined).illustrationCooldown()).toBe(3);
+  },
+);

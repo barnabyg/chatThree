@@ -1,5 +1,9 @@
 import { expect, test } from 'vitest';
-import { DEFAULT_CONTEXT_TOKEN_BUDGET, DEFAULT_MODEL } from '../settings.ts';
+import {
+  DEFAULT_CONTEXT_TOKEN_BUDGET,
+  DEFAULT_MODEL,
+  DEFAULT_SCENE_MODEL,
+} from '../settings.ts';
 import { testApp } from '../testing.ts';
 
 test('settings start with the default model and say where the key comes from', async () => {
@@ -9,6 +13,9 @@ test('settings start with the default model and say where the key comes from', a
 
   expect(await response.json()).toEqual({
     model: DEFAULT_MODEL,
+    sceneModel: DEFAULT_SCENE_MODEL,
+    illustrationMode: 'key-moments',
+    illustrationCooldown: 3,
     contextTokenBudget: DEFAULT_CONTEXT_TOKEN_BUDGET,
     speechMuted: false,
     speechScope: 'dialogue',
@@ -90,6 +97,19 @@ test('the model can be changed', async () => {
   expect(await response.json()).toMatchObject({ model: 'another-model' });
 });
 
+test('the scene model can be changed, and is never empty', async () => {
+  const app = testApp();
+
+  const response = await app.call('PUT', '/api/settings', {
+    sceneModel: ' small-model ',
+  });
+  const empty = await app.call('PUT', '/api/settings', { sceneModel: '' });
+
+  expect(await response.json()).toMatchObject({ sceneModel: 'small-model' });
+  expect(empty.status).toBe(400);
+  expect(app.settings.sceneModel()).toBe('small-model');
+});
+
 test('the conversation token budget can be changed', async () => {
   const app = testApp();
 
@@ -122,4 +142,27 @@ test('an empty model name is refused with a reason', async () => {
   expect(await response.json()).toEqual({
     error: 'The model name cannot be empty.',
   });
+});
+
+test('the illustration mode and cooldown can be changed, within limits', async () => {
+  const app = testApp();
+
+  const response = await app.call('PUT', '/api/settings', {
+    illustrationMode: 'every-reply',
+    illustrationCooldown: 5,
+  });
+  const badMode = await app.call('PUT', '/api/settings', {
+    illustrationMode: 'sometimes',
+  });
+  const badCooldown = await app.call('PUT', '/api/settings', {
+    illustrationCooldown: 0,
+  });
+
+  expect(await response.json()).toMatchObject({
+    illustrationMode: 'every-reply',
+    illustrationCooldown: 5,
+  });
+  expect(badMode.status).toBe(400);
+  expect(badCooldown.status).toBe(400);
+  expect(app.settings.illustrationMode()).toBe('every-reply');
 });

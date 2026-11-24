@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import { solidPng } from '../test-support/png.ts';
 
 interface Created {
   id: string;
@@ -108,4 +109,37 @@ export async function backToChat(page: Page): Promise<void> {
     .getByRole('link')
     .first()
     .click();
+}
+
+/** Give the built-in character a reference picture, through the app's API. */
+export async function giveMaraAPicture(page: Page): Promise<void> {
+  const [mara] = (await (
+    await page.request.get('/api/characters')
+  ).json()) as Created[];
+  const response = await page.request.put(
+    `/api/characters/${mara?.id ?? ''}/image`,
+    {
+      headers: { 'Content-Type': 'application/octet-stream' },
+      data: Buffer.from(solidPng(24, 32, [200, 40, 40])),
+    },
+  );
+  expect(response.ok()).toBe(true);
+}
+
+/**
+ * Open a new chat with the built-in character in the built-in scenario, which
+ * begins with Mara's opening message in the lighthouse kitchen.
+ */
+export async function openLighthouseChat(page: Page): Promise<void> {
+  const [mara] = (await (
+    await page.request.get('/api/characters')
+  ).json()) as Created[];
+  const [storm] = (await (
+    await page.request.get('/api/scenarios')
+  ).json()) as Created[];
+  const response = await page.request.post('/api/chats', {
+    data: { characterId: mara?.id, scenarioId: storm?.id },
+  });
+  const chat = (await response.json()) as Created;
+  await page.goto(`/#/chats/${chat.id}`);
 }

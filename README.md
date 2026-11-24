@@ -68,9 +68,11 @@ Chats and settings are kept on this computer, outside the repository:
 | File | Holds |
 |---|---|
 | `%LOCALAPPDATA%\chatThree\chatthree.db` | Chats and messages (SQLite) |
-| `%LOCALAPPDATA%\chatThree\settings.json` | The model, the speech settings and a saved API key |
+| `%LOCALAPPDATA%\chatThree\settings.json` | The models, the speech settings and a saved API key |
 | `%LOCALAPPDATA%\chatThree\voices\` | The characters' voice clips |
 | `%LOCALAPPDATA%\chatThree\images\` | The characters' reference pictures |
+| `%LOCALAPPDATA%\chatThree\scenes\` | Illustrations of chats |
+| `%LOCALAPPDATA%\chatThree\locations\` | Reference pictures of the places in chats |
 
 Set `CHATTHREE_DATA_DIR` to keep them somewhere else. On macOS the default is
 `~/Library/Application Support/chatThree`, and on Linux
@@ -95,6 +97,64 @@ If the engine is not ready, generating says so; uploading and the rest of
 the editor do not need the engine.
 If a picture is uploaded while another is being generated, the uploaded one
 is kept.
+
+## Illustrations
+
+Every message of the character's has an **Illustrate** button, which paints
+a picture of that moment under the message. It takes two steps:
+
+- A second, small request to OpenAI (the *scene call*) reads the latest
+  messages, up to the one illustrated, and describes the moment as a
+  picture: what the character is doing, their expression, the framing and
+  the light. Its model is **Settings > Scene model**, `gpt-5-mini` unless
+  changed.
+- The engine paints the scene from that description and two reference
+  pictures: the character's, and one of the place the scene is in.
+
+The scene call also says where the moment takes place, so that pictures
+follow the story. A chat begins at its scenario's starting location (or, if
+that was left blank, its premise). When the scene call reports somewhere
+new, the chat adds that place, with the name and description the call gave
+it; when it reports a place the story has already been, by name, the chat
+goes back to it. Illustrating the character's latest message moves the
+chat there; an earlier message is pictured where it took place, without
+moving the chat. A place's reference picture is painted the first time an
+illustration there needs it, and reused after that.
+
+The chat's header shows where the story is now. **Locations** lists every
+place the chat has been, with its reference picture; **Generate another**
+paints a place's picture again, and later illustrations there use the new
+one.
+
+The message shows how far the picture has got, and speech carries on while
+it is painted. Choosing a picture opens it at full size. Pictures are kept
+with the chat, in the app's data folder; deleting a message or a chat, or
+regenerating a reply, deletes its pictures. If the scene call or the engine
+fails, the message says why and offers **Try again**; the chat carries on
+either way.
+
+Illustrating needs the character's reference picture (see
+[Reference pictures](#reference-pictures)). Without one, **Illustrate** says
+so and links to the character.
+
+Pictures also arrive without being asked. After each reply the scene call
+runs by itself: it follows the story to where the reply takes place, and
+says whether the moment is worth a picture. **Settings > Illustrate replies
+by themselves** decides what happens then:
+
+| Mode | A reply is illustrated when |
+|---|---|
+| Off | Never. The scene call still runs, so the chat still follows the story |
+| Scene changes only | The story moves somewhere else |
+| Key moments (the default) | The story moves somewhere else, or the scene call says the moment is worth it and at least the cooldown's number of replies (**Settings > Cooldown**, 3 unless changed) have passed since the last picture |
+| Every reply | Always |
+
+**Illustrate** works in every mode, and restarts the cooldown. A character
+without a reference picture is not illustrated by itself. A scene call that
+fails after a reply is logged in the app's console and that reply is not
+illustrated; the reply itself is never affected. The engine paints one
+picture at a time, and a chat has at most one automatic picture waiting:
+a newer one takes the place of one that has not started.
 
 ## Speech
 
@@ -251,6 +311,84 @@ Needs the real engine, so a GPU.
    take the generated picture's place.
 8. Choose **Characters**. Expect the picture beside Mara Quill, and exactly
    one file in `%LOCALAPPDATA%\chatThree\images`.
+
+## Manual check: illustrating a message
+
+Needs the real engine, so a GPU, and an OpenAI API key.
+
+1. Start the app: `cd C:\docs\git\chatThree; pwsh ./start.ps1`
+2. Wait until the page shows **Engine ready**.
+3. Choose **New chat**, then **Start chat**. Choose **Illustrate** under
+   Mara's opening message. Expect a note that a reference picture is needed,
+   with a link. (Skip to step 4 if Mara already has a picture.)
+4. Follow the link, choose **Generate picture**, wait for the portrait, and
+   go back to the chat in the sidebar.
+5. Choose **Illustrate** under the opening message. Expect **Describing the
+   scene…**, then **Painting the location…**, then **Painting the scene…**,
+   and within about 20 seconds a wide picture under the message: Mara, as in
+   her portrait, in a lighthouse kitchen with a stove and a stair.
+6. While it is painting, send `Is it always this rough out here?` with
+   **Speak replies** on. Expect the reply to be spoken as promptly as usual.
+7. Choose **Illustrate** under the reply. Expect no **Painting the
+   location…** step this time, and the same kitchen in the new picture.
+   The header still says **At The lighthouse kitchen**.
+8. Choose a picture. Expect it at full size over the page; **Close** or
+   Escape ends that.
+9. Reload the page. Expect both pictures still there.
+10. In **Settings**, set **Scene model** to `no-such-model` and save.
+    Choose **Illustrate** again. Expect an error from OpenAI under the
+    message with **Try again**. Put the scene model back, choose **Try
+    again**, and expect a picture.
+
+## Manual check: scenes follow the story
+
+Needs the real engine, an OpenAI API key, and Mara Quill's reference
+picture (see the previous check).
+
+1. Start the app: `cd C:\docs\git\chatThree; pwsh ./start.ps1`
+2. Choose **New chat**, then **Start chat**. Expect the header to say
+   **At The lighthouse kitchen**.
+3. Send `Show me the lamp. Let's go up to the lamp room now.` and wait for
+   a reply in which Mara takes you up the tower.
+4. Choose **Illustrate** under the reply. Expect **Painting the location…**
+   and then a picture of Mara in a glass lamp room at the top of a tower.
+   The header now names the lamp room (the scene call chooses the exact
+   name).
+5. Open **Locations**. Expect two places, each with its picture, the second
+   marked **(here now)**.
+6. Send `Let's go back down to the kitchen and warm up.`, wait for the reply,
+   and choose **Illustrate** under it. Expect no **Painting the location…**
+   step, the header back at **At The lighthouse kitchen**, and the kitchen of
+   the first pictures in the new one.
+7. Under the kitchen in **Locations**, choose **Generate another**. Expect a
+   different picture of the kitchen in its place.
+8. Reload the page. Expect the same places and pictures.
+
+## Manual check: automatic illustration
+
+Needs the real engine, an OpenAI API key, and Mara Quill's reference
+picture (see the checks above).
+
+1. Start the app: `cd C:\docs\git\chatThree; pwsh ./start.ps1`
+2. In **Settings**, expect **Illustrate replies by themselves** to be **Key
+   moments** and **Cooldown** to be 3.
+3. Choose **New chat**, then **Start chat**. Send
+   `Show me the lamp. Let's climb up to the lamp room.` Expect, a few
+   seconds after the reply, a picture under it without choosing
+   **Illustrate**, and the header to name the lamp room.
+4. Send two or three ordinary messages (`It is very bright.`,
+   `How long have you kept this light?`). Expect most of them to get no
+   picture: at most one every three replies, unless the story moves.
+5. In **Settings**, choose **Off** and save, then reload the page. Expect
+   **Off** still chosen. Back in the chat, send
+   `Let's go back down to the kitchen.` Expect no picture, and the header
+   to say **At The lighthouse kitchen** again. Choose **Illustrate** under the reply: expect a picture.
+6. Choose **Every reply** and save. Send two messages. Expect a picture
+   under each reply.
+7. Choose **Key moments** again. In Settings, set **Scene model** to
+   `no-such-model` and save. Send a message. Expect the reply as usual, no
+   picture, and in the terminal running the app a line saying the scene
+   call after a reply failed. Put the scene model back.
 
 ## Check it
 

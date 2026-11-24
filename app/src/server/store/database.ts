@@ -149,6 +149,47 @@ const MIGRATIONS: readonly ((db: Db) => void)[] = [
   (db) => {
     db.exec('ALTER TABLE characters ADD COLUMN image_file TEXT');
   },
+
+  // 6: illustrations. Each chat has places the story has been, each with a
+  // reference picture once one is needed, and a current one; a chat's first
+  // is recorded from its scenario's starting location when first needed.
+  // An illustration is a picture of one of the character's messages. Files
+  // are kept as the characters' are.
+  (db) => {
+    db.exec(`
+      CREATE TABLE locations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chat_id TEXT NOT NULL REFERENCES chats (id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        image_file TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX locations_by_chat ON locations (chat_id, id);
+      ALTER TABLE chats ADD COLUMN location_id INTEGER
+        REFERENCES locations (id) ON DELETE SET NULL;
+      CREATE TABLE illustrations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message_id INTEGER NOT NULL REFERENCES messages (id) ON DELETE CASCADE,
+        location_id INTEGER REFERENCES locations (id) ON DELETE SET NULL,
+        image_file TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX illustrations_by_message ON illustrations (message_id, id);
+    `);
+  },
+
+  // 7: when a picture was last asked for in a chat, as the newest message's
+  // id at the time, so that automatic pictures can wait a number of replies;
+  // and the place each of the character's messages took the story to, so
+  // that deleting or regenerating a message undoes the move it made.
+  (db) => {
+    db.exec(`
+      ALTER TABLE chats ADD COLUMN illustrated_through INTEGER;
+      ALTER TABLE messages ADD COLUMN location_id INTEGER
+        REFERENCES locations (id) ON DELETE SET NULL;
+    `);
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

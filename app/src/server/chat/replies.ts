@@ -43,6 +43,9 @@ export class ReplyService {
   readonly #provider: ChatProvider;
   /** One entry per chat that has a reply in progress. */
   readonly #inProgress = new Map<string, AbortController>();
+  readonly #savedListeners = new Set<
+    (chatId: string, message: Message) => void
+  >();
 
   constructor(
     chats: ChatStore,
@@ -56,6 +59,14 @@ export class ReplyService {
     this.#scenarios = scenarios;
     this.#settings = settings;
     this.#provider = provider;
+  }
+
+  /**
+   * Call `listener` with each reply once it is saved, new or regenerated.
+   * What the listener does cannot affect the reply.
+   */
+  onReplySaved(listener: (chatId: string, message: Message) => void): void {
+    this.#savedListeners.add(listener);
   }
 
   isReplying(chatId: string): boolean {
@@ -210,12 +221,17 @@ export class ReplyService {
         : { type: 'error', message: 'The model sent back an empty reply.' };
       return;
     }
-    yield {
-      type: 'done',
-      message:
-        replacing === undefined
-          ? this.#chats.addMessage(chatId, 'assistant', text)
-          : this.#chats.replaceMessage(chatId, replacing, text),
-    };
+    const saved =
+      replacing === undefined
+        ? this.#chats.addMessage(chatId, 'assistant', text)
+        : this.#chats.replaceMessage(chatId, replacing, text);
+    for (const listener of this.#savedListeners) {
+      try {
+        listener(chatId, saved);
+      } catch (error) {
+        console.error('A listener failed on a saved reply:', error);
+      }
+    }
+    yield { type: 'done', message: saved };
   }
 }

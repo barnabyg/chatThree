@@ -15,6 +15,27 @@ export interface EngineFailureWords {
   failed: string;
 }
 
+/** What to tell the user when the engine does not make a picture. */
+export const NOT_PAINTED: EngineFailureWords = {
+  unavailable: 'A picture cannot be made because the engine is not ready.',
+  refused: (reason) => `The engine refused to make the picture: ${reason}`,
+  failed: 'The engine could not make the picture.',
+};
+
+/**
+ * Why the engine did not do a job, in the words given, or `undefined` if
+ * the failure is not the engine's doing.
+ */
+export function engineFailureMessage(
+  error: unknown,
+  words: EngineFailureWords,
+): string | undefined {
+  if (error instanceof EngineUnavailableError) return words.unavailable;
+  if (error instanceof EngineRefusedError) return words.refused(error.message);
+  if (error instanceof EngineFailedError) return words.failed;
+  return undefined;
+}
+
 /**
  * The API failure to throw for a job the engine did not do, in the words
  * given. Anything that is not the engine's doing is returned as it is.
@@ -23,14 +44,10 @@ export function engineFailure(
   error: unknown,
   words: EngineFailureWords,
 ): unknown {
-  if (error instanceof EngineUnavailableError) {
-    return new ApiError(503, words.unavailable);
-  }
-  if (error instanceof EngineRefusedError) {
-    return new ApiError(400, words.refused(error.message));
-  }
-  if (error instanceof EngineFailedError) {
-    return new ApiError(502, words.failed);
-  }
-  return error;
+  const message = engineFailureMessage(error, words);
+  if (message === undefined) return error;
+  if (error instanceof EngineUnavailableError)
+    return new ApiError(503, message);
+  if (error instanceof EngineRefusedError) return new ApiError(400, message);
+  return new ApiError(502, message);
 }

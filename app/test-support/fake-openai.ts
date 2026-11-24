@@ -1,6 +1,9 @@
 // A stand-in for OpenAI's Responses API, so tests need no key and no network.
 // It speaks the same streaming wire format as `POST /v1/responses`, checks the
 // API key, and records every request so tests can see what was sent.
+// A request that does not stream (`"stream": false`) asks for a structured
+// answer, as the scene call does: those are answered and recorded apart from
+// the replies, so that tests of either can count on their own.
 
 import {
   createServer,
@@ -32,6 +35,17 @@ export type Behaviour =
   /** The stream starts, then the connection drops. */
   | { kind: 'disconnect' };
 
+/** How a structured (not streamed) request is answered. */
+export type StructuredBehaviour =
+  /** The model answers with `value`, as JSON. */
+  | { kind: 'json'; value: unknown }
+  /** The model answers with this text, which may not be JSON. */
+  | { kind: 'text'; text: string }
+  /** The model declines to answer. */
+  | { kind: 'refusal'; text: string }
+  /** The request is rejected. */
+  | { kind: 'http-error'; status: number; message: string };
+
 export interface RecordedRequest {
   body: {
     model: string;
@@ -54,6 +68,15 @@ export interface FakeOpenAI {
    * The last one repeats for every request after that.
    */
   respondWith(...behaviours: [Behaviour, ...Behaviour[]]): void;
+  /** The bodies of every authorised structured request, oldest first. */
+  structuredRequests: Record<string, unknown>[];
+  /**
+   * Set how the next structured requests are answered, as `respondWith` does
+   * for replies. Until this is called, every one gets `DEFAULT_STRUCTURED`.
+   */
+  respondToStructuredWith(
+    ...behaviours: [StructuredBehaviour, ...StructuredBehaviour[]]
+  ): void;
   /** Let replies held by `holdAfter` carry on to their end. */
   release(): void;
   close(): Promise<void>;
@@ -63,6 +86,53 @@ const DEFAULT_REPLY: Behaviour = {
   kind: 'reply',
   chunks: ['Hello', ' from', ' the', ' fake', ' model.'],
 };
+
+/** A scene described as staying put, unremarkable: what a structured request gets by default. */
+export const DEFAULT_SCENE = {
+  action: 'Mara stands at the lamp-room window, looking out at the sea.',
+  expression: 'calm and watchful',
+  framing: 'medium shot',
+  lighting: 'grey storm light',
+  moved: false,
+  location: { name: '', description: '' },
+  worthIllustrating: false,
+};
+
+const DEFAULT_STRUCTURED: StructuredBehaviour = {
+  kind: 'json',
+  value: DEFAULT_SCENE,
+};
+
+/** A completed, non-streamed response whose one message holds `content`. */
+function completed(content: object): object {
+  return {
+    object: 'response',
+    status: 'completed',
+    output: [{ type: 'message', role: 'assistant', content: [content] }],
+  };
+}
+
+function answerStructured(
+  behaviour: StructuredBehaviour,
+  response: ServerResponse,
+): void {
+  if (behaviour.kind === 'http-error') {
+    sendError(response, behaviour.status, behaviour.message);
+    return;
+  }
+  const content =
+    behaviour.kind === 'refusal'
+      ? { type: 'refusal', refusal: behaviour.text }
+      : {
+          type: 'output_text',
+          text:
+            behaviour.kind === 'json'
+              ? JSON.stringify(behaviour.value)
+              : behaviour.text,
+        };
+  response.writeHead(200, { 'Content-Type': 'application/json' });
+  response.end(JSON.stringify(completed(content)));
+}
 
 async function readBody(request: IncomingMessage): Promise<string> {
   let body = '';
@@ -130,6 +200,8 @@ async function answer(
 export async function startFakeOpenAI(): Promise<FakeOpenAI> {
   const requests: RecordedRequest[] = [];
   let behaviours: Behaviour[] = [DEFAULT_REPLY];
+  const structuredRequests: Record<string, unknown>[] = [];
+  let structuredBehaviours: StructuredBehaviour[] = [DEFAULT_STRUCTURED];
   let release = (): void => undefined;
   const released = new Promise<void>((resolve) => {
     release = resolve;
@@ -145,8 +217,21 @@ export async function startFakeOpenAI(): Promise<FakeOpenAI> {
         sendError(response, 401, 'Incorrect API key provided.');
         return;
       }
+      const body = JSON.parse(await readBody(request)) as Record<
+        string,
+        unknown
+      >;
+      if (body.stream === false) {
+        structuredRequests.push(body);
+        const next =
+          structuredBehaviours.length > 1
+            ? structuredBehaviours.shift()
+            : structuredBehaviours[0];
+        answerStructured(next ?? DEFAULT_STRUCTURED, response);
+        return;
+      }
       const recorded: RecordedRequest = {
-        body: JSON.parse(await readBody(request)) as RecordedRequest['body'],
+        body: body as unknown as RecordedRequest['body'],
         abandoned: false,
       };
       requests.push(recorded);
@@ -168,6 +253,10 @@ export async function startFakeOpenAI(): Promise<FakeOpenAI> {
     requests,
     respondWith(...next) {
       behaviours = [...next];
+    },
+    structuredRequests,
+    respondToStructuredWith(...next) {
+      structuredBehaviours = [...next];
     },
     release() {
       release();

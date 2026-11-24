@@ -8,9 +8,10 @@ import { wavSeconds } from '../../shared/wav.ts';
 import type { ReplyService } from '../chat/replies.ts';
 import type { EngineJobs } from '../engine/jobs.ts';
 import type { VoiceWarmer } from '../engine/warmer.ts';
+import type { Illustrator } from '../scene/illustrator.ts';
 import type { CharacterStore } from '../store/characters.ts';
 import type { MediaStore } from '../store/media.ts';
-import { engineFailure, type EngineFailureWords } from './engineFailures.ts';
+import { engineFailure, NOT_PAINTED } from './engineFailures.ts';
 import { ApiError, readBody } from './errors.ts';
 
 const MAX_NAME_LENGTH = 100;
@@ -51,12 +52,6 @@ function pictureKind(bytes: Uint8Array): string | undefined {
   if (ascii(0, 'RIFF') && ascii(8, 'WEBP')) return 'webp';
   return undefined;
 }
-
-const NOT_PAINTED: EngineFailureWords = {
-  unavailable: 'A picture cannot be made because the engine is not ready.',
-  refused: (reason) => `The engine refused to make the picture: ${reason}`,
-  failed: 'The engine could not make the picture.',
-};
 
 /** Check that a voice can be cloned from an uploaded clip, or refuse it. */
 function checkVoiceClip(clip: Uint8Array): void {
@@ -115,6 +110,7 @@ export function characterRoutes(
   media: MediaStore,
   warmer: VoiceWarmer,
   jobs: EngineJobs,
+  illustrator: Pick<Illustrator, 'prune'>,
 ): Hono {
   const routes = new Hono();
 
@@ -178,6 +174,8 @@ export function characterRoutes(
     const files = [characters.voiceFile(id), characters.imageFile(id)];
     characters.delete(id);
     for (const file of files) if (file !== undefined) media.remove(file);
+    // Its chats' pictures went with them.
+    illustrator.prune();
     return c.body(null, 204);
   });
 

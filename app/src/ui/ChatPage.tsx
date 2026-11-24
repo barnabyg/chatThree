@@ -1,33 +1,56 @@
 import {
   Fragment,
-  type SyntheticEvent,
   type KeyboardEvent,
+  type ReactNode,
+  type SyntheticEvent,
   useEffect,
   useRef,
   useState,
 } from 'react';
 import type { Chat, Message, ReplyEvent, Settings } from '../shared/api.ts';
 import { api, errorMessage } from './api.ts';
+import { MessageIllustrations } from './Illustrations.tsx';
+import { Locations } from './Locations.tsx';
 import { useSpeech } from './speech/useSpeech.ts';
 
 /** The server's limit on one message. */
 const MAX_MESSAGE_LENGTH = 20_000;
+/** How often the chat is looked at again while a picture is being made. */
+const ILLUSTRATION_POLL_MS = 1_000;
+
+/** What belongs to a chat's pictures and places, which change in the background. */
+function scenePart({
+  illustrations,
+  illustrating,
+  followingScene,
+  location,
+  locations,
+}: Chat): Pick<
+  Chat,
+  'illustrations' | 'illustrating' | 'followingScene' | 'location' | 'locations'
+> {
+  return { illustrations, illustrating, followingScene, location, locations };
+}
 
 function MessageItem({
   author,
   role,
   content,
   writing = false,
+  children,
 }: {
   author: string;
   role: Message['role'];
   content: string;
   writing?: boolean;
+  /** Shown under the message's text. */
+  children?: ReactNode;
 }) {
   return (
     <li className={`message message-${role}`} aria-busy={writing}>
       <p className="message-author">{author}</p>
       <p className="message-content">{content}</p>
+      {children}
     </li>
   );
 }
@@ -96,9 +119,31 @@ export function ChatPage({ chatId }: { chatId: string }) {
     };
   }, [waitingForEarlierReply, chat]);
 
+  // While pictures are being made, or the scene call is reading the latest
+  // reply (after which one may start), look again until that is done. Only
+  // what belongs to the pictures and places is taken: the conversation is
+  // this page's.
+  const illustrating =
+    chat?.followingScene === true ||
+    chat?.illustrating.some(({ state }) => state !== 'failed') === true;
+  useEffect(() => {
+    if (!illustrating) return;
+    const timer = setInterval(() => {
+      api.getChat(chatId).then(
+        (loaded) => {
+          setChat((before) => before && { ...before, ...scenePart(loaded) });
+        },
+        () => undefined,
+      );
+    }, ILLUSTRATION_POLL_MS);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [illustrating, chatId]);
+
   useEffect(() => {
     end.current?.scrollIntoView({ block: 'end' });
-  }, [chat?.messages.length, arriving]);
+  }, [chat?.messages.length, chat?.illustrations.length, arriving]);
 
   if (loadError !== null) {
     return (
@@ -211,6 +256,18 @@ export function ChatPage({ chatId }: { chatId: string }) {
     });
   };
 
+  const illustrate = (messageId: number): void => {
+    setError(null);
+    api.illustrate(chat.id, messageId).then(
+      (loaded) => {
+        setChat((before) => before && { ...before, ...scenePart(loaded) });
+      },
+      (reason: unknown) => {
+        setError(errorMessage(reason));
+      },
+    );
+  };
+
   const stopReply = (): void => {
     speech.stop();
     void api.stopReply(chat.id);
@@ -248,6 +305,19 @@ export function ChatPage({ chatId }: { chatId: string }) {
         <div>
           <h1>{chat.character.name}</h1>
           <p>{chat.scenario.title}</p>
+          <p className="chat-location" data-testid="current-location">
+            At {chat.location.name}
+          </p>
+          <Locations
+            chatId={chat.id}
+            current={chat.location}
+            locations={chat.locations}
+            onChange={(loaded) => {
+              setChat(
+                (before) => before && { ...before, ...scenePart(loaded) },
+              );
+            }}
+          />
         </div>
         {settings !== null && (
           <label className="toggle">
@@ -276,7 +346,24 @@ export function ChatPage({ chatId }: { chatId: string }) {
                 author={message.role === 'user' ? 'You' : chat.character.name}
                 role={message.role}
                 content={message.content}
-              />
+              >
+                {message.role === 'assistant' && (
+                  <MessageIllustrations
+                    characterName={chat.character.name}
+                    characterId={chat.character.id}
+                    hasPicture={chat.character.imageUrl !== null}
+                    illustrations={chat.illustrations.filter(
+                      ({ messageId }) => messageId === message.id,
+                    )}
+                    progress={chat.illustrating.find(
+                      ({ messageId }) => messageId === message.id,
+                    )}
+                    onIllustrate={() => {
+                      illustrate(message.id);
+                    }}
+                  />
+                )}
+              </MessageItem>
             </Fragment>
           ))}
           {arriving !== null && (

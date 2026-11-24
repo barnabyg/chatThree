@@ -85,7 +85,10 @@ test('a scenario can be created, and a chat started from a pairing opens with it
   // The prompt carries the premise and the user's part; the opening message
   // starts the conversation.
   await send(page, 'Wait for me!');
-  await expect(messages(page)).toHaveCount(3);
+  // The reply itself, not the placeholder shown before the request is sent.
+  await expect(messages(page).nth(2)).toContainText(
+    'Hello from the fake model.',
+  );
   const request = openai.requests[0]?.body;
   expect(request?.instructions).toContain(FERRY.premise);
   expect(request?.instructions).toContain('Wren');

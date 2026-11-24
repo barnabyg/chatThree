@@ -1,7 +1,12 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { ILLUSTRATION_MODES } from '../../shared/api.ts';
 import { isWellFormedApiKey } from '../apiKey.ts';
-import type { SettingsStore } from '../settings.ts';
+import {
+  MAX_ILLUSTRATION_COOLDOWN,
+  MIN_ILLUSTRATION_COOLDOWN,
+  type SettingsStore,
+} from '../settings.ts';
 import { readBody } from './errors.ts';
 
 const MIN_TOKEN_BUDGET = 100;
@@ -13,6 +18,29 @@ const update = z.strictObject({
     .trim()
     .min(1, 'The model name cannot be empty.')
     .max(200, 'The model name is too long.')
+    .optional(),
+  sceneModel: z
+    .string()
+    .trim()
+    .min(1, 'The scene model name cannot be empty.')
+    .max(200, 'The scene model name is too long.')
+    .optional(),
+  illustrationMode: z
+    .enum(
+      ILLUSTRATION_MODES,
+      'The illustration mode must be "off", "scene-changes", "key-moments" or "every-reply".',
+    )
+    .optional(),
+  illustrationCooldown: z
+    .int('The cooldown must be a whole number of replies.')
+    .min(
+      MIN_ILLUSTRATION_COOLDOWN,
+      `The cooldown must be at least ${String(MIN_ILLUSTRATION_COOLDOWN)} reply.`,
+    )
+    .max(
+      MAX_ILLUSTRATION_COOLDOWN,
+      `The cooldown can be at most ${String(MAX_ILLUSTRATION_COOLDOWN)} replies.`,
+    )
     .optional(),
   contextTokenBudget: z
     .int('The conversation budget must be a whole number of tokens.')
@@ -54,11 +82,22 @@ export function settingsRoutes(settings: SettingsStore): Hono {
   routes.get('/', (c) => c.json(settings.view()));
 
   routes.put('/', async (c) => {
-    const { model, contextTokenBudget, speechMuted, speechScope, apiKey } =
-      await readBody(c, update);
+    const {
+      model,
+      sceneModel,
+      illustrationMode,
+      illustrationCooldown,
+      contextTokenBudget,
+      speechMuted,
+      speechScope,
+      apiKey,
+    } = await readBody(c, update);
     return c.json(
       settings.update({
         ...(model !== undefined && { model }),
+        ...(sceneModel !== undefined && { sceneModel }),
+        ...(illustrationMode !== undefined && { illustrationMode }),
+        ...(illustrationCooldown !== undefined && { illustrationCooldown }),
         ...(contextTokenBudget !== undefined && { contextTokenBudget }),
         ...(speechMuted !== undefined && { speechMuted }),
         ...(speechScope !== undefined && { speechScope }),

@@ -67,12 +67,68 @@ export interface Scenario extends ScenarioInput {
   chatCount: number;
 }
 
+/** A place a chat's story has been. */
+export interface Location {
+  id: number;
+  name: string;
+  /** How it looks, which is what its reference picture is made from. */
+  description: string;
+  /**
+   * Where its reference picture is served from, or `null` until one is
+   * needed. The address changes whenever the picture does.
+   */
+  imageUrl: string | null;
+}
+
+/** A picture of a moment in a chat, made from one of the character's messages. */
+export interface Illustration {
+  id: number;
+  /** The character's message it illustrates. */
+  messageId: number;
+  /** Where the picture is served from. It never changes. */
+  imageUrl: string;
+}
+
+/**
+ * How far an illustration of a message has got, while it is being made or
+ * once it has failed. A finished one is an `Illustration`.
+ */
+export interface IllustrationProgress {
+  messageId: number;
+  state:
+    | 'describing' // the scene call is writing the picture's description
+    | 'waiting' // waiting for the engine to finish other pictures
+    | 'painting-location' // the engine is painting the location's reference picture
+    | 'painting' // the engine is painting the scene
+    | 'failed';
+  /** Why it failed, in words for the user. Only when `failed`. */
+  error?: string;
+}
+
 export interface Chat {
   id: string;
-  character: { id: string; name: string };
+  character: {
+    id: string;
+    name: string;
+    /** The character's reference picture, which illustrations need. */
+    imageUrl: string | null;
+  };
   scenario: { id: string; title: string };
   /** The whole conversation, oldest first. */
   messages: Message[];
+  /** Where the story is now. */
+  location: Location;
+  /** Every place the story has been, in the order it reached them. */
+  locations: Location[];
+  /** Pictures of the conversation's moments, oldest first. */
+  illustrations: Illustration[];
+  /** Illustrations being made, or that failed, one per message at most. */
+  illustrating: IllustrationProgress[];
+  /**
+   * True while the scene call reads the latest reply, after which the
+   * chat's place may change and an illustration may start.
+   */
+  followingScene: boolean;
   /**
    * How many messages, counted from the oldest, are no longer sent to the
    * model because the conversation has outgrown its token budget.
@@ -123,8 +179,29 @@ export interface SpeechRequest {
   characterId?: string;
 }
 
+/**
+ * When replies are illustrated without being asked: never, when the story
+ * moves somewhere new, at moments worth it as well (with a cooldown), or
+ * every reply.
+ */
+export const ILLUSTRATION_MODES = [
+  'off',
+  'scene-changes',
+  'key-moments',
+  'every-reply',
+] as const;
+export type IllustrationMode = (typeof ILLUSTRATION_MODES)[number];
+
 export interface Settings {
   model: string;
+  /** The OpenAI model that describes scenes for illustration: a cheap one will do. */
+  sceneModel: string;
+  illustrationMode: IllustrationMode;
+  /**
+   * In Key moments, how many replies must pass after a picture before a
+   * moment worth one is illustrated again.
+   */
+  illustrationCooldown: number;
   /** How many tokens of conversation are sent to the model each turn, at most. */
   contextTokenBudget: number;
   /** When true, replies are not spoken aloud. */
@@ -139,6 +216,9 @@ export interface Settings {
 
 export interface SettingsUpdate {
   model?: string;
+  sceneModel?: string;
+  illustrationMode?: IllustrationMode;
+  illustrationCooldown?: number;
   contextTokenBudget?: number;
   speechMuted?: boolean;
   speechScope?: SpeechScope;
