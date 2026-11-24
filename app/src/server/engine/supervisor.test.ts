@@ -1,8 +1,8 @@
-import { mkdtemp, readFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, expect, test } from 'vitest';
 import { isAlive } from '../../../test-support/processes.ts';
+import { temporaryDirectory } from '../../../test-support/temporary.ts';
 import type { EngineStatus } from '../../shared/api.ts';
 import { EngineSupervisor } from './supervisor.ts';
 
@@ -18,11 +18,11 @@ afterEach(async () => {
   await Promise.all(running.splice(0).map((supervisor) => supervisor.stop()));
 });
 
-async function supervise(
+function supervise(
   mode: string,
   command: string[] = FAKE_ENGINE,
-): Promise<{ supervisor: EngineSupervisor; pids: () => Promise<number[]> }> {
-  const directory = await mkdtemp(path.join(tmpdir(), 'chatthree-engine-'));
+): { supervisor: EngineSupervisor; pids: () => Promise<number[]> } {
+  const directory = temporaryDirectory('engine');
   const pidFile = path.join(directory, 'pids.txt');
   const supervisor = new EngineSupervisor({
     command,
@@ -76,7 +76,7 @@ async function allGone(pids: number[]): Promise<boolean> {
 }
 
 test('reports loading while the engine loads, then ready', async () => {
-  const { supervisor } = await supervise('ready');
+  const { supervisor } = supervise('ready');
   const seen: string[] = [];
   supervisor.subscribe((status) => seen.push(status.state));
 
@@ -87,7 +87,7 @@ test('reports loading while the engine loads, then ready', async () => {
 });
 
 test("reports the engine's own error when it fails to load", async () => {
-  const { supervisor } = await supervise('failed');
+  const { supervisor } = supervise('failed');
 
   await supervisor.start();
 
@@ -98,7 +98,7 @@ test("reports the engine's own error when it fails to load", async () => {
 });
 
 test('says what is missing when the engine cannot be launched', async () => {
-  const { supervisor } = await supervise('ready', ['chatthree-no-such-tool']);
+  const { supervisor } = supervise('ready', ['chatthree-no-such-tool']);
 
   await supervisor.start();
 
@@ -108,7 +108,7 @@ test('says what is missing when the engine cannot be launched', async () => {
 });
 
 test('reports failed, with its last output, when the engine exits by itself', async () => {
-  const { supervisor } = await supervise('crash');
+  const { supervisor } = supervise('crash');
 
   await supervisor.start();
 
@@ -118,7 +118,7 @@ test('reports failed, with its last output, when the engine exits by itself', as
 });
 
 test('stopping ends the whole process tree, not just the launcher', async () => {
-  const { supervisor, pids } = await supervise('launcher');
+  const { supervisor, pids } = supervise('launcher');
   await supervisor.start();
   await reaches(supervisor, 'ready');
   const tree = await pids();
@@ -130,7 +130,7 @@ test('stopping ends the whole process tree, not just the launcher', async () => 
 });
 
 test('when the launcher dies, the engine it left behind is ended and reported failed', async () => {
-  const { supervisor, pids } = await supervise('launcher');
+  const { supervisor, pids } = supervise('launcher');
   await supervisor.start();
   await reaches(supervisor, 'ready');
   const [launcher, engine] = await pids();
@@ -145,7 +145,7 @@ test('when the launcher dies, the engine it left behind is ended and reported fa
 });
 
 test('restart replaces a failed engine with a working one', async () => {
-  const { supervisor, pids } = await supervise('ready');
+  const { supervisor, pids } = supervise('ready');
   await supervisor.start();
   await reaches(supervisor, 'ready');
   const [first] = await pids();

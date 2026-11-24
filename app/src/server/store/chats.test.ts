@@ -1,17 +1,28 @@
-import { mkdtemp } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
-import { expect, test } from 'vitest';
+import { afterEach, expect, test } from 'vitest';
+import { temporaryDirectory } from '../../../test-support/temporary.ts';
 import { CharacterStore } from './characters.ts';
 import { ChatStore } from './chats.ts';
 import type { ChatSummary } from '../../shared/api.ts';
 import { type Db, openDatabase, SCHEMA_VERSION } from './database.ts';
 import { ScenarioStore } from './scenarios.ts';
 
-async function databaseFile(): Promise<string> {
-  const directory = await mkdtemp(path.join(tmpdir(), 'chatthree-store-'));
-  return path.join(directory, 'chatthree.db');
+function databaseFile(): string {
+  return path.join(temporaryDirectory('store'), 'chatthree.db');
+}
+
+// Databases opened from files are closed after each test: an open database
+// cannot be removed on Windows, and its file would be left behind.
+const opened: Db[] = [];
+afterEach(() => {
+  for (const db of opened.splice(0)) db.close();
+});
+
+function openFile(file: string): Db {
+  const db = openDatabase(file);
+  opened.push(db);
+  return db;
 }
 
 /**
@@ -53,15 +64,15 @@ test('a conversation is read back in the order it was written', () => {
   ]);
 });
 
-test('a conversation is still there after the database is closed and reopened', async () => {
-  const file = await databaseFile();
+test('a conversation is still there after the database is closed and reopened', () => {
+  const file = databaseFile();
   const first = openDatabase(file);
   const { chats } = open(first);
   const chat = chats.start();
   chats.addMessage(chat.id, 'user', 'Remember me.');
   first.close();
 
-  const reopened = open(openDatabase(file)).chats;
+  const reopened = open(openFile(file)).chats;
 
   expect(reopened.list().map(({ id }) => id)).toEqual([chat.id]);
   expect(reopened.messages(chat.id)[0]?.content).toBe('Remember me.');
@@ -125,8 +136,8 @@ test('an unknown chat is not found', () => {
   expect(open().chats.find('no-such-chat')).toBeUndefined();
 });
 
-test('the database records its schema version', async () => {
-  const file = await databaseFile();
+test('the database records its schema version', () => {
+  const file = databaseFile();
   openDatabase(file).close();
 
   const raw = new Database(file);
@@ -134,8 +145,8 @@ test('the database records its schema version', async () => {
   raw.close();
 });
 
-test('a database from a newer version of the app is refused, not damaged', async () => {
-  const file = await databaseFile();
+test('a database from a newer version of the app is refused, not damaged', () => {
+  const file = databaseFile();
   const raw = new Database(file);
   raw.pragma(`user_version = ${String(SCHEMA_VERSION + 1)}`);
   raw.close();
@@ -143,9 +154,9 @@ test('a database from a newer version of the app is refused, not damaged', async
   expect(() => openDatabase(file)).toThrow(/newer version of chatThree/);
 });
 
-test('a chat saved before scenarios existed keeps its own character and conversation, in the built-in scenario', async () => {
+test('a chat saved before scenarios existed keeps its own character and conversation, in the built-in scenario', () => {
   // The database exactly as schema version 2 wrote it.
-  const file = await databaseFile();
+  const file = databaseFile();
   const old = new Database(file);
   old.exec(`
     CREATE TABLE characters (
@@ -184,7 +195,7 @@ test('a chat saved before scenarios existed keeps its own character and conversa
   `);
   old.close();
 
-  const chats = new ChatStore(openDatabase(file));
+  const chats = new ChatStore(openFile(file));
 
   expect(chats.list()).toEqual([
     {
@@ -204,9 +215,9 @@ test('a chat saved before scenarios existed keeps its own character and conversa
   ]);
 });
 
-test('a chat saved before characters existed is still readable, with the built-in character', async () => {
+test('a chat saved before characters existed is still readable, with the built-in character', () => {
   // The database exactly as schema version 1 wrote it.
-  const file = await databaseFile();
+  const file = databaseFile();
   const old = new Database(file);
   old.exec(`
     CREATE TABLE chats (
@@ -230,7 +241,7 @@ test('a chat saved before characters existed is still readable, with the built-i
   `);
   old.close();
 
-  const db = openDatabase(file);
+  const db = openFile(file);
   const { chats } = open(db);
 
   expect(chats.list()).toEqual([

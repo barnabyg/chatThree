@@ -2,10 +2,9 @@
 // an in-memory database and a settings file in a temporary directory of its
 // own, so tests share nothing.
 
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Hono } from 'hono';
+import { temporaryDirectory } from '../../test-support/temporary.ts';
 import type {
   Chat,
   EngineStatus,
@@ -132,7 +131,7 @@ export function testApp(
     environmentApiKey?: string;
   } = {},
 ): TestApp {
-  const directory = mkdtempSync(path.join(tmpdir(), 'chatthree-api-'));
+  const directory = temporaryDirectory('api');
   const database = openDatabase(':memory:');
   const chats = new ChatStore(database);
   const characters = new CharacterStore(database);
