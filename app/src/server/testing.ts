@@ -16,10 +16,12 @@ import type { ChatProvider, ReplyRequest } from './chat/provider.ts';
 import type { EngineJobs } from './engine/jobs.ts';
 import { ReplyService } from './chat/replies.ts';
 import type { EngineControl } from './engine/supervisor.ts';
+import { VoiceWarmer } from './engine/warmer.ts';
 import { SettingsStore } from './settings.ts';
 import { CharacterStore } from './store/characters.ts';
 import { ChatStore } from './store/chats.ts';
 import { openDatabase } from './store/database.ts';
+import { MediaStore } from './store/media.ts';
 import { ScenarioStore } from './store/scenarios.ts';
 
 /** Headers of a request from the app's own UI. */
@@ -50,10 +52,9 @@ export function stubEngine(initial: EngineStatus): StubEngine {
 }
 
 /** One job the fake engine was asked to do. */
-export interface JobRequest {
-  job: 'speak';
-  text: string;
-}
+export type JobRequest =
+  | { job: 'speak'; text: string; voice?: string }
+  | { job: 'prepare-voice'; voice: string };
 
 export type FakeJobs = EngineJobs & {
   /** Every job asked for, oldest first. */
@@ -79,10 +80,19 @@ export function fakeJobs(): FakeJobs {
     failWith(error) {
       failure = error;
     },
-    speak(text) {
+    speak(text, options = {}) {
       return Promise.resolve().then(() => {
-        record({ job: 'speak', text });
+        record({
+          job: 'speak',
+          text,
+          ...(options.voice !== undefined && { voice: options.voice }),
+        });
         return clip;
+      });
+    },
+    prepareVoice(voice) {
+      return Promise.resolve().then(() => {
+        record({ job: 'prepare-voice', voice });
       });
     },
   };
@@ -144,8 +154,16 @@ export interface TestApp {
   characters: CharacterStore;
   scenarios: ScenarioStore;
   settings: SettingsStore;
+  /** Where the app keeps its files. */
+  dataDir: string;
   /** Send a JSON request as the app's own UI would. */
   call(method: string, url: string, body?: unknown): Promise<Response>;
+  /** Send a file as the body of a request, as the app's own UI would. */
+  upload(
+    method: string,
+    url: string,
+    file: Uint8Array<ArrayBuffer>,
+  ): Promise<Response>;
   /**
    * Start a chat through the API. Unless told otherwise it is with the
    * built-in character, in a scenario that has no opening message, so the
@@ -184,10 +202,14 @@ export function testApp(
   );
   const provider = scriptedProvider();
   const jobs = fakeJobs();
+  const engine = options.engine ?? stubEngine({ state: 'ready' });
+  const dataDir = path.join(directory, 'data');
   const app = createApp({
     uiDir: options.uiDir ?? path.join(directory, 'no-ui'),
-    engine: options.engine ?? stubEngine({ state: 'ready' }),
+    engine,
     jobs,
+    warmer: new VoiceWarmer(engine, jobs),
+    media: new MediaStore(dataDir),
     chats,
     characters,
     scenarios,
@@ -211,7 +233,14 @@ export function testApp(
     characters,
     scenarios,
     settings,
+    dataDir,
     call,
+    upload: async (method, url, file) =>
+      app.request(url, {
+        method,
+        headers: { ...LOCAL, 'Content-Type': 'application/octet-stream' },
+        body: file,
+      }),
     async startChat(pairing = {}) {
       const response = await call('POST', '/api/chats', {
         characterId: pairing.characterId ?? characters.list()[0]?.id,

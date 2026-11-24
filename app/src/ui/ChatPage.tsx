@@ -75,6 +75,14 @@ export function ChatPage({ chatId }: { chatId: string }) {
     };
   }, []);
 
+  // The character's voice is made ready when the chat opens, so that the
+  // first sentence of the first reply does not wait for it.
+  const characterId = chat?.character.id;
+  const speaks = settings?.speechMuted === false;
+  useEffect(() => {
+    if (characterId !== undefined && speaks) api.warmVoice(characterId);
+  }, [characterId, speaks]);
+
   // A reply still being written by an earlier page (one that was reloaded
   // mid-reply) is saved when it ends: wait for it, then show it.
   const waitingForEarlierReply = chat?.replying === true && arriving === null;
@@ -138,7 +146,7 @@ export function ChatPage({ chatId }: { chatId: string }) {
     speech.stop();
     const spoken =
       settings?.speechMuted === false
-        ? speech.begin(settings.speechScope)
+        ? speech.begin(settings.speechScope, chat.character.id)
         : null;
     for await (const event of events) {
       switch (event.type) {

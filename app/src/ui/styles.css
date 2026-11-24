@@ -277,6 +277,21 @@ legend {
   font-weight: 600;
 }
 
+/* A character's voice or picture: saved apart from the rest of the form. */
+fieldset.media {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+fieldset.media label {
+  margin-top: 0.25rem;
+}
+
+fieldset.media .form-actions {
+  margin-top: 0.25rem;
+}
+
 .choice-excerpt {
   display: -webkit-box;
   overflow: hidden;

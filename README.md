@@ -47,7 +47,8 @@ activity.
 
 - **Characters**: a name, a persona, a speaking style, example dialogue and
   an appearance. The persona, speaking style and example dialogue go into the
-  prompt; the appearance is kept for pictures.
+  prompt; the appearance is kept for pictures. A character can also be given
+  a voice of its own: see [Speech](#speech).
 - **Scenarios**: a title, a premise, the part you play (a name and a short
   description), an opening message and a starting location. The opening
   message becomes the character's first message in a new chat; the rest goes
@@ -67,6 +68,7 @@ Chats and settings are kept on this computer, outside the repository:
 |---|---|
 | `%LOCALAPPDATA%\chatThree\chatthree.db` | Chats and messages (SQLite) |
 | `%LOCALAPPDATA%\chatThree\settings.json` | The model, the speech settings and a saved API key |
+| `%LOCALAPPDATA%\chatThree\voices\` | The characters' voice clips |
 
 Set `CHATTHREE_DATA_DIR` to keep them somewhere else. On macOS the default is
 `~/Library/Application Support/chatThree`, and on Linux
@@ -74,7 +76,8 @@ Set `CHATTHREE_DATA_DIR` to keep them somewhere else. On macOS the default is
 
 ## Speech
 
-Replies are spoken aloud as they arrive, by the engine, in its built-in voice.
+Replies are spoken aloud as they arrive, by the engine: in the character's own
+voice if it has one, and otherwise in the engine's built-in voice.
 The engine returns each clip whole, so the app splits the reply into sentences
 as it streams in, has each one spoken, and plays the clips in order: the first
 sentence is heard while the rest is still being written.
@@ -91,6 +94,17 @@ sentence is heard while the rest is still being written.
   neither is spoken whole, once it has all arrived.
 - Formatting marks such as asterisks are never spoken, and a sentence longer
   than the engine takes in one request (600 characters) is split first.
+
+To give a character a voice, edit the character and choose a recording under
+**Voice**: one person speaking clearly, for more than 5 seconds. The engine
+clones the voice from it. The browser reads the recording (WAV, MP3, M4A and
+whatever else it can play), keeps the first 30 seconds as a mono WAV file,
+and the app stores that in its data folder. A recording of 5 seconds or less
+is refused. The clip is saved as soon as it is chosen; choosing another
+replaces it, **Remove voice clip** goes back to the built-in voice, and
+**Preview voice** speaks a sample line. Opening a chat has the engine prepare
+the character's voice, so the first sentence is not held up by the cloning,
+which takes about 2.5 seconds.
 
 Text chat does not depend on speech. If the engine is not ready, or cannot
 speak a sentence, the reply still arrives and the chat says that speech is
@@ -151,6 +165,31 @@ Needs the real engine, so a GPU, and speakers or headphones.
 7. Tick **Speak replies** again. In **Settings**, set **What is spoken** to
    **The whole reply** and save. Back in the chat, send a message. Expect the
    actions to be read out as well, and the word "asterisk" never to be said.
+
+## Manual check: a cloned voice
+
+Needs the real engine, speakers or headphones, and a recording of someone
+speaking: any WAV, MP3 or M4A file of 10 to 30 seconds with one clear voice
+and little background noise.
+
+1. Start the app: `cd C:\docs\git\chatThree; pwsh ./start.ps1`
+2. Wait until the page shows **Engine ready**.
+3. Choose **Characters**, then **Edit** on Mara Quill. Under **Voice**,
+   choose **Preview voice**. Expect the sample line in the engine's built-in
+   voice.
+4. Under **Voice clip**, choose your recording. Expect the text above it to
+   change to say that replies are spoken in the cloned voice.
+5. Choose **Preview voice** again. Expect the sample line in a voice that
+   resembles the recording, after a pause of a few seconds while the voice
+   is cloned.
+6. Choose **Characters**, then **Chat** on Mara Quill, then **Start chat**,
+   wait about 5 seconds and send a message. Expect the reply in the cloned
+   voice, with the first sentence starting as promptly as the later ones.
+7. Edit Mara Quill again and choose a recording shorter than 5 seconds.
+   Expect a message saying how long the recording is and that it must be
+   longer than 5 seconds; the earlier clip is still in use.
+8. Choose **Remove voice clip**, then **Preview voice**. Expect the built-in
+   voice again, and `%LOCALAPPDATA%\chatThree\voices` to be empty.
 
 ## Check it
 

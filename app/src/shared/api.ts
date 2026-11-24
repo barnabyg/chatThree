@@ -30,7 +30,18 @@ export interface Character extends CharacterInput {
   id: string;
   /** How many chats are with this character. Deleting it deletes them too. */
   chatCount: number;
+  /**
+   * Whether the character has a voice clip. Its replies are spoken in the
+   * voice cloned from that clip, or in the engine's built-in voice without.
+   */
+  hasVoice: boolean;
 }
+
+/**
+ * A voice clip must be longer than this many seconds to clone a voice from
+ * (MIN_VOICE_SECONDS in the engine's audio.py).
+ */
+export const MIN_VOICE_SECONDS = 5;
 
 /** What the user writes about a scenario. Only the title is required. */
 export interface ScenarioInput {
@@ -103,6 +114,8 @@ export type SpeechScope = 'dialogue' | 'everything';
 /** One piece of text to speak. The answer is the clip, as `audio/wav`. */
 export interface SpeechRequest {
   text: string;
+  /** Speak in this character's voice. Without it, the built-in voice. */
+  characterId?: string;
 }
 
 export interface Settings {

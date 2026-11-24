@@ -11,19 +11,22 @@
 // FAKE_ENGINE_PID_FILE: every process in the tree appends its PID here.
 // FAKE_ENGINE_LOG_FILE: every job received is appended here, one JSON object
 //   per line: `{ "path": "/speech", "body": { ... } }`.
+// A voice clip is checked as the real engine checks it: the file must be
+// there, and hold more than 5 seconds of sound.
 // FAKE_ENGINE_CLIP_MS: how long each spoken clip lasts (default 150).
 // FAKE_ENGINE_SPEECH_FAILS: text that cannot be spoken. A request to speak
 //   anything containing it fails, as when the model breaks on a sentence.
 
 import { spawn } from 'node:child_process';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import {
   createServer,
   type IncomingMessage,
   type ServerResponse,
 } from 'node:http';
 import { parseArgs } from 'node:util';
-import { encodeWav } from '../src/shared/wav.ts';
+import { MIN_VOICE_SECONDS } from '../src/shared/api.ts';
+import { encodeWav, wavSeconds } from '../src/shared/wav.ts';
 
 const { values } = parseArgs({ options: { port: { type: 'string' } } });
 const mode = process.env.FAKE_ENGINE_MODE ?? 'ready';
@@ -77,9 +80,42 @@ function clip(): Uint8Array {
   return encodeWav(samples, CLIP_SAMPLE_RATE);
 }
 
+/** Why a voice cannot be cloned from the clip at `voice`, if it cannot. */
+function voiceProblem(voice: unknown): string | undefined {
+  if (typeof voice !== 'string' || !existsSync(voice)) {
+    return `voice clip not found: ${String(voice)}`;
+  }
+  const seconds = wavSeconds(readFileSync(voice));
+  if (seconds === undefined) {
+    return `The voice clip is not a recording the engine can read: ${voice}`;
+  }
+  return seconds > MIN_VOICE_SECONDS
+    ? undefined
+    : `The voice clip is ${seconds.toFixed(1)} seconds long. It must be longer than ${String(MIN_VOICE_SECONDS)} seconds to clone a voice from.`;
+}
+
+function prepareVoice(
+  body: Record<string, unknown>,
+  response: ServerResponse,
+): void {
+  const problem = voiceProblem(body.voice);
+  if (problem !== undefined) {
+    sendJson(response, 400, { detail: problem });
+    return;
+  }
+  response.statusCode = 204;
+  response.end();
+}
+
 function speech(body: Record<string, unknown>, response: ServerResponse): void {
   if (typeof body.text !== 'string' || body.text === '') {
     sendJson(response, 422, { detail: 'text is required' });
+    return;
+  }
+  const problem =
+    body.voice === undefined ? undefined : voiceProblem(body.voice);
+  if (problem !== undefined) {
+    sendJson(response, 400, { detail: problem });
     return;
   }
   if (speechFails !== undefined && body.text.includes(speechFails)) {
@@ -113,6 +149,9 @@ async function job(
     case '/speech':
       speech(body, response);
       return;
+    case '/voice':
+      prepareVoice(body, response);
+      return;
     default:
       response.statusCode = 404;
       response.end();
@@ -121,7 +160,10 @@ async function job(
 
 if (mode === 'crash') {
   console.error('ModuleNotFoundError: No module named chatthree_engine');
-  process.exit(3);
+  // Nothing is left running, so the process ends by itself with this code.
+  // Calling process.exit() this early can abort Node on Windows instead
+  // (a libuv assertion), which exits with another code.
+  process.exitCode = 3;
 } else if (mode === 'launcher') {
   const child = spawn(process.execPath, process.argv.slice(1), {
     env: { ...process.env, FAKE_ENGINE_MODE: 'ready' },

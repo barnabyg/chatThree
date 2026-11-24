@@ -57,6 +57,27 @@ async function send(
   }
 }
 
+/** Send a file as the body of a request. */
+async function sendFile<T>(
+  method: string,
+  url: string,
+  file: Uint8Array<ArrayBuffer> | Blob,
+): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
+    });
+  } catch {
+    throw new Error(NOT_RUNNING);
+  }
+  if (!response.ok) throw new Error(await failure(response));
+  dataChanged();
+  return (await response.json()) as T;
+}
+
 async function failure(response: Response): Promise<string> {
   try {
     const { error } = (await response.json()) as { error?: unknown };
@@ -172,6 +193,20 @@ export const api = {
     request<Character>('PUT', `/api/characters/${id}`, character),
   deleteCharacter: (id: string) =>
     request<undefined>('DELETE', `/api/characters/${id}`),
+  /** Give a character a voice, from a WAV clip. */
+  setVoice: (id: string, clip: Uint8Array<ArrayBuffer>) =>
+    sendFile<Character>('PUT', `/api/characters/${id}/voice`, clip),
+  removeVoice: (id: string) =>
+    request<Character>('DELETE', `/api/characters/${id}/voice`),
+  /**
+   * Have a character's voice made ready ahead of its first sentence. Nothing
+   * waits on it and nothing is shown if it fails: speaking still works.
+   */
+  warmVoice: (id: string): void => {
+    void send('POST', `/api/characters/${id}/voice/warm`).catch(
+      () => undefined,
+    );
+  },
   listScenarios: () => request<Scenario[]>('GET', '/api/scenarios'),
   getScenario: (id: string) => request<Scenario>('GET', `/api/scenarios/${id}`),
   createScenario: (scenario: ScenarioInput) =>

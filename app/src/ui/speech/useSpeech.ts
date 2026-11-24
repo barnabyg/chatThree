@@ -3,45 +3,9 @@
 import { useEffect, useState } from 'react';
 import type { SpeechScope } from '../../shared/api.ts';
 import { api } from '../api.ts';
+import { playClip } from './playClip.ts';
 import { speechQueue } from './queue.ts';
 import { speechSplitter } from './sentences.ts';
-
-/** Play one clip to its end, or until `signal` aborts. */
-function playClip(clip: Blob, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(clip);
-    const audio = new Audio(url);
-    let over = false;
-    const finish = (failure?: Error): void => {
-      if (over) return;
-      over = true;
-      signal.removeEventListener('abort', halt);
-      URL.revokeObjectURL(url);
-      if (failure === undefined) resolve();
-      else reject(failure);
-    };
-    const halt = (): void => {
-      audio.pause();
-      finish();
-    };
-    signal.addEventListener('abort', halt, { once: true });
-    audio.addEventListener('ended', () => {
-      finish();
-    });
-    audio.addEventListener('error', () => {
-      finish(
-        new Error('Speech is unavailable: the browser could not play it.'),
-      );
-    });
-    audio.play().catch(() => {
-      finish(
-        new Error(
-          'Speech is unavailable: the browser did not allow sound to play.',
-        ),
-      );
-    });
-  });
-}
 
 /** Takes a reply's text as it arrives and has it spoken. */
 export interface ReplySpeech {
@@ -55,8 +19,11 @@ export interface Speech {
   speaking: boolean;
   /** Why the last reply could not be spoken, in words for the user. */
   problem: string | null;
-  /** Start speaking a new reply, in place of whatever was being spoken. */
-  begin: (scope: SpeechScope) => ReplySpeech;
+  /**
+   * Start speaking a new reply, in the voice of the character it is from, in
+   * place of whatever was being spoken.
+   */
+  begin: (scope: SpeechScope, characterId: string) => ReplySpeech;
   /** Halt playback and drop what has not been played. */
   stop: () => void;
 }
@@ -65,8 +32,14 @@ export function useSpeech(): Speech {
   const [speaking, setSpeaking] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [control] = useState(() => {
+    /** Whose voice the reply being spoken is in. */
+    let speaker: string | undefined;
     const queue = speechQueue<Blob>({
-      synthesise: (text, signal) => api.speak({ text }, signal),
+      synthesise: (text, signal) =>
+        api.speak(
+          { text, ...(speaker !== undefined && { characterId: speaker }) },
+          signal,
+        ),
       play: playClip,
       onSpeakingChange: setSpeaking,
       onFailure: setProblem,
@@ -74,8 +47,9 @@ export function useSpeech(): Speech {
     /** The reply being spoken. A reply that was stopped has nothing more to say. */
     let current: object | null = null;
     return {
-      begin: (scope: SpeechScope): ReplySpeech => {
+      begin: (scope: SpeechScope, characterId: string): ReplySpeech => {
         queue.stop();
+        speaker = characterId;
         setProblem(null);
         const reply = {};
         current = reply;

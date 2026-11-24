@@ -13,11 +13,13 @@ import {
 } from './chat/replies.ts';
 import type { EngineJobs } from './engine/jobs.ts';
 import type { EngineControl } from './engine/supervisor.ts';
+import type { VoiceWarmer } from './engine/warmer.ts';
 import { localOnly } from './localOnly.ts';
 import type { SettingsStore } from './settings.ts';
 import { staticFiles } from './staticFiles.ts';
 import type { CharacterStore } from './store/characters.ts';
 import type { ChatStore } from './store/chats.ts';
+import type { MediaStore } from './store/media.ts';
 import type { ScenarioStore } from './store/scenarios.ts';
 
 export interface AppDependencies {
@@ -25,6 +27,9 @@ export interface AppDependencies {
   engine: EngineControl;
   /** The jobs the engine does: speech and pictures. */
   jobs: EngineJobs;
+  warmer: VoiceWarmer;
+  /** The files that belong to characters. */
+  media: MediaStore;
   chats: ChatStore;
   characters: CharacterStore;
   scenarios: ScenarioStore;
@@ -38,6 +43,8 @@ export function createApp(dependencies: AppDependencies): Hono {
     uiDir,
     engine,
     jobs,
+    warmer,
+    media,
     chats,
     characters,
     scenarios,
@@ -53,10 +60,13 @@ export function createApp(dependencies: AppDependencies): Hono {
     '/api/chats',
     chatRoutes(chats, characters, scenarios, replies, settings),
   );
-  app.route('/api/characters', characterRoutes(characters, replies));
+  app.route(
+    '/api/characters',
+    characterRoutes(characters, replies, media, warmer),
+  );
   app.route('/api/scenarios', scenarioRoutes(scenarios, replies));
   app.route('/api/settings', settingsRoutes(settings));
-  app.route('/api/speech', speechRoutes(jobs));
+  app.route('/api/speech', speechRoutes(jobs, characters, media));
   app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));
 
   // Every API failure is `{ "error": "<message for the user>" }`.

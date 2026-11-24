@@ -3,6 +3,7 @@
 import type { EngineControl } from './supervisor.ts';
 
 const SPEECH_TIMEOUT_MS = 60_000;
+const VOICE_TIMEOUT_MS = 60_000;
 
 /** The engine cannot take jobs: it is loading, has failed, or has gone. */
 export class EngineUnavailableError extends Error {
@@ -18,6 +19,11 @@ export class EngineRefusedError extends Error {}
 export class EngineFailedError extends Error {}
 
 export interface SpeakOptions {
+  /**
+   * The path of the clip to clone the voice from. Without it, the engine's
+   * built-in voice.
+   */
+  voice?: string;
   /** Ends the job early, for a listener who has gone away. */
   signal?: AbortSignal;
 }
@@ -25,6 +31,11 @@ export interface SpeakOptions {
 export interface EngineJobs {
   /** Speak `text`. Resolves to the clip, as a WAV file. */
   speak(text: string, options?: SpeakOptions): Promise<Uint8Array<ArrayBuffer>>;
+  /**
+   * Clone the voice in the clip at `voice` ahead of time, so that the first
+   * sentence spoken in it does not wait for that.
+   */
+  prepareVoice(voice: string): Promise<void>;
 }
 
 /** The engine's reason for refusing a request, from FastAPI's error body. */
@@ -80,11 +91,14 @@ export function engineJobs(engine: Pick<EngineControl, 'url'>): EngineJobs {
     async speak(text, options = {}) {
       const response = await post(
         '/speech',
-        { text },
+        { text, ...(options.voice !== undefined && { voice: options.voice }) },
         SPEECH_TIMEOUT_MS,
         options.signal,
       );
       return new Uint8Array(await response.arrayBuffer());
+    },
+    async prepareVoice(voice) {
+      await post('/voice', { voice }, VOICE_TIMEOUT_MS);
     },
   };
 }

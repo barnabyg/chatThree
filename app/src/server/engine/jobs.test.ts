@@ -58,6 +58,35 @@ test('speaking sends the text and returns the clip', async () => {
   expect(received).toEqual([{ path: '/speech', body: { text: 'Sit down.' } }]);
 });
 
+test('speaking in a cloned voice names the clip to clone it from', async () => {
+  const { jobs, received } = await engine((response) => {
+    response.writeHead(200, { 'Content-Type': 'audio/wav' });
+    response.end(Buffer.from([82]));
+  });
+
+  await jobs.speak('Sit down.', { voice: 'C:\\data\\voices\\mara.wav' });
+
+  expect(received).toEqual([
+    {
+      path: '/speech',
+      body: { text: 'Sit down.', voice: 'C:\\data\\voices\\mara.wav' },
+    },
+  ]);
+});
+
+test('preparing a voice sends its clip and waits for the engine to finish', async () => {
+  const { jobs, received } = await engine((response) => {
+    response.writeHead(204);
+    response.end();
+  });
+
+  await jobs.prepareVoice('C:\\data\\voices\\mara.wav');
+
+  expect(received).toEqual([
+    { path: '/voice', body: { voice: 'C:\\data\\voices\\mara.wav' } },
+  ]);
+});
+
 test('an engine that is not ready is unavailable', async () => {
   const jobs = engineJobs({ url: () => undefined });
 
