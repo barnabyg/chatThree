@@ -1,13 +1,13 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { beforeAll, describe, expect, test } from 'vitest';
+import { temporaryDirectory } from '../../test-support/temporary.ts';
 import { stubEngine, testApp as buildApp } from './testing.ts';
 
 let uiDir: string;
 
 beforeAll(async () => {
-  const root = await mkdtemp(path.join(tmpdir(), 'chatthree-app-test-'));
+  const root = temporaryDirectory('app-test');
   uiDir = path.join(root, 'ui');
   await mkdir(path.join(uiDir, 'assets'), { recursive: true });
   await writeFile(path.join(uiDir, 'index.html'), '<html>the ui</html>');
