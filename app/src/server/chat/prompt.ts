@@ -6,7 +6,11 @@
 // turn after the first cheaper and faster. A long conversation is cut to a
 // token budget from its oldest end (trim.ts); the prefix is never cut.
 
-import type { CharacterInput, Message } from '../../shared/api.ts';
+import type {
+  CharacterInput,
+  Message,
+  ScenarioInput,
+} from '../../shared/api.ts';
 import type { PromptMessage } from './provider.ts';
 import { countNotSent } from './trim.ts';
 
@@ -15,10 +19,10 @@ export type PromptCharacter = Pick<
   'name' | 'persona' | 'speakingStyle' | 'exampleDialogue'
 >;
 
-export interface PromptScenario {
-  title: string;
-  premise: string;
-}
+export type PromptScenario = Pick<
+  ScenarioInput,
+  'title' | 'premise' | 'userPersona' | 'startingLocation'
+>;
 
 export interface Prompt {
   instructions: string;
@@ -26,9 +30,13 @@ export interface Prompt {
   messages: PromptMessage[];
 }
 
-/** A headed section, or nothing when the user left that part blank. */
-function section(heading: string, text: string): string[] {
-  return text.trim() === '' ? [] : [`${heading}\n${text.trim()}`];
+/** A headed section, or nothing when the user left every part of it blank. */
+function section(heading: string, ...parts: string[]): string[] {
+  const text = parts
+    .map((part) => part.trim())
+    .filter((part) => part !== '')
+    .join('\n');
+  return text === '' ? [] : [`${heading}\n${text}`];
 }
 
 /** The fixed prefix: the character first, then the scenario. */
@@ -43,7 +51,17 @@ export function buildInstructions(
     ...section('## Speaking style', character.speakingStyle),
     ...section('## Example dialogue', character.exampleDialogue),
     `# Scenario: ${scenario.title}`,
-    scenario.premise,
+    ...section('## Premise', scenario.premise),
+    ...section(
+      '## The part the user plays',
+      scenario.userPersona.name,
+      scenario.userPersona.description,
+    ),
+    ...section(
+      '## Where the story begins',
+      scenario.startingLocation.name,
+      scenario.startingLocation.description,
+    ),
     '# How to reply',
     `Reply only as ${character.name}, in character, with what ${character.name} says and does next. Never speak or act for the user, and never step outside the story.`,
   ].join('\n\n');

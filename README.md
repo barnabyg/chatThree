@@ -40,11 +40,21 @@ Replies come from OpenAI, so chat needs an OpenAI API key. Either set
 key saved in Settings is used in place of the environment variable, is sent
 only to OpenAI, and is never shown again. The model is also a setting.
 
-The app starts with one character, Mara Quill. **Characters** is where you
-edit her or create your own: a name, a persona, a speaking style, example
-dialogue and an appearance. The first three after the name go into the
-prompt; the appearance is kept for pictures. Deleting a character deletes the
-chats with it, after asking.
+The app starts with one character, Mara Quill, and one scenario, The Storm at
+Gull Point. A chat pairs a character with a scenario: **New chat** asks for
+both, and the sidebar lists every chat with its character, scenario and last
+activity.
+
+- **Characters**: a name, a persona, a speaking style, example dialogue and
+  an appearance. The persona, speaking style and example dialogue go into the
+  prompt; the appearance is kept for pictures.
+- **Scenarios**: a title, a premise, the part you play (a name and a short
+  description), an opening message and a starting location. The opening
+  message becomes the character's first message in a new chat; the rest goes
+  into the prompt after the character.
+
+Both built-ins can be edited or deleted like any other. Deleting a character
+or a scenario deletes the chats that use it, after asking.
 
 A long chat is not sent whole. Each turn sends the character and scenario,
 then as much of the conversation as fits a token budget (a setting, 16,000 by

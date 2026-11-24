@@ -32,10 +32,29 @@ export interface Character extends CharacterInput {
   chatCount: number;
 }
 
+/** What the user writes about a scenario. Only the title is required. */
+export interface ScenarioInput {
+  title: string;
+  /** The situation the story starts from. */
+  premise: string;
+  /** The part the user plays. */
+  userPersona: { name: string; description: string };
+  /** The character's first message in a new chat. Blank for none. */
+  openingMessage: string;
+  /** Where the story begins. */
+  startingLocation: { name: string; description: string };
+}
+
+export interface Scenario extends ScenarioInput {
+  id: string;
+  /** How many chats are set in this scenario. Deleting it deletes them too. */
+  chatCount: number;
+}
+
 export interface Chat {
   id: string;
   character: { id: string; name: string };
-  scenario: { title: string };
+  scenario: { id: string; title: string };
   /** The whole conversation, oldest first. */
   messages: Message[];
   /**
@@ -50,6 +69,7 @@ export interface Chat {
 export interface ChatSummary {
   id: string;
   character: { id: string; name: string };
+  scenario: { id: string; title: string };
   /** When a message was last added. */
   lastActivityAt: string;
 }

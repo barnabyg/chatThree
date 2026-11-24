@@ -2,18 +2,19 @@ import { type Context, Hono } from 'hono';
 import { stream } from 'hono/streaming';
 import { z } from 'zod';
 import type { Chat, ChatSummary, ReplyEvent } from '../../shared/api.ts';
-import { BUILT_IN_SCENARIO } from '../chat/builtin.ts';
 import type { ReplyService } from '../chat/replies.ts';
 import { countNotSent } from '../chat/trim.ts';
 import type { SettingsStore } from '../settings.ts';
 import type { CharacterStore } from '../store/characters.ts';
 import type { ChatStore } from '../store/chats.ts';
+import type { ScenarioStore } from '../store/scenarios.ts';
 import { ApiError, readBody } from './errors.ts';
 
 const MAX_MESSAGE_LENGTH = 20_000;
 
 const newChat = z.strictObject({
   characterId: z.string('Choose a character for the chat.'),
+  scenarioId: z.string('Choose a scenario for the chat.'),
 });
 
 const newMessage = z.strictObject({
@@ -51,6 +52,7 @@ function streamReply(
 export function chatRoutes(
   chats: ChatStore,
   characters: CharacterStore,
+  scenarios: ScenarioStore,
   replies: ReplyService,
   settings: SettingsStore,
 ): Hono {
@@ -63,12 +65,12 @@ export function chatRoutes(
     return chat;
   };
 
-  const view = ({ id, character }: ChatSummary): Chat => {
+  const view = ({ id, character, scenario }: ChatSummary): Chat => {
     const messages = chats.messages(id);
     return {
       id,
       character,
-      scenario: { title: BUILT_IN_SCENARIO.title },
+      scenario,
       messages,
       notSent: countNotSent(messages, settings.contextTokenBudget()),
       replying: replies.isReplying(id),
@@ -78,14 +80,33 @@ export function chatRoutes(
   routes.get('/', (c) => c.json(chats.list()));
 
   routes.post('/', async (c) => {
-    const { characterId } = await readBody(c, newChat);
+    const { characterId, scenarioId } = await readBody(c, newChat);
     if (characters.find(characterId) === undefined) {
       throw new ApiError(400, 'That character does not exist.');
     }
-    return c.json(view(chats.create(characterId)), 201);
+    const scenario = scenarios.find(scenarioId);
+    if (scenario === undefined) {
+      throw new ApiError(400, 'That scenario does not exist.');
+    }
+    return c.json(
+      view(chats.create(characterId, scenarioId, scenario.openingMessage)),
+      201,
+    );
   });
 
   routes.get('/:id', (c) => c.json(view(existing(c))));
+
+  routes.delete('/:id', (c) => {
+    const chat = existing(c);
+    if (replies.isReplying(chat.id)) {
+      throw new ApiError(
+        409,
+        'A reply is being written in this chat. Stop it first.',
+      );
+    }
+    chats.delete(chat.id);
+    return c.body(null, 204);
+  });
 
   // Send a message. The answer is a stream of reply events.
   routes.post('/:id/messages', async (c) => {

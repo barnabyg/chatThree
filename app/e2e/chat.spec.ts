@@ -1,14 +1,10 @@
 import type { Page } from '@playwright/test';
 import { FAKE_API_KEY } from '../test-support/fake-openai.ts';
 import { expect, test } from './fixtures.ts';
+import { backToChat, openEmptyChat, send } from './helpers.ts';
 
 function conversation(page: Page) {
   return page.getByRole('list', { name: 'Conversation' });
-}
-
-async function send(page: Page, text: string): Promise<void> {
-  await page.getByRole('textbox', { name: 'Message' }).fill(text);
-  await page.getByRole('button', { name: 'Send' }).click();
 }
 
 test('a message gets a streamed reply, and the conversation survives a reload', async ({
@@ -19,7 +15,7 @@ test('a message gets a streamed reply, and the conversation survives a reload', 
     kind: 'reply',
     chunks: ['Come in', ' out of', ' the rain.'],
   });
-  await page.goto('/');
+  await openEmptyChat(page);
   await expect(page.getByRole('heading', { name: 'Mara Quill' })).toBeVisible();
 
   await send(page, 'Hello? Is anyone there?');
@@ -42,7 +38,7 @@ test('OpenAI is sent the character, then the scenario, then the conversation', a
   page,
   openai,
 }) => {
-  await page.goto('/');
+  await openEmptyChat(page);
   await send(page, 'Hello?');
   await expect(conversation(page)).toContainText('Hello from the fake model.');
   await send(page, 'Who are you?');
@@ -51,7 +47,7 @@ test('OpenAI is sent the character, then the scenario, then the conversation', a
   const [first, second] = openai.requests.map((request) => request.body);
   expect(second?.instructions).toBe(first?.instructions);
   expect(second?.instructions.indexOf('Mara Quill')).toBeLessThan(
-    second?.instructions.indexOf('The Storm at Gull Point') ?? -1,
+    second?.instructions.indexOf('An empty room') ?? -1,
   );
   expect(second?.input).toEqual([
     { role: 'user', content: 'Hello?' },
@@ -77,7 +73,7 @@ test('a reply appears piece by piece and can be stopped part-way', async ({
     ],
     chunkDelayMs: 400,
   });
-  await page.goto('/');
+  await openEmptyChat(page);
 
   await send(page, 'What do you see?');
   const reply = conversation(page).getByRole('listitem').nth(1);
@@ -102,7 +98,7 @@ test.describe('with no API key', () => {
   test('the chat says a key is needed, keeps the message, and works once a key is saved in Settings', async ({
     page,
   }) => {
-    await page.goto('/');
+    await openEmptyChat(page);
     await send(page, 'Hello?');
 
     await expect(page.getByRole('alert')).toContainText(
@@ -123,7 +119,7 @@ test.describe('with no API key', () => {
     const settings = await page.request.get('/api/settings');
     expect(await settings.text()).not.toContain(FAKE_API_KEY);
 
-    await page.getByRole('link', { name: 'Chat' }).click();
+    await backToChat(page);
     await expect(conversation(page)).toContainText('Hello?');
     await send(page, 'Hello again?');
     await expect(conversation(page)).toContainText(
@@ -138,7 +134,7 @@ test.describe('with an API key OpenAI rejects', () => {
   test('the chat says the key was rejected and keeps the message', async ({
     page,
   }) => {
-    await page.goto('/');
+    await openEmptyChat(page);
     await send(page, 'Hello?');
 
     await expect(page.getByRole('alert')).toHaveText(
@@ -157,7 +153,7 @@ test('a network failure is reported in the chat and the message is kept', async 
   openai,
 }) => {
   openai.respondWith({ kind: 'disconnect' });
-  await page.goto('/');
+  await openEmptyChat(page);
 
   await send(page, 'Hello?');
 
@@ -172,7 +168,7 @@ test('a refusal is reported in the chat with the reason given', async ({
   openai,
 }) => {
   openai.respondWith({ kind: 'refusal', text: "I can't continue this story." });
-  await page.goto('/');
+  await openEmptyChat(page);
 
   await send(page, 'Hello?');
 
@@ -189,7 +185,7 @@ test('the model is a setting, with a default', async ({ page, openai }) => {
   await expect(page.getByLabel('Model')).not.toHaveValue('');
   const defaultModel = await page.getByLabel('Model').inputValue();
 
-  await page.goto('/');
+  await openEmptyChat(page);
   await send(page, 'Hello?');
   await expect(conversation(page)).toContainText('Hello from the fake model.');
 
@@ -200,7 +196,7 @@ test('the model is a setting, with a default', async ({ page, openai }) => {
     page.getByRole('status').getByText('Settings saved.'),
   ).toBeVisible();
 
-  await page.getByRole('link', { name: 'Chat' }).click();
+  await backToChat(page);
   await send(page, 'Hello again?');
   await expect(conversation(page).getByRole('listitem')).toHaveCount(4);
 

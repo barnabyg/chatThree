@@ -22,11 +22,8 @@ async function create(app: TestApp, input: object = TOMAS): Promise<Character> {
   return (await response.json()) as Character;
 }
 
-async function chatWith(app: TestApp, character: Character): Promise<Chat> {
-  const response = await app.call('POST', '/api/chats', {
-    characterId: character.id,
-  });
-  return (await response.json()) as Chat;
+function chatWith(app: TestApp, character: Character): Promise<Chat> {
+  return app.startChat({ characterId: character.id });
 }
 
 test('the built-in character is there to begin with, as an ordinary character', async () => {
@@ -149,14 +146,6 @@ describe('chatting with a character', () => {
     expect(instructions).toContain(TOMAS.exampleDialogue);
     expect(instructions).not.toContain(TOMAS.appearance);
     expect(instructions).not.toContain('Mara Quill');
-  });
-
-  test('a chat cannot be started with a character that does not exist', async () => {
-    const response = await testApp().call('POST', '/api/chats', {
-      characterId: 'no-such-id',
-    });
-
-    expect(response.status).toBe(400);
   });
 });
 

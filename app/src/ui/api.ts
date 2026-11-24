@@ -6,6 +6,8 @@ import type {
   Chat,
   ChatSummary,
   ReplyEvent,
+  Scenario,
+  ScenarioInput,
   Settings,
   SettingsUpdate,
 } from '../shared/api.ts';
@@ -16,6 +18,22 @@ const NOT_RUNNING =
 /** A failure as text to show the user. */
 export function errorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);
+}
+
+const changeListeners = new Set<() => void>();
+
+/**
+ * Call `listener` whenever this page changes anything on the server, so
+ * that views of shared data (the chat list) can reload. Returns the function
+ * that stops the calls.
+ */
+export function onDataChanged(listener: () => void): () => void {
+  changeListeners.add(listener);
+  return () => changeListeners.delete(listener);
+}
+
+function dataChanged(): void {
+  for (const listener of changeListeners) listener();
 }
 
 async function send(
@@ -53,6 +71,7 @@ async function request<T>(
 ): Promise<T> {
   const response = await send(method, url, body);
   if (!response.ok) throw new Error(await failure(response));
+  if (method !== 'GET') dataChanged();
   return response.status === 204
     ? (undefined as T)
     : ((await response.json()) as T);
@@ -63,6 +82,17 @@ async function request<T>(
  * `done` or an `error` event, whatever goes wrong.
  */
 async function* reply(url: string, body?: unknown): AsyncGenerator<ReplyEvent> {
+  try {
+    yield* replyEvents(url, body);
+  } finally {
+    dataChanged();
+  }
+}
+
+async function* replyEvents(
+  url: string,
+  body?: unknown,
+): AsyncGenerator<ReplyEvent> {
   let finished = false;
   try {
     const response = await send('POST', url, body);
@@ -109,8 +139,9 @@ async function* reply(url: string, body?: unknown): AsyncGenerator<ReplyEvent> {
 
 export const api = {
   listChats: () => request<ChatSummary[]>('GET', '/api/chats'),
-  createChat: (characterId: string) =>
-    request<Chat>('POST', '/api/chats', { characterId }),
+  createChat: (characterId: string, scenarioId: string) =>
+    request<Chat>('POST', '/api/chats', { characterId, scenarioId }),
+  deleteChat: (id: string) => request<undefined>('DELETE', `/api/chats/${id}`),
   getChat: (id: string) => request<Chat>('GET', `/api/chats/${id}`),
   sendMessage: (chatId: string, content: string) =>
     reply(`/api/chats/${chatId}/messages`, { content }),
@@ -128,6 +159,14 @@ export const api = {
     request<Character>('PUT', `/api/characters/${id}`, character),
   deleteCharacter: (id: string) =>
     request<undefined>('DELETE', `/api/characters/${id}`),
+  listScenarios: () => request<Scenario[]>('GET', '/api/scenarios'),
+  getScenario: (id: string) => request<Scenario>('GET', `/api/scenarios/${id}`),
+  createScenario: (scenario: ScenarioInput) =>
+    request<Scenario>('POST', '/api/scenarios', scenario),
+  updateScenario: (id: string, scenario: ScenarioInput) =>
+    request<Scenario>('PUT', `/api/scenarios/${id}`, scenario),
+  deleteScenario: (id: string) =>
+    request<undefined>('DELETE', `/api/scenarios/${id}`),
   getSettings: () => request<Settings>('GET', '/api/settings'),
   updateSettings: (update: SettingsUpdate) =>
     request<Settings>('PUT', '/api/settings', update),

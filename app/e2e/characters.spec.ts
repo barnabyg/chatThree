@@ -1,10 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
-
-async function send(page: Page, text: string): Promise<void> {
-  await page.getByRole('textbox', { name: 'Message' }).fill(text);
-  await page.getByRole('button', { name: 'Send' }).click();
-}
+import { messages, send } from './helpers.ts';
 
 function characters(page: Page) {
   return page.getByRole('list', { name: 'Characters' }).getByRole('listitem');
@@ -13,7 +9,7 @@ function characters(page: Page) {
 async function createTomas(page: Page): Promise<void> {
   await page.getByRole('link', { name: 'Characters' }).click();
   await page.getByRole('link', { name: 'New character' }).click();
-  await page.getByLabel('Name', { exact: true }).fill('Tomas Reed');
+  await page.getByLabel('Name').fill('Tomas Reed');
   await page
     .getByLabel('Persona')
     .fill('A ferryman who has never left the river.');
@@ -28,6 +24,14 @@ async function createTomas(page: Page): Promise<void> {
   ).toBeVisible();
 }
 
+/** From the characters page, start a chat with `name` in the built-in scenario. */
+async function chatWith(page: Page, name: string): Promise<void> {
+  await page.getByRole('link', { name: `Chat with ${name}` }).click();
+  await expect(page.getByLabel('Character')).toContainText(name);
+  await page.getByRole('button', { name: 'Start chat' }).click();
+  await expect(page.getByRole('heading', { name })).toBeVisible();
+}
+
 test('a new character can be chatted with, and its persona reaches OpenAI', async ({
   page,
   openai,
@@ -35,12 +39,10 @@ test('a new character can be chatted with, and its persona reaches OpenAI', asyn
   await page.goto('/');
   await createTomas(page);
 
-  await page.getByRole('button', { name: 'Chat with Tomas Reed' }).click();
-  await expect(page.getByRole('heading', { name: 'Tomas Reed' })).toBeVisible();
+  await chatWith(page, 'Tomas Reed');
   await send(page, 'Can you take me across?');
-  await expect(
-    page.getByRole('list', { name: 'Conversation' }).getByRole('listitem'),
-  ).toHaveText([
+  await expect(messages(page)).toHaveText([
+    /Tomas Reed\s*\*The door swings inward/,
     /You\s*Can you take me across\?/,
     /Tomas Reed\s*Hello from the fake model\./,
   ]);
@@ -66,14 +68,14 @@ test('the built-in character can be edited like any other', async ({
   await page.getByRole('link', { name: 'Edit Mara Quill' }).click();
   await expect(page.getByLabel('Persona')).toHaveValue(/lighthouse/);
 
-  await page.getByLabel('Name', { exact: true }).fill('Mara the Keeper');
+  await page.getByLabel('Name').fill('Mara the Keeper');
   await page.getByLabel('Persona').fill('She guards the northern light.');
   await page.getByRole('button', { name: 'Save character' }).click();
   await expect(characters(page)).toHaveText([/Mara the Keeper/]);
 
-  await page.getByRole('button', { name: 'Chat with Mara the Keeper' }).click();
+  await chatWith(page, 'Mara the Keeper');
   await send(page, 'Hello?');
-  await expect(page.getByRole('list', { name: 'Conversation' })).toContainText(
+  await expect(messages(page).last()).toContainText(
     'Hello from the fake model.',
   );
 
@@ -87,11 +89,7 @@ test('deleting a character with chats says what happens to them, and asks first'
 }) => {
   await page.goto('/');
   await createTomas(page);
-  await page.getByRole('button', { name: 'Chat with Tomas Reed' }).click();
-  await send(page, 'Can you take me across?');
-  await expect(page.getByRole('list', { name: 'Conversation' })).toContainText(
-    'Hello from the fake model.',
-  );
+  await chatWith(page, 'Tomas Reed');
   await page.getByRole('link', { name: 'Characters' }).click();
   await expect(
     characters(page).filter({ hasText: 'Tomas Reed' }),
@@ -111,13 +109,14 @@ test('deleting a character with chats says what happens to them, and asks first'
   await page.getByRole('button', { name: 'Delete Tomas Reed' }).click();
   await dialog.getByRole('button', { name: 'Delete character' }).click();
   await expect(characters(page)).toHaveText([/Mara Quill/]);
+  await expect(page.getByRole('navigation', { name: 'Chats' })).toContainText(
+    'No chats yet.',
+  );
 
   await page.reload();
   await expect(characters(page)).toHaveText([/Mara Quill/]);
-  const chats = (await (await page.request.get('/api/chats')).json()) as {
-    character: { name: string };
-  }[];
-  expect(chats.map((chat) => chat.character.name)).toEqual(['Mara Quill']);
+  const chats = await page.request.get('/api/chats');
+  expect(await chats.json()).toEqual([]);
 });
 
 test('a character cannot be saved without a name', async ({ page }) => {

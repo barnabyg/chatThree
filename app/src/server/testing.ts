@@ -5,7 +5,12 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Hono } from 'hono';
-import type { EngineStatus, ReplyEvent } from '../shared/api.ts';
+import type {
+  Chat,
+  EngineStatus,
+  ReplyEvent,
+  ScenarioInput,
+} from '../shared/api.ts';
 import { createApp } from './app.ts';
 import type { ChatProvider, ReplyRequest } from './chat/provider.ts';
 import { ReplyService } from './chat/replies.ts';
@@ -14,6 +19,7 @@ import { SettingsStore } from './settings.ts';
 import { CharacterStore } from './store/characters.ts';
 import { ChatStore } from './store/chats.ts';
 import { openDatabase } from './store/database.ts';
+import { ScenarioStore } from './store/scenarios.ts';
 
 /** Headers of a request from the app's own UI. */
 export const LOCAL = { host: '127.0.0.1:3210' };
@@ -94,10 +100,29 @@ export interface TestApp {
   provider: ScriptedProvider;
   chats: ChatStore;
   characters: CharacterStore;
+  scenarios: ScenarioStore;
   settings: SettingsStore;
   /** Send a JSON request as the app's own UI would. */
   call(method: string, url: string, body?: unknown): Promise<Response>;
+  /**
+   * Start a chat through the API. Unless told otherwise it is with the
+   * built-in character, in a scenario that has no opening message, so the
+   * conversation starts empty.
+   */
+  startChat(pairing?: {
+    characterId?: string;
+    scenarioId?: string;
+  }): Promise<Chat>;
 }
+
+/** A scenario with nothing in it but a title. */
+export const BLANK_SCENARIO: ScenarioInput = {
+  title: 'An empty room',
+  premise: '',
+  userPersona: { name: '', description: '' },
+  openingMessage: '',
+  startingLocation: { name: '', description: '' },
+};
 
 export function testApp(
   options: {
@@ -110,6 +135,7 @@ export function testApp(
   const database = openDatabase(':memory:');
   const chats = new ChatStore(database);
   const characters = new CharacterStore(database);
+  const scenarios = new ScenarioStore(database);
   const settings = new SettingsStore(
     path.join(directory, 'settings.json'),
     options.environmentApiKey,
@@ -120,24 +146,37 @@ export function testApp(
     engine: options.engine ?? stubEngine({ state: 'ready' }),
     chats,
     characters,
+    scenarios,
     settings,
-    replies: new ReplyService(chats, characters, settings, provider),
+    replies: new ReplyService(chats, characters, scenarios, settings, provider),
   });
+  const call: TestApp['call'] = async (method, url, body) =>
+    app.request(url, {
+      method,
+      headers: {
+        ...LOCAL,
+        ...(body !== undefined && { 'Content-Type': 'application/json' }),
+      },
+      ...(body !== undefined && { body: JSON.stringify(body) }),
+    });
   return {
     app,
     provider,
     chats,
     characters,
+    scenarios,
     settings,
-    call: async (method, url, body) =>
-      app.request(url, {
-        method,
-        headers: {
-          ...LOCAL,
-          ...(body !== undefined && { 'Content-Type': 'application/json' }),
-        },
-        ...(body !== undefined && { body: JSON.stringify(body) }),
-      }),
+    call,
+    async startChat(pairing = {}) {
+      const response = await call('POST', '/api/chats', {
+        characterId: pairing.characterId ?? characters.list()[0]?.id,
+        scenarioId: pairing.scenarioId ?? scenarios.create(BLANK_SCENARIO).id,
+      });
+      if (response.status !== 201) {
+        throw new Error(`Starting a chat failed: ${await response.text()}`);
+      }
+      return (await response.json()) as Chat;
+    },
   };
 }
 

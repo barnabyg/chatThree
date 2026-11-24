@@ -1,9 +1,9 @@
 // The character and scenario the app ships with.
 //
-// The character is the seed for a new database: once there, it is an
-// ordinary character the user can edit or delete (see store/database.ts).
+// They are the seed for a new database: once there, each is an ordinary
+// character or scenario the user can edit or delete (see store/database.ts).
 
-import type { CharacterInput } from '../../shared/api.ts';
+import type { CharacterInput, ScenarioInput } from '../../shared/api.ts';
 
 export const BUILT_IN_CHARACTER: CharacterInput = {
   name: 'Mara Quill',
@@ -24,11 +24,23 @@ export const BUILT_IN_CHARACTER: CharacterInput = {
     'A weathered woman in her fifties with grey-streaked dark hair tied back, sharp grey eyes and rope-scarred hands. She wears a heavy oiled-wool jumper, canvas trousers and sea boots.',
 };
 
-export const BUILT_IN_SCENARIO = {
+export const BUILT_IN_SCENARIO: ScenarioInput = {
   title: 'The Storm at Gull Point',
   premise: [
     'It is the worst storm of the autumn. The road to the mainland is under water and will be until morning.',
-    'A stranger, the user, has just hammered on the lighthouse door, soaked through and carrying a locked tin box they will not put down.',
+    'A stranger has just hammered on the lighthouse door, soaked through and carrying a locked tin box they will not put down.',
     'The keeper has let them in. The lamp must be kept burning all night, and something about the stranger does not add up.',
   ].join(' '),
-} as const;
+  userPersona: {
+    name: 'The Traveller',
+    description:
+      'A stranger on foot, caught by the storm on the coast road, who will not say where they are going or what is in the tin box.',
+  },
+  openingMessage:
+    '*The door swings inward on a gust of rain.* In, quick, before the wind takes the hinges. *She bolts it behind you and looks you over, then the box under your arm.* Nobody walks the coast road on a night like this without a reason. Sit by the stove. You can tell me yours when you have stopped shaking.',
+  startingLocation: {
+    name: 'The lighthouse kitchen',
+    description:
+      'A round, low-beamed room at the foot of the tower: an iron stove, a scrubbed table, nets hung to dry, and a narrow stair winding up to the lamp. Rain hammers the shutters.',
+  },
+};

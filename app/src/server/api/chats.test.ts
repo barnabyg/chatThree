@@ -1,15 +1,17 @@
 import { describe, expect, test } from 'vitest';
 import type { Chat, ChatSummary } from '../../shared/api.ts';
 import { ProviderError } from '../chat/provider.ts';
-import { readReply, replyEvents, type TestApp, testApp } from '../testing.ts';
+import {
+  BLANK_SCENARIO,
+  readReply,
+  replyEvents,
+  type TestApp,
+  testApp,
+} from '../testing.ts';
 
-/** Start a chat with the built-in character. */
-async function newChat(app: TestApp): Promise<Chat> {
-  const [character] = app.characters.list();
-  const response = await app.call('POST', '/api/chats', {
-    characterId: character?.id,
-  });
-  return (await response.json()) as Chat;
+/** Start a chat with the built-in character, with an empty conversation. */
+function newChat(app: TestApp): Promise<Chat> {
+  return app.startChat();
 }
 
 async function readChat(app: TestApp, id: string): Promise<Chat> {
@@ -25,17 +27,104 @@ function turns(chat: Chat): [string, string][] {
 }
 
 describe('starting a chat', () => {
-  test('a new chat is with the built-in character in the built-in scenario, and empty', async () => {
+  test('a chat pairs the chosen character with the chosen scenario', async () => {
     const app = testApp();
+    const [character] = app.characters.list();
+    const scenario = app.scenarios.create({
+      ...BLANK_SCENARIO,
+      title: 'The Night Ferry',
+    });
 
-    const chat = await newChat(app);
+    const chat = await app.startChat({ scenarioId: scenario.id });
 
     expect(chat).toMatchObject({
-      character: { name: 'Mara Quill' },
-      scenario: { title: 'The Storm at Gull Point' },
+      character: { id: character?.id, name: 'Mara Quill' },
+      scenario: { id: scenario.id, title: 'The Night Ferry' },
       messages: [],
       replying: false,
     });
+  });
+
+  test("the scenario's opening message is the character's first message", async () => {
+    const app = testApp();
+    const scenario = app.scenarios.create({
+      ...BLANK_SCENARIO,
+      openingMessage: 'You are late.',
+    });
+
+    const chat = await app.startChat({ scenarioId: scenario.id });
+
+    expect(turns(chat)).toEqual([['assistant', 'You are late.']]);
+    expect(turns(await readChat(app, chat.id))).toEqual([
+      ['assistant', 'You are late.'],
+    ]);
+  });
+
+  test('the opening message is sent to the provider as the start of the conversation', async () => {
+    const app = testApp();
+    const scenario = app.scenarios.create({
+      ...BLANK_SCENARIO,
+      openingMessage: 'You are late.',
+    });
+    const chat = await app.startChat({ scenarioId: scenario.id });
+
+    await replyEvents(await send(app, chat, 'The road was flooded.'));
+
+    expect(app.provider.requests[0]?.messages).toEqual([
+      { role: 'assistant', content: 'You are late.' },
+      { role: 'user', content: 'The road was flooded.' },
+    ]);
+  });
+
+  test('a chat cannot be started without both a character and a scenario that exist', async () => {
+    const app = testApp();
+    const [character] = app.characters.list();
+    const [scenario] = app.scenarios.list();
+
+    const responses = [
+      await app.call('POST', '/api/chats', { characterId: character?.id }),
+      await app.call('POST', '/api/chats', {
+        characterId: character?.id,
+        scenarioId: 'no-such-id',
+      }),
+      await app.call('POST', '/api/chats', {
+        characterId: 'no-such-id',
+        scenarioId: scenario?.id,
+      }),
+    ];
+
+    expect(responses.map(({ status }) => status)).toEqual([400, 400, 400]);
+    expect(await responses[0]?.json()).toEqual({
+      error: 'Choose a scenario for the chat.',
+    });
+  });
+
+  test('the list shows each chat with its character, scenario and last activity, most recent first', async () => {
+    const app = testApp();
+    const older = await newChat(app);
+    const newer = await newChat(app);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await replyEvents(await send(app, older, 'Back to this one.'));
+
+    const list = (await (
+      await app.call('GET', '/api/chats')
+    ).json()) as ChatSummary[];
+
+    expect(list).toEqual([
+      {
+        id: older.id,
+        character: older.character,
+        scenario: older.scenario,
+        lastActivityAt: (await readChat(app, older.id)).messages.at(-1)
+          ?.createdAt,
+      },
+      {
+        id: newer.id,
+        character: newer.character,
+        scenario: newer.scenario,
+        lastActivityAt: expect.any(String) as string,
+      },
+    ]);
   });
 
   test('a chat that was started is listed', async () => {
@@ -56,6 +145,37 @@ describe('starting a chat', () => {
     expect(await response.json()).toEqual({
       error: 'That chat does not exist.',
     });
+  });
+});
+
+describe('deleting a chat', () => {
+  test('removes it and its messages, and leaves other chats alone', async () => {
+    const app = testApp();
+    const kept = await newChat(app);
+    const lost = await newChat(app);
+    await replyEvents(await send(app, lost, 'Hello?'));
+
+    const response = await app.call('DELETE', `/api/chats/${lost.id}`);
+
+    expect(response.status).toBe(204);
+    expect((await app.call('GET', `/api/chats/${lost.id}`)).status).toBe(404);
+    expect(app.chats.list().map(({ id }) => id)).toEqual([kept.id]);
+    expect(app.chats.messages(lost.id)).toEqual([]);
+  });
+
+  test('is refused while a reply is being written in it', async () => {
+    const app = testApp();
+    app.provider.script({ pieces: ['Who goes'], thenWait: true });
+    const chat = await newChat(app);
+    const reply = readReply(await send(app, chat, 'Hello?'));
+    await reply.next();
+
+    const response = await app.call('DELETE', `/api/chats/${chat.id}`);
+
+    expect(response.status).toBe(409);
+    await app.call('POST', `/api/chats/${chat.id}/stop`);
+    await reply.next();
+    await reply.next();
   });
 });
 
@@ -101,7 +221,7 @@ describe('sending a message', () => {
     const [first, second] = app.provider.requests;
     expect(second?.instructions).toBe(first?.instructions);
     expect(second?.instructions.indexOf('Mara Quill')).toBeLessThan(
-      second?.instructions.indexOf('The Storm at Gull Point') ?? -1,
+      second?.instructions.indexOf('An empty room') ?? -1,
     );
     expect(second?.messages).toEqual([
       { role: 'user', content: 'Hello?' },

@@ -1,14 +1,5 @@
-import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
-
-function messages(page: Page) {
-  return page.getByRole('list', { name: 'Conversation' }).getByRole('listitem');
-}
-
-async function send(page: Page, text: string): Promise<void> {
-  await page.getByRole('textbox', { name: 'Message' }).fill(text);
-  await page.getByRole('button', { name: 'Send' }).click();
-}
+import { messages, openEmptyChat, send } from './helpers.ts';
 
 test('the last reply can be regenerated, and the new reply is the one saved', async ({
   page,
@@ -18,7 +9,7 @@ test('the last reply can be regenerated, and the new reply is the one saved', as
     { kind: 'reply', chunks: ['The first answer.'] },
     { kind: 'reply', chunks: ['A different', ' answer.'] },
   );
-  await page.goto('/');
+  await openEmptyChat(page);
   await send(page, 'Who are you?');
   await expect(messages(page)).toHaveText([
     /Who are you\?/,
@@ -44,7 +35,7 @@ test('the last reply can be regenerated, and the new reply is the one saved', as
 });
 
 test('the last message can be deleted, and stays deleted', async ({ page }) => {
-  await page.goto('/');
+  await openEmptyChat(page);
   await send(page, 'Who are you?');
   await expect(messages(page)).toHaveCount(2);
 
@@ -70,7 +61,7 @@ test('neither action is offered while a reply is streaming', async ({
       chunkDelayMs: 400,
     },
   );
-  await page.goto('/');
+  await openEmptyChat(page);
   await send(page, 'Who are you?');
   const regenerate = page.getByRole('button', { name: 'Regenerate' });
   const remove = page.getByRole('button', { name: 'Delete last message' });
@@ -96,7 +87,7 @@ test('after a failed reply, trying again writes the reply', async ({
     { kind: 'disconnect' },
     { kind: 'reply', chunks: ['Here I am.'] },
   );
-  await page.goto('/');
+  await openEmptyChat(page);
   await send(page, 'Hello?');
   await expect(page.getByRole('alert')).toContainText('Could not reach OpenAI');
 

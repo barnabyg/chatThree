@@ -8,7 +8,15 @@ const character = {
   speakingStyle: 'Plain and dry.',
   exampleDialogue: 'User: Rough night?\nMara: I have seen worse.',
 };
-const scenario = { title: 'The Storm', premise: 'A stranger knocks.' };
+const scenario = {
+  title: 'The Storm',
+  premise: 'A stranger knocks.',
+  userPersona: { name: 'Wren', description: 'A courier with a secret.' },
+  startingLocation: {
+    name: 'The lighthouse kitchen',
+    description: 'Warm, low-beamed, smelling of tar.',
+  },
+};
 /** Far more than any conversation in these tests. */
 const BUDGET = 10_000;
 
@@ -58,6 +66,38 @@ test('a part of the character left blank has no heading in the instructions', ()
   expect(instructions).toContain('## Persona');
   expect(instructions).toContain('## Example dialogue');
   expect(instructions).not.toContain('## Speaking style');
+});
+
+test("the scenario's premise, the user's part and the starting location follow the character", () => {
+  const { instructions } = buildPrompt(character, scenario, [], BUDGET);
+
+  const positions = [
+    '# Character: Mara',
+    '# Scenario: The Storm',
+    'A stranger knocks.',
+    'Wren',
+    'A courier with a secret.',
+    'The lighthouse kitchen',
+    'Warm, low-beamed, smelling of tar.',
+  ].map((part) => instructions.indexOf(part));
+  expect(positions).not.toContain(-1);
+  expect(positions).toEqual([...positions].sort((a, b) => a - b));
+});
+
+test('a part of the scenario left blank has no heading in the instructions', () => {
+  const { instructions } = buildPrompt(
+    character,
+    {
+      ...scenario,
+      userPersona: { name: '', description: ' ' },
+      startingLocation: { name: 'The quay', description: '' },
+    },
+    [],
+    BUDGET,
+  );
+
+  expect(instructions).not.toContain('## The part the user plays');
+  expect(instructions).toContain('## Where the story begins\nThe quay');
 });
 
 test('the instructions are the same on every turn of a chat', () => {

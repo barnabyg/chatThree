@@ -1,10 +1,5 @@
-import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
-
-async function send(page: Page, text: string): Promise<void> {
-  await page.getByRole('textbox', { name: 'Message' }).fill(text);
-  await page.getByRole('button', { name: 'Send' }).click();
-}
+import { messages, openEmptyChat, send } from './helpers.ts';
 
 // Estimated at 53 tokens: 196 characters / 4, plus 4.
 const long = (label: string): string => label.padEnd(196, '.');
@@ -19,11 +14,9 @@ test('a chat over the token budget stops sending its oldest messages, but keeps 
   await page.getByLabel('Conversation budget (tokens)').fill('100');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('Settings saved.')).toBeVisible();
-  await page.getByRole('link', { name: 'Chat' }).click();
+  await openEmptyChat(page);
 
-  const items = page
-    .getByRole('list', { name: 'Conversation' })
-    .getByRole('listitem');
+  const items = messages(page);
   const replies = items.filter({ hasText: REPLY });
   await send(page, long('first message'));
   await expect(replies).toHaveCount(1);

@@ -23,6 +23,8 @@ interface ChatRow {
   lastActivityAt: string;
   characterId: string;
   characterName: string;
+  scenarioId: string;
+  scenarioTitle: string;
 }
 
 const SELECT = `
@@ -30,14 +32,18 @@ const SELECT = `
     chats.id,
     chats.updated_at AS lastActivityAt,
     characters.id AS characterId,
-    characters.name AS characterName
+    characters.name AS characterName,
+    scenarios.id AS scenarioId,
+    scenarios.title AS scenarioTitle
   FROM chats
-  JOIN characters ON characters.id = chats.character_id`;
+  JOIN characters ON characters.id = chats.character_id
+  JOIN scenarios ON scenarios.id = chats.scenario_id`;
 
 function toSummary(row: ChatRow): ChatSummary {
   return {
     id: row.id,
     character: { id: row.characterId, name: row.characterName },
+    scenario: { id: row.scenarioId, title: row.scenarioTitle },
     lastActivityAt: row.lastActivityAt,
   };
 }
@@ -50,18 +56,37 @@ export class ChatStore {
     this.#db = db;
   }
 
-  /** Start a chat with the character `characterId`, which must exist. */
-  create(characterId: string): ChatSummary {
+  /**
+   * Start a chat that pairs a character with a scenario; both must exist.
+   * `openingMessage`, unless blank, becomes the character's first message.
+   */
+  create(
+    characterId: string,
+    scenarioId: string,
+    openingMessage = '',
+  ): ChatSummary {
     const id = randomUUID();
     const now = new Date().toISOString();
-    this.#db
-      .prepare(
-        'INSERT INTO chats (id, character_id, created_at, updated_at) VALUES (?, ?, ?, ?)',
-      )
-      .run(id, characterId, now, now);
-    const created = this.find(id);
-    if (created === undefined) throw new Error('The new chat was not saved.');
-    return created;
+    return this.#db.transaction(() => {
+      this.#db
+        .prepare(
+          'INSERT INTO chats (id, character_id, scenario_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+        )
+        .run(id, characterId, scenarioId, now, now);
+      if (openingMessage.trim() !== '') {
+        this.addMessage(id, 'assistant', openingMessage);
+      }
+      const created = this.find(id);
+      if (created === undefined) throw new Error('The new chat was not saved.');
+      return created;
+    })();
+  }
+
+  /** Delete a chat and its messages. Returns false if there is no such chat. */
+  delete(id: string): boolean {
+    return (
+      this.#db.prepare('DELETE FROM chats WHERE id = ?').run(id).changes > 0
+    );
   }
 
   /** Every chat, the most recently active first. */

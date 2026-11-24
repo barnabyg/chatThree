@@ -1,7 +1,8 @@
-import { type SyntheticEvent, useEffect, useId, useState } from 'react';
+import { type SyntheticEvent, useEffect, useState } from 'react';
 import type { CharacterInput } from '../shared/api.ts';
 import { api, errorMessage } from './api.ts';
 import { navigate } from './router.ts';
+import { TextField } from './TextField.tsx';
 
 const BLANK: CharacterInput = {
   name: '',
@@ -49,7 +50,6 @@ export function CharacterEditor({ id }: { id?: string }) {
     id === undefined ? BLANK : null,
   );
   const [error, setError] = useState<string | null>(null);
-  const formId = useId();
 
   useEffect(() => {
     if (id === undefined) return;
@@ -106,34 +106,26 @@ export function CharacterEditor({ id }: { id?: string }) {
         <h1>{id === undefined ? 'New character' : 'Edit character'}</h1>
       </header>
       <form className="form" onSubmit={save}>
-        <label>
-          Name
-          <input
-            type="text"
-            required
-            maxLength={100}
-            value={character.name}
-            onChange={(event) => {
-              setCharacter({ ...character, name: event.target.value });
+        <TextField
+          label="Name"
+          required
+          maxLength={100}
+          value={character.name}
+          onChange={(name) => {
+            setCharacter({ ...character, name });
+          }}
+        />
+        {TEXT_FIELDS.map(({ field, label, hint, rows }) => (
+          <TextField
+            key={field}
+            label={label}
+            hint={hint}
+            rows={rows}
+            value={character[field]}
+            onChange={(value) => {
+              setCharacter({ ...character, [field]: value });
             }}
           />
-        </label>
-        {TEXT_FIELDS.map(({ field, label, hint, rows }) => (
-          <div className="field" key={field}>
-            <label htmlFor={`${formId}-${field}`}>{label}</label>
-            <textarea
-              id={`${formId}-${field}`}
-              aria-describedby={`${formId}-${field}-hint`}
-              rows={rows}
-              value={character[field]}
-              onChange={(event) => {
-                setCharacter({ ...character, [field]: event.target.value });
-              }}
-            />
-            <p className="hint" id={`${formId}-${field}-hint`}>
-              {hint}
-            </p>
-          </div>
         ))}
         <div className="form-actions">
           <button type="submit" className="primary">

@@ -2,11 +2,16 @@
 // provider's reply, and saving what was written.
 
 import { setTimeout as delay } from 'node:timers/promises';
-import type { Character, Message, ReplyEvent } from '../../shared/api.ts';
+import type {
+  Character,
+  Message,
+  ReplyEvent,
+  Scenario,
+} from '../../shared/api.ts';
 import type { SettingsStore } from '../settings.ts';
 import type { ChatStore } from '../store/chats.ts';
 import type { CharacterStore } from '../store/characters.ts';
-import { BUILT_IN_SCENARIO } from './builtin.ts';
+import type { ScenarioStore } from '../store/scenarios.ts';
 import { buildPrompt } from './prompt.ts';
 import { type ChatProvider, ProviderError } from './provider.ts';
 
@@ -31,6 +36,7 @@ function userMessage(error: unknown): string {
 export class ReplyService {
   readonly #chats: ChatStore;
   readonly #characters: CharacterStore;
+  readonly #scenarios: ScenarioStore;
   readonly #settings: SettingsStore;
   readonly #provider: ChatProvider;
   /** One entry per chat that has a reply in progress. */
@@ -39,11 +45,13 @@ export class ReplyService {
   constructor(
     chats: ChatStore,
     characters: CharacterStore,
+    scenarios: ScenarioStore,
     settings: SettingsStore,
     provider: ChatProvider,
   ) {
     this.#chats = chats;
     this.#characters = characters;
+    this.#scenarios = scenarios;
     this.#settings = settings;
     this.#provider = provider;
   }
@@ -111,14 +119,17 @@ export class ReplyService {
     }
   }
 
-  #character(chatId: string): Character {
+  /** The character and scenario of `chatId`, as they are now. */
+  #pairing(chatId: string): [Character, Scenario] {
     const chat = this.#chats.find(chatId);
     const character =
       chat === undefined ? undefined : this.#characters.find(chat.character.id);
-    if (character === undefined) {
-      throw new Error(`Chat ${chatId} has no character.`);
+    const scenario =
+      chat === undefined ? undefined : this.#scenarios.find(chat.scenario.id);
+    if (character === undefined || scenario === undefined) {
+      throw new Error(`Chat ${chatId} has lost its character or scenario.`);
     }
-    return character;
+    return [character, scenario];
   }
 
   /** Mark `chatId` as replying, or throw `ChatBusyError` if it already is. */
@@ -164,8 +175,7 @@ export class ReplyService {
     let text = '';
     try {
       const prompt = buildPrompt(
-        this.#character(chatId),
-        BUILT_IN_SCENARIO,
+        ...this.#pairing(chatId),
         conversation,
         this.#settings.contextTokenBudget(),
       );
