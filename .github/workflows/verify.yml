@@ -26,8 +26,15 @@ jobs:
           enable-cache: true
           cache-dependency-glob: engine/uv.lock
 
-      # The same command developers run locally. It needs no GPU and no model
-      # files, but type checking needs the full environment installed.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: app/.node-version
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      # The same command developers run locally. It needs no GPU, no model
+      # files and no API keys, but type checking needs the full environments
+      # installed.
       - name: Verify
         shell: pwsh
         run: ./verify.ps1
