@@ -43,6 +43,13 @@ interface Run {
   recentOutput: string[];
 }
 
+/**
+ * A port nothing is listening on. The engine takes a port number rather than
+ * reporting the one it bound, so there is a moment between this check and
+ * the engine binding the port in which something else could take it. The
+ * engine then fails to start and is reported as failed, with a restart on
+ * offer.
+ */
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const probe = createServer();
