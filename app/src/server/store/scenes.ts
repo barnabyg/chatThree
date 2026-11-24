@@ -20,7 +20,7 @@ interface LocationRow {
   imageFile: string | null;
 }
 
-const toLocation = ({ imageFile, ...row }: LocationRow): StoredLocation => ({
+const fromRow = ({ imageFile, ...row }: LocationRow): StoredLocation => ({
   ...row,
   imageFile: imageFile ?? undefined,
 });
@@ -47,21 +47,23 @@ export class SceneStore {
         `${LOCATION} WHERE chat_id = ? ORDER BY id`,
       )
       .all(chatId)
-      .map(toLocation);
+      .map(fromRow);
   }
 
+  /** One of the chat's places, if it has one with `id`. */
   location(chatId: string, id: number): StoredLocation | undefined {
     const row = this.#db
       .prepare<[string, number], LocationRow>(
         `${LOCATION} WHERE chat_id = ? AND id = ?`,
       )
       .get(chatId, id);
-    return row === undefined ? undefined : toLocation(row);
+    return row === undefined ? undefined : fromRow(row);
   }
 
   /**
-   * Where the chat's story is now. A chat that has not recorded one yet is
-   * where it began: `start` is recorded as its first place and returned.
+   * Where the chat's story is now: where the newest message that moved it
+   * took it, or else where it began. A chat that has not recorded where it
+   * began has `start` recorded as its first place.
    */
   currentLocation(
     chatId: string,
@@ -69,17 +71,24 @@ export class SceneStore {
   ): StoredLocation {
     return this.#db.transaction(() => {
       const row = this.#db
-        .prepare<[string], LocationRow>(
-          `${LOCATION} WHERE id = (SELECT location_id FROM chats WHERE id = ?)`,
+        .prepare<[string, string], LocationRow>(
+          `${LOCATION} WHERE id = COALESCE(
+             (SELECT location_id FROM messages
+              WHERE chat_id = ? AND location_id IS NOT NULL
+              ORDER BY id DESC LIMIT 1),
+             (SELECT location_id FROM chats WHERE id = ?))`,
         )
-        .get(chatId);
-      if (row !== undefined) return toLocation(row);
+        .get(chatId, chatId);
+      if (row !== undefined) return fromRow(row);
       const first = this.addLocation(chatId, start);
-      this.moveTo(chatId, first.id);
+      this.#db
+        .prepare('UPDATE chats SET location_id = ? WHERE id = ?')
+        .run(first.id, chatId);
       return first;
     })();
   }
 
+  /** Add a place to the chat's story. It is not where the story is until a message moves there. */
   addLocation(
     chatId: string,
     { name, description }: { name: string; description: string },
@@ -97,14 +106,18 @@ export class SceneStore {
     };
   }
 
-  /** Make `locationId`, one of the chat's places, where its story is now. */
-  moveTo(chatId: string, locationId: number): void {
+  /**
+   * Record that the chat's message `messageId` took its story to
+   * `locationId`, one of its places. Deleting the message undoes the move.
+   */
+  moveTo(chatId: string, messageId: number, locationId: number): void {
     this.#db
       .prepare(
-        `UPDATE chats SET location_id = ?
-         WHERE id = ? AND EXISTS (SELECT 1 FROM locations WHERE id = ? AND chat_id = ?)`,
+        `UPDATE messages SET location_id = ?
+         WHERE id = ? AND chat_id = ?
+           AND EXISTS (SELECT 1 FROM locations WHERE id = ? AND chat_id = ?)`,
       )
-      .run(locationId, chatId, locationId, chatId);
+      .run(locationId, messageId, chatId, locationId, chatId);
   }
 
   /**

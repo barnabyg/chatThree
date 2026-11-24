@@ -201,6 +201,32 @@ describe("following the story's places", () => {
     ]);
   });
 
+  test('deleting or regenerating the reply that moved the story undoes the move', async () => {
+    const { app, chat } = await lighthouseChat();
+    app.provider.scriptStructured(sceneAt(true, 'The jetty', 'Wet planks.'));
+    await illustrated(app, chat, await exchange(app, chat));
+    expect((await readChat(app, chat.id)).location.name).toBe('The jetty');
+
+    await replyEvents(
+      await app.call('POST', `/api/chats/${chat.id}/regenerate`),
+    );
+    expect((await readChat(app, chat.id)).location.name).toBe('The kitchen');
+
+    app.provider.scriptStructured(sceneAt(true, 'The jetty'));
+    const regenerated = (await readChat(app, chat.id)).messages.at(-1);
+    await illustrated(app, chat, regenerated);
+    expect((await readChat(app, chat.id)).location.name).toBe('The jetty');
+
+    await app.call('DELETE', `/api/chats/${chat.id}/messages/last`);
+    const after = await readChat(app, chat.id);
+    expect(after.location.name).toBe('The kitchen');
+    // The place is still known, for the story to go back to.
+    expect(after.locations.map(({ name }) => name)).toEqual([
+      'The kitchen',
+      'The jetty',
+    ]);
+  });
+
   test("a place's picture can be painted again, and the new one is used", async () => {
     const { app, chat } = await lighthouseChat();
     const first = (await illustrated(app, chat, chat.messages[0])).location;

@@ -180,9 +180,15 @@ const MIGRATIONS: readonly ((db: Db) => void)[] = [
   },
 
   // 7: when a picture was last asked for in a chat, as the newest message's
-  // id at the time, so that automatic pictures can wait a number of replies.
+  // id at the time, so that automatic pictures can wait a number of replies;
+  // and the place each of the character's messages took the story to, so
+  // that deleting or regenerating a message undoes the move it made.
   (db) => {
-    db.exec('ALTER TABLE chats ADD COLUMN illustrated_through INTEGER');
+    db.exec(`
+      ALTER TABLE chats ADD COLUMN illustrated_through INTEGER;
+      ALTER TABLE messages ADD COLUMN location_id INTEGER
+        REFERENCES locations (id) ON DELETE SET NULL;
+    `);
   },
 ];
 

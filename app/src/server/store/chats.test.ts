@@ -155,7 +155,8 @@ test('a database from a newer version of the app is refused, not damaged', () =>
 });
 
 test('a character saved before voice clips and pictures existed is still there, with neither', () => {
-  // The characters table exactly as schema version 3 wrote it.
+  // The characters, chats and messages tables exactly as schema version 3
+  // wrote them.
   const file = databaseFile();
   const old = new Database(file);
   old.exec(`
@@ -187,6 +188,13 @@ test('a character saved before voice clips and pictures existed is still there, 
       scenario_id TEXT NOT NULL REFERENCES scenarios (id) ON DELETE CASCADE,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
+    );
+    CREATE TABLE messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      chat_id TEXT NOT NULL REFERENCES chats (id) ON DELETE CASCADE,
+      role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+      content TEXT NOT NULL,
+      created_at TEXT NOT NULL
     );
     INSERT INTO characters (id, name, persona, created_at, updated_at) VALUES
       ('tomas', 'Tomas Reed', 'A ferryman.', '2026-03-01T09:00:00.000Z', '2026-03-01T09:00:00.000Z');

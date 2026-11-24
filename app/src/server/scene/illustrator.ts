@@ -347,7 +347,12 @@ export class Illustrator {
     const latest =
       this.#chats.messages(chatId).findLast(({ role }) => role === 'assistant')
         ?.id === messageId;
-    const { location, moved } = this.#follow(chatId, start, place, latest);
+    const { location, moved } = this.#follow(
+      chatId,
+      start,
+      place,
+      latest ? messageId : undefined,
+    );
     return {
       characterName: character.name,
       picture,
@@ -359,14 +364,14 @@ export class Illustrator {
 
   /**
    * The place a scene call's report puts the scene in, recorded among the
-   * chat's places if it is new, and whether that is a move. With `move`,
-   * the chat's story is there now.
+   * chat's places if it is new, and whether that is a move. With `mover`,
+   * that message took the chat's story there.
    */
   #follow(
     chatId: string,
     start: Place,
     report: PlaceReport,
-    move: boolean,
+    mover: number | undefined,
   ): { location: StoredLocation; moved: boolean } {
     // Read again: the story may have moved while the scene was described.
     const current = this.#scenes.currentLocation(chatId, start);
@@ -377,7 +382,9 @@ export class Illustrator {
         : next.kind === 'return'
           ? (this.#scenes.location(chatId, next.id) ?? current)
           : this.#scenes.addLocation(chatId, next);
-    if (move) this.#scenes.moveTo(chatId, location.id);
+    if (mover !== undefined && location.id !== current.id) {
+      this.#scenes.moveTo(chatId, mover, location.id);
+    }
     return { location, moved: location.id !== current.id };
   }
 
