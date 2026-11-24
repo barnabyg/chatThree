@@ -1,34 +1,20 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Page, TestInfo } from '@playwright/test';
-import { encodeWav, wavSeconds } from '../src/shared/wav.ts';
+import { wavSeconds } from '../src/shared/wav.ts';
+import { recording } from '../test-support/recording.ts';
 import { expect, type RunningApp, test } from './fixtures.ts';
-import { send } from './helpers.ts';
-
-const SAMPLE_RATE = 16_000;
+import { editMara, engineReady, send } from './helpers.ts';
 
 /** Write a recording of the given length to a file of the test's own. */
-async function recording(
+async function recordingFile(
   testInfo: TestInfo,
   name: string,
   seconds: number,
 ): Promise<string> {
-  const samples = new Float32Array(Math.round(seconds * SAMPLE_RATE));
-  for (let index = 0; index < samples.length; index += 1) {
-    samples[index] = 0.2 * Math.sin((index * 2 * Math.PI * 180) / SAMPLE_RATE);
-  }
   const file = testInfo.outputPath(name);
-  await writeFile(file, encodeWav(samples, SAMPLE_RATE));
+  await writeFile(file, recording(seconds));
   return file;
-}
-
-async function editMara(page: Page): Promise<void> {
-  await page.goto('/#/characters');
-  await page.getByRole('link', { name: 'Edit Mara Quill' }).click();
-  await expect(page.getByRole('group', { name: 'Voice' })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Engine' })).toContainText(
-    'Engine ready',
-  );
 }
 
 function voice(page: Page) {
@@ -66,11 +52,12 @@ test("a character's replies are spoken in the voice cloned from its clip, warmed
     chunks: ['"Sit down. The tea is in the tin."'],
   });
   await editMara(page);
+  await engineReady(page);
   await expect(voice(page)).toContainText('spoken in the built-in voice');
 
   await voice(page)
     .getByLabel('Voice clip')
-    .setInputFiles(await recording(testInfo, 'mara.wav', 8));
+    .setInputFiles(await recordingFile(testInfo, 'mara.wav', 8));
 
   await expect(voice(page)).toContainText(
     'spoken in the voice cloned from the clip you gave',
@@ -109,6 +96,7 @@ test('a voice clip can be previewed, replaced and removed', async ({
   app,
 }, testInfo) => {
   await editMara(page);
+  await engineReady(page);
 
   // Without a clip, the sample is in the built-in voice.
   expect(await previewedVoice(page, app)).toBeUndefined();
@@ -118,7 +106,7 @@ test('a voice clip can be previewed, replaced and removed', async ({
 
   await voice(page)
     .getByLabel('Voice clip')
-    .setInputFiles(await recording(testInfo, 'first.wav', 6));
+    .setInputFiles(await recordingFile(testInfo, 'first.wav', 6));
   await expect(voice(page)).toContainText('cloned from the clip you gave');
   const first = await previewedVoice(page, app);
   expect(wavSeconds(await readFile(String(first)))).toBeCloseTo(6, 1);
@@ -131,7 +119,7 @@ test('a voice clip can be previewed, replaced and removed', async ({
   );
   await voice(page)
     .getByLabel('Voice clip')
-    .setInputFiles(await recording(testInfo, 'second.wav', 9));
+    .setInputFiles(await recordingFile(testInfo, 'second.wav', 9));
   await replaced;
   const second = await previewedVoice(page, app);
   expect(second).not.toBe(first);
@@ -152,7 +140,7 @@ test('a clip too short to clone a voice from is refused, saying how long it must
 
   await voice(page)
     .getByLabel('Voice clip')
-    .setInputFiles(await recording(testInfo, 'short.wav', 3));
+    .setInputFiles(await recordingFile(testInfo, 'short.wav', 3));
 
   await expect(voice(page).getByRole('alert')).toHaveText(
     'That recording is 3.0 seconds long. A voice clip must be longer than 5 seconds.',

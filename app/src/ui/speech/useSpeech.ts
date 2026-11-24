@@ -7,6 +7,15 @@ import { playClip } from './playClip.ts';
 import { speechQueue } from './queue.ts';
 import { speechSplitter } from './sentences.ts';
 
+/** What is needed to speak one reply. */
+export interface ReplyToSpeak {
+  scope: SpeechScope;
+  /** Whose reply it is: it is spoken in that character's voice. */
+  characterId: string;
+  /** The character's message before this one, if there was one. */
+  previous: string | undefined;
+}
+
 /** Takes a reply's text as it arrives and has it spoken. */
 export interface ReplySpeech {
   push(text: string): void;
@@ -19,11 +28,8 @@ export interface Speech {
   speaking: boolean;
   /** Why the last reply could not be spoken, in words for the user. */
   problem: string | null;
-  /**
-   * Start speaking a new reply, in the voice of the character it is from, in
-   * place of whatever was being spoken.
-   */
-  begin: (scope: SpeechScope, characterId: string) => ReplySpeech;
+  /** Start speaking a new reply, in place of whatever was being spoken. */
+  begin: (reply: ReplyToSpeak) => ReplySpeech;
   /** Halt playback and drop what has not been played. */
   stop: () => void;
 }
@@ -32,6 +38,8 @@ export function useSpeech(): Speech {
   const [speaking, setSpeaking] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [control] = useState(() => {
+    /** The reply being spoken. A reply that was stopped has nothing more to say. */
+    let current: object | null = null;
     /** Whose voice the reply being spoken is in. */
     let speaker: string | undefined;
     const queue = speechQueue<Blob>({
@@ -42,18 +50,20 @@ export function useSpeech(): Speech {
         ),
       play: playClip,
       onSpeakingChange: setSpeaking,
-      onFailure: setProblem,
+      onFailure: (message) => {
+        // What is left of the reply is not spoken either.
+        current = null;
+        setProblem(message);
+      },
     });
-    /** The reply being spoken. A reply that was stopped has nothing more to say. */
-    let current: object | null = null;
     return {
-      begin: (scope: SpeechScope, characterId: string): ReplySpeech => {
+      begin: ({ scope, characterId, previous }: ReplyToSpeak): ReplySpeech => {
         queue.stop();
         speaker = characterId;
         setProblem(null);
         const reply = {};
         current = reply;
-        const splitter = speechSplitter(scope);
+        const splitter = speechSplitter(scope, { previous });
         const say = (sentences: string[]): void => {
           if (current !== reply) return;
           for (const sentence of sentences) queue.say(sentence);

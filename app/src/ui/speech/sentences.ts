@@ -5,11 +5,26 @@
 // written. Which text is spoken depends on the scope:
 //
 //   everything  the whole reply.
-//   dialogue    what the character says, without the narration. Text in
-//               double quotation marks is speech. A reply that marks its
-//               actions with *asterisks* and has no quotation marks is
-//               written the other way round, so there everything outside
-//               the asterisks is speech. A reply with neither is all speech.
+//   dialogue    what the character says, without the narration.
+//
+// Telling speech from narration depends on how the reply is written, and
+// characters are written in two ways:
+//
+//   She nods. "Come in," she says.      speech is in double quotation marks
+//   *She nods.* Come in.                actions are between asterisks, and
+//                                       everything else is speech
+//
+// So text in quotation marks is always speech, an action between asterisks
+// never is, and what the rest is depends on which of the two the reply uses.
+// That is settled by the first quotation mark (the rest is narration) or the
+// first action (the rest is speech). Until then the rest is held back,
+// unless the character's previous message had no quotation marks, in which
+// case it is taken for speech at once. A reply with neither marks nor a
+// previous message to go by is all speech, and is spoken when it ends.
+//
+// The text arrives a piece at a time and what has been sent to be spoken
+// cannot be taken back, so a reply that changes its ways part-way can have
+// a sentence of narration spoken before its first quotation mark.
 //
 // Formatting marks are never spoken in either scope.
 
@@ -163,6 +178,11 @@ class Sentences {
     this.#pending = '';
   }
 
+  /** Forget what has been added since the last sentence ended. */
+  discardUnfinished(): void {
+    this.#pending = '';
+  }
+
   /** The sentences finished since the last call. */
   take(): string[] {
     const ready = this.#ready;
@@ -199,55 +219,109 @@ function everything(sentences: Sentences): SpeechSplitter {
   };
 }
 
-function dialogue(sentences: Sentences): SpeechSplitter {
-  let inQuotes = false;
-  let inAsterisks = false;
-  let lastWasAsterisk = false;
-  /**
-   * What text outside quotation marks and asterisks is. Until the reply has
-   * shown how it is written, that is not known, and such text is `held`.
-   */
-  let bare: 'undecided' | 'speech' | 'narration' = 'undecided';
-  let held = '';
+const hasQuotationMarks = (text: string): boolean => /["“”]/.test(text);
 
-  const narration = (character: string): void => {
+function dialogue(
+  sentences: Sentences,
+  previous: string | undefined,
+): SpeechSplitter {
+  let inQuotes = false;
+  /**
+   * What text outside quotation marks and actions is. Until that is known
+   * (see the top of this file) such text is `held`.
+   */
+  let bare: 'undecided' | 'speech' | 'narration' =
+    previous !== undefined && !hasQuotationMarks(previous)
+      ? 'speech'
+      : 'undecided';
+  let held = '';
+  /** The last character of such text that was not a space, on this line. */
+  let lastBare = '';
+  /** Asterisks just read, whose meaning depends on what follows them. */
+  let asterisks = 0;
+  /** The text between asterisks being read, if any. `bold` is two asterisks. */
+  let span: { text: string; bold: boolean } | null = null;
+
+  const narration = (text: string): void => {
     // Speech is not kept waiting for more once the narration moves on: a
     // speech tag ("she said,") joins two halves of a sentence, but a
     // finished sentence of narration ends what was being said.
-    if (TERMINATORS.includes(character) || character === '\n') {
-      sentences.flush();
+    if (/[.!?…\n]/.test(text)) sentences.flush();
+  };
+
+  /** Take text that is neither in quotation marks nor an action. */
+  const takeBare = (text: string): void => {
+    lastBare = text.trim().at(-1) ?? lastBare;
+    if (bare === 'speech') sentences.add(text);
+    else if (bare === 'narration') narration(text);
+    else held += text;
+  };
+
+  /**
+   * The text between asterisks has ended. It is an action, unless it is
+   * stress on a word: bold, or one word in the middle of a sentence.
+   */
+  const endSpan = (cutShort = false): void => {
+    if (span === null) return;
+    const { text, bold } = span;
+    span = null;
+    const oneWord = !/\s/.test(text) && /[\p{L}\p{N}]/u.test(lastBare);
+    if (!cutShort && (bold || oneWord)) {
+      takeBare(text);
+      return;
     }
+    // An action shows how the reply is written: the rest is speech.
+    if (bare === 'undecided') {
+      bare = 'speech';
+      sentences.add(held);
+      held = '';
+    }
+    narration(text);
+    lastBare = '';
+  };
+
+  /** Settle what the asterisks just read meant, now that `next` follows them. */
+  const settleAsterisks = (next: string | undefined): void => {
+    const bold = asterisks > 1;
+    asterisks = 0;
+    if (span !== null) endSpan();
+    // Asterisks before a space open nothing: a list marker, or a stray mark.
+    else if (next !== undefined && !isSpace(next)) span = { text: '', bold };
+  };
+
+  const quotationMark = (mark: string): void => {
+    inQuotes = mark === '"' ? !inQuotes : mark === '“';
+    if (bare !== 'narration') {
+      // Quotation marks settle it: only what is inside them is speech. What
+      // led up to the first one was narration, held or half-said.
+      if (bare === 'speech') sentences.discardUnfinished();
+      bare = 'narration';
+      held = '';
+    }
+    // Keeps two quotations apart when they join into one sentence.
+    if (!inQuotes) sentences.add(' ');
   };
 
   const take = (character: string): void => {
-    const wasAsterisk = lastWasAsterisk;
-    lastWasAsterisk = character === '*';
-    switch (character) {
-      case '"':
-      case '“':
-      case '”':
-        inQuotes = character === '"' ? !inQuotes : character === '“';
-        // Quotation marks settle it: only what is inside them is speech.
-        bare = 'narration';
-        held = '';
-        // Keeps two quotations apart when they join into one sentence.
-        if (!inQuotes) sentences.add(' ');
-        return;
-      case '*':
-        // A run of asterisks (bold) opens or closes once, like a single one.
-        if (wasAsterisk) return;
-        inAsterisks = !inAsterisks;
-        if (bare === 'undecided') {
-          bare = 'speech';
-          sentences.add(held);
-          held = '';
-        }
-        return;
+    // Inside quotation marks, asterisks are only stress on a word.
+    if (character === '*') {
+      if (!inQuotes) asterisks += 1;
+      return;
     }
-    if (inQuotes) sentences.add(character);
-    else if (inAsterisks || bare === 'narration') narration(character);
-    else if (bare === 'speech') sentences.add(character);
-    else held += character;
+    if (asterisks > 0) settleAsterisks(character);
+    if (character === '\n') {
+      // Neither an action nor a quotation runs on past the end of its line:
+      // one left open by mistake must not swallow the rest of the reply.
+      endSpan(true);
+      if (inQuotes) sentences.flush();
+      inQuotes = false;
+      lastBare = '';
+    }
+    if (character === '"' || character === '“' || character === '”') {
+      quotationMark(character);
+    } else if (inQuotes) sentences.add(character);
+    else if (span !== null) span.text += character;
+    else takeBare(character);
   };
 
   return {
@@ -256,7 +330,9 @@ function dialogue(sentences: Sentences): SpeechSplitter {
       return sentences.take();
     },
     end() {
-      // Neither quotation marks nor asterisks: the reply was all speech.
+      if (asterisks > 0) settleAsterisks(undefined);
+      endSpan(true);
+      // Neither quotation marks nor an action: the reply was all speech.
       if (bare === 'undecided') sentences.add(held);
       sentences.flush();
       return sentences.take();
@@ -264,14 +340,27 @@ function dialogue(sentences: Sentences): SpeechSplitter {
   };
 }
 
-/**
- * A splitter for one reply. No sentence it returns is longer than
- * `maxLength`, the most the engine speaks in one request.
- */
+export interface SpeechSplitterOptions {
+  /**
+   * The most the engine speaks in one request. No sentence returned is
+   * longer.
+   */
+  maxLength?: number | undefined;
+  /**
+   * The character's message before this reply, if there was one. It shows
+   * how the character writes, which is a head start on telling speech from
+   * narration in the `dialogue` scope.
+   */
+  previous?: string | undefined;
+}
+
+/** A splitter for one reply. */
 export function speechSplitter(
   scope: SpeechScope,
-  maxLength: number = MAX_SPEECH_CHARACTERS,
+  options: SpeechSplitterOptions = {},
 ): SpeechSplitter {
-  const sentences = new Sentences(maxLength);
-  return scope === 'dialogue' ? dialogue(sentences) : everything(sentences);
+  const sentences = new Sentences(options.maxLength ?? MAX_SPEECH_CHARACTERS);
+  return scope === 'dialogue'
+    ? dialogue(sentences, options.previous)
+    : everything(sentences);
 }

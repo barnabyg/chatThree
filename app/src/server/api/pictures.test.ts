@@ -7,16 +7,14 @@ import {
   EngineUnavailableError,
   type PaintRequest,
 } from '../engine/jobs.ts';
-import { fakePicture, type TestApp, testApp } from '../testing.ts';
+import {
+  builtInCharacter,
+  fakePicture,
+  type TestApp,
+  testApp,
+} from '../testing.ts';
 
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
-
-async function mara(app: TestApp): Promise<Character> {
-  const response = await app.call('GET', '/api/characters');
-  const [character] = (await response.json()) as Character[];
-  if (character === undefined) throw new Error('expected a character');
-  return character;
-}
 
 async function generate(
   app: TestApp,
@@ -59,7 +57,7 @@ function pictureFiles(app: TestApp): string[] {
 describe('generating a reference picture', () => {
   test('a character starts without one', async () => {
     const app = testApp();
-    const character = await mara(app);
+    const character = await builtInCharacter(app);
 
     expect(character.imageUrl).toBeNull();
     const response = await app.call(
@@ -71,7 +69,7 @@ describe('generating a reference picture', () => {
 
   test("has the engine paint the character's appearance, upright", async () => {
     const app = testApp();
-    const character = await mara(app);
+    const character = await builtInCharacter(app);
 
     const response = await generate(app, character);
 
@@ -84,12 +82,12 @@ describe('generating a reference picture', () => {
 
   test("keeps the picture with the character, in the app's data folder", async () => {
     const app = testApp();
-    const before = await mara(app);
+    const before = await builtInCharacter(app);
 
     const generated = (await (await generate(app, before)).json()) as Character;
 
     expect(generated.imageUrl).toEqual(expect.any(String));
-    expect((await mara(app)).imageUrl).toBe(generated.imageUrl);
+    expect((await builtInCharacter(app)).imageUrl).toBe(generated.imageUrl);
     const served = await picture(app, generated);
     expect(served.headers.get('content-type')).toBe('image/png');
     expect(new Uint8Array(await served.arrayBuffer())).toEqual(
@@ -100,7 +98,7 @@ describe('generating a reference picture', () => {
 
   test('paints from the appearance sent with the request, which may not be saved yet', async () => {
     const app = testApp();
-    const character = await mara(app);
+    const character = await builtInCharacter(app);
 
     await generate(app, character, {
       appearance: 'A tall man in a red coat.',
@@ -109,12 +107,12 @@ describe('generating a reference picture', () => {
     expect(painted(app)[0]?.prompt).toContain('A tall man in a red coat.');
     expect(painted(app)[0]?.prompt).not.toContain(character.appearance);
     // Painting does not save the text.
-    expect((await mara(app)).appearance).toBe(character.appearance);
+    expect((await builtInCharacter(app)).appearance).toBe(character.appearance);
   });
 
   test('generating again makes a different picture, which replaces the first', async () => {
     const app = testApp();
-    const character = await mara(app);
+    const character = await builtInCharacter(app);
     const first = (await (await generate(app, character)).json()) as Character;
     const firstBytes = await pictureBytes(app, first);
 
@@ -131,7 +129,7 @@ describe('generating a reference picture', () => {
 
   test('is refused for a character with no appearance, saying what to do', async () => {
     const app = testApp();
-    const character = await mara(app);
+    const character = await builtInCharacter(app);
 
     const response = await generate(app, character, { appearance: '  ' });
 
@@ -157,21 +155,21 @@ describe('generating a reference picture', () => {
     },
   ])('$name says so, and the character is unchanged', async (scenario) => {
     const app = testApp();
-    const character = await mara(app);
+    const character = await builtInCharacter(app);
     app.jobs.failWith(scenario.failure);
 
     const response = await generate(app, character);
 
     expect(response.status).toBe(scenario.status);
     expect(await response.json()).toEqual({ error: scenario.error });
-    expect((await mara(app)).imageUrl).toBeNull();
+    expect((await builtInCharacter(app)).imageUrl).toBeNull();
   });
 });
 
 describe("uploading a picture of the user's own", () => {
   test('keeps it as the reference picture, served as the kind of image it is', async () => {
     const app = testApp();
-    const character = await mara(app);
+    const character = await builtInCharacter(app);
 
     const response = await app.upload(
       'PUT',
@@ -187,19 +185,19 @@ describe("uploading a picture of the user's own", () => {
 
   test('replaces a generated picture', async () => {
     const app = testApp();
-    const character = await mara(app);
+    const character = await builtInCharacter(app);
     await generate(app, character);
 
     await app.upload('PUT', `/api/characters/${character.id}/image`, JPEG);
 
-    const served = await picture(app, await mara(app));
+    const served = await picture(app, await builtInCharacter(app));
     expect(new Uint8Array(await served.arrayBuffer())).toEqual(JPEG);
     expect(pictureFiles(app)).toHaveLength(1);
   });
 
   test('a file that is not a picture is refused', async () => {
     const app = testApp();
-    const character = await mara(app);
+    const character = await builtInCharacter(app);
 
     const response = await app.upload(
       'PUT',
@@ -211,13 +209,13 @@ describe("uploading a picture of the user's own", () => {
     expect(await response.json()).toEqual({
       error: 'A picture must be a PNG, JPEG or WebP image.',
     });
-    expect((await mara(app)).imageUrl).toBeNull();
+    expect((await builtInCharacter(app)).imageUrl).toBeNull();
   });
 });
 
 test("deleting a character deletes its picture's file", async () => {
   const app = testApp();
-  const character = await mara(app);
+  const character = await builtInCharacter(app);
   await generate(app, character);
 
   await app.call('DELETE', `/api/characters/${character.id}`);

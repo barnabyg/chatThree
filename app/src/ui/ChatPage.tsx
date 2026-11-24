@@ -146,7 +146,12 @@ export function ChatPage({ chatId }: { chatId: string }) {
     speech.stop();
     const spoken =
       settings?.speechMuted === false
-        ? speech.begin(settings.speechScope, chat.character.id)
+        ? speech.begin({
+            scope: settings.speechScope,
+            characterId: chat.character.id,
+            previous: chat.messages.findLast(({ role }) => role === 'assistant')
+              ?.content,
+          })
         : null;
     for await (const event of events) {
       switch (event.type) {

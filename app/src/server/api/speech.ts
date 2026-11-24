@@ -1,14 +1,10 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { MAX_SPEECH_CHARACTERS } from '../../shared/api.ts';
-import {
-  EngineFailedError,
-  type EngineJobs,
-  EngineRefusedError,
-  EngineUnavailableError,
-} from '../engine/jobs.ts';
+import type { EngineJobs } from '../engine/jobs.ts';
 import type { CharacterStore } from '../store/characters.ts';
 import type { MediaStore } from '../store/media.ts';
+import { engineFailure, type EngineFailureWords } from './engineFailures.ts';
 import { ApiError, readBody } from './errors.ts';
 
 const speechRequest = z.strictObject({
@@ -23,25 +19,11 @@ const speechRequest = z.strictObject({
   characterId: z.string('That character does not exist.').optional(),
 });
 
-/** Why a clip could not be made, as an API failure with words for the user. */
-function unavailable(error: unknown): unknown {
-  if (error instanceof EngineUnavailableError) {
-    return new ApiError(
-      503,
-      'Speech is unavailable because the engine is not ready.',
-    );
-  }
-  if (error instanceof EngineRefusedError) {
-    return new ApiError(400, `Speech is unavailable: ${error.message}`);
-  }
-  if (error instanceof EngineFailedError) {
-    return new ApiError(
-      502,
-      'Speech is unavailable: the engine could not speak that.',
-    );
-  }
-  return error;
-}
+const NOT_SPOKEN: EngineFailureWords = {
+  unavailable: 'Speech is unavailable because the engine is not ready.',
+  refused: (reason) => `Speech is unavailable: ${reason}`,
+  failed: 'Speech is unavailable: the engine could not speak that.',
+};
 
 export function speechRoutes(
   jobs: EngineJobs,
@@ -72,7 +54,7 @@ export function speechRoutes(
       });
       return c.body(clip, 200, { 'Content-Type': 'audio/wav' });
     } catch (error) {
-      throw unavailable(error);
+      throw engineFailure(error, NOT_SPOKEN);
     }
   });
 

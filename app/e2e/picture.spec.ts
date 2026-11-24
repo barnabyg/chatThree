@@ -2,21 +2,10 @@ import { readdir, readFile, writeFile } from 'node:fs/promises';
 import type { Page } from '@playwright/test';
 import { solidPng } from '../test-support/png.ts';
 import { expect, test } from './fixtures.ts';
+import { editMara, engineReady } from './helpers.ts';
 
 function picture(page: Page) {
   return page.getByRole('group', { name: 'Picture' });
-}
-
-async function editMara(page: Page): Promise<void> {
-  await page.goto('/#/characters');
-  await page.getByRole('link', { name: 'Edit Mara Quill' }).click();
-  await expect(picture(page)).toBeVisible();
-}
-
-async function engineReady(page: Page): Promise<void> {
-  await expect(page.getByRole('region', { name: 'Engine' })).toContainText(
-    'Engine ready',
-  );
 }
 
 /** The picture shown in the editor: its address, and the image itself. */

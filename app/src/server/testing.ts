@@ -6,6 +6,7 @@ import path from 'node:path';
 import type { Hono } from 'hono';
 import { temporaryDirectory } from '../../test-support/temporary.ts';
 import type {
+  Character,
   Chat,
   EngineStatus,
   ReplyEvent,
@@ -265,6 +266,14 @@ export function testApp(
       return (await response.json()) as Chat;
     },
   };
+}
+
+/** The built-in character, as the API gives it now. */
+export async function builtInCharacter(app: TestApp): Promise<Character> {
+  const response = await app.call('GET', '/api/characters');
+  const [character] = (await response.json()) as Character[];
+  if (character === undefined) throw new Error('expected a character');
+  return character;
 }
 
 /** Read a streamed reply to its end. */

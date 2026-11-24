@@ -2,27 +2,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import type { Character } from '../../shared/api.ts';
-import { encodeWav } from '../../shared/wav.ts';
-import { stubEngine, type TestApp, testApp } from '../testing.ts';
-
-const SAMPLE_RATE = 8_000;
-
-/** A recording of the given length. `pitch` makes two recordings differ. */
-function recording(seconds: number, pitch = 220): Uint8Array<ArrayBuffer> {
-  const samples = new Float32Array(Math.round(seconds * SAMPLE_RATE));
-  for (let index = 0; index < samples.length; index += 1) {
-    samples[index] =
-      0.1 * Math.sin((index * 2 * Math.PI * pitch) / SAMPLE_RATE);
-  }
-  return encodeWav(samples, SAMPLE_RATE);
-}
-
-async function mara(app: TestApp): Promise<Character> {
-  const response = await app.call('GET', '/api/characters');
-  const [character] = (await response.json()) as Character[];
-  if (character === undefined) throw new Error('expected a character');
-  return character;
-}
+import { recording } from '../../../test-support/recording.ts';
+import {
+  builtInCharacter,
+  stubEngine,
+  type TestApp,
+  testApp,
+} from '../testing.ts';
 
 async function giveVoice(
   app: TestApp,
@@ -49,7 +35,7 @@ async function voiceUsedFor(
 describe('giving a character a voice', () => {
   test('a character starts without a voice clip, and speaks in the built-in voice', async () => {
     const app = testApp();
-    const character = await mara(app);
+    const character = await builtInCharacter(app);
 
     expect(character.hasVoice).toBe(false);
     expect(await voiceUsedFor(app, character)).toBeUndefined();
@@ -57,7 +43,7 @@ describe('giving a character a voice', () => {
 
   test('its replies are then spoken from the uploaded clip', async () => {
     const app = testApp();
-    const character = await mara(app);
+    const character = await builtInCharacter(app);
     const clip = recording(6);
 
     const response = await giveVoice(app, character, clip);
@@ -73,7 +59,7 @@ describe('giving a character a voice', () => {
 
   test("the clip is kept in the app's data folder", async () => {
     const app = testApp();
-    const character = await mara(app);
+    const character = await builtInCharacter(app);
     await giveVoice(app, character);
 
     const used = (await voiceUsedFor(app, character)) ?? '';
@@ -83,7 +69,7 @@ describe('giving a character a voice', () => {
 
   test('a clip too short to clone from is refused, saying how long it must be', async () => {
     const app = testApp();
-    const character = await mara(app);
+    const character = await builtInCharacter(app);
 
     const response = await giveVoice(app, character, recording(2.5));
 
@@ -92,7 +78,7 @@ describe('giving a character a voice', () => {
       error:
         'That recording is 2.5 seconds long. A voice clip must be longer than 5 seconds.',
     });
-    expect((await mara(app)).hasVoice).toBe(false);
+    expect((await builtInCharacter(app)).hasVoice).toBe(false);
   });
 
   test('a file that is not a WAV recording is refused', async () => {
@@ -100,7 +86,7 @@ describe('giving a character a voice', () => {
 
     const response = await giveVoice(
       app,
-      await mara(app),
+      await builtInCharacter(app),
       new Uint8Array([1, 2, 3, 4]),
     );
 
@@ -125,7 +111,7 @@ describe('giving a character a voice', () => {
 
 test('a new clip replaces the old one, under a new name', async () => {
   const app = testApp();
-  const character = await mara(app);
+  const character = await builtInCharacter(app);
   await giveVoice(app, character, recording(6, 220));
   const first = (await voiceUsedFor(app, character)) ?? '';
   const replacement = recording(7, 330);
@@ -141,7 +127,7 @@ test('a new clip replaces the old one, under a new name', async () => {
 
 test('removing the clip goes back to the built-in voice, and deletes the file', async () => {
   const app = testApp();
-  const character = await mara(app);
+  const character = await builtInCharacter(app);
   await giveVoice(app, character);
   const clip = (await voiceUsedFor(app, character)) ?? '';
 
@@ -157,7 +143,7 @@ test('removing the clip goes back to the built-in voice, and deletes the file', 
 
 test("deleting a character deletes its voice clip's file", async () => {
   const app = testApp();
-  const character = await mara(app);
+  const character = await builtInCharacter(app);
   await giveVoice(app, character);
   const clip = (await voiceUsedFor(app, character)) ?? '';
 
@@ -185,7 +171,7 @@ describe('warming a voice up', () => {
 
   test("has the engine prepare the character's clip", async () => {
     const app = testApp();
-    const character = await mara(app);
+    const character = await builtInCharacter(app);
     await giveVoice(app, character);
 
     const response = await warm(app, character);
@@ -206,7 +192,7 @@ describe('warming a voice up', () => {
   test('asks nothing of the engine for a character with the built-in voice', async () => {
     const app = testApp();
 
-    const response = await warm(app, await mara(app));
+    const response = await warm(app, await builtInCharacter(app));
 
     expect(response.status).toBe(204);
     await Promise.resolve();
@@ -216,7 +202,7 @@ describe('warming a voice up', () => {
   test('asked while the engine is still loading, happens once the engine is ready', async () => {
     const engine = stubEngine({ state: 'loading' });
     const app = testApp({ engine });
-    const character = await mara(app);
+    const character = await builtInCharacter(app);
     await giveVoice(app, character);
 
     // Asked twice, as when the chat is opened twice: it is done once.

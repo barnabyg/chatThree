@@ -1,7 +1,62 @@
-import type { Locator, Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 interface Created {
   id: string;
+}
+
+/** Wait until the page shows the engine as ready to take jobs. */
+export async function engineReady(page: Page): Promise<void> {
+  await expect(page.getByRole('region', { name: 'Engine' })).toContainText(
+    'Engine ready',
+  );
+}
+
+/** Open the built-in character in the character editor. */
+export async function editMara(page: Page): Promise<void> {
+  await page.goto('/#/characters');
+  await page.getByRole('link', { name: 'Edit Mara Quill' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Edit character' }),
+  ).toBeVisible();
+}
+
+/** What the page has done with sound: see `watchPlayback`. */
+export interface Playback {
+  /** How many clips have been started. */
+  started: number;
+  /** How many of those played to their end. */
+  finished: number;
+  /** How many were halted before their end. */
+  halted: number;
+}
+
+/**
+ * Count the clips the page plays, from before it loads. Call before the
+ * first `goto`; read the counts with `playback`.
+ */
+export async function watchPlayback(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const counts = { started: 0, finished: 0, halted: 0 };
+    Object.assign(window, { playbackCounts: counts });
+    const play = Object.getOwnPropertyDescriptor(
+      HTMLMediaElement.prototype,
+      'play',
+    )?.value as (this: HTMLMediaElement) => Promise<void>;
+    HTMLMediaElement.prototype.play = function (this: HTMLMediaElement) {
+      counts.started += 1;
+      this.addEventListener('ended', () => (counts.finished += 1));
+      this.addEventListener('pause', () => {
+        if (!this.ended) counts.halted += 1;
+      });
+      return play.call(this);
+    };
+  });
+}
+
+export function playback(page: Page): Promise<Playback> {
+  return page.evaluate(
+    () => (window as unknown as { playbackCounts: Playback }).playbackCounts,
+  );
 }
 
 /** The messages on the chat page, oldest first. */

@@ -5,15 +5,11 @@ import { z } from 'zod';
 import { type Character, MIN_VOICE_SECONDS } from '../../shared/api.ts';
 import { wavSeconds } from '../../shared/wav.ts';
 import type { ReplyService } from '../chat/replies.ts';
-import {
-  EngineFailedError,
-  type EngineJobs,
-  EngineRefusedError,
-  EngineUnavailableError,
-} from '../engine/jobs.ts';
+import type { EngineJobs } from '../engine/jobs.ts';
 import type { VoiceWarmer } from '../engine/warmer.ts';
 import type { CharacterStore } from '../store/characters.ts';
 import type { MediaStore } from '../store/media.ts';
+import { engineFailure, type EngineFailureWords } from './engineFailures.ts';
 import { ApiError, readBody } from './errors.ts';
 
 const MAX_NAME_LENGTH = 100;
@@ -24,6 +20,7 @@ const MAX_VOICE_CLIP_BYTES = 25 * 1024 * 1024;
 const MAX_PICTURE_BYTES = 15 * 1024 * 1024;
 /** Upright, to show a whole figure. Each side is a multiple of 16, as the engine needs. */
 const REFERENCE_SIZE = { width: 768, height: 1024 };
+/** Seeds are drawn from below this: plenty of pictures, and a whole number any engine takes. */
 const MAX_SEED = 2 ** 31;
 
 /** What the engine is asked to paint for a character who looks like this. */
@@ -54,25 +51,11 @@ function pictureKind(bytes: Uint8Array): string | undefined {
   return undefined;
 }
 
-/** Why a picture could not be made, as an API failure with words for the user. */
-function notPainted(error: unknown): unknown {
-  if (error instanceof EngineUnavailableError) {
-    return new ApiError(
-      503,
-      'A picture cannot be made because the engine is not ready.',
-    );
-  }
-  if (error instanceof EngineRefusedError) {
-    return new ApiError(
-      400,
-      `The engine refused to make the picture: ${error.message}`,
-    );
-  }
-  if (error instanceof EngineFailedError) {
-    return new ApiError(502, 'The engine could not make the picture.');
-  }
-  return error;
-}
+const NOT_PAINTED: EngineFailureWords = {
+  unavailable: 'A picture cannot be made because the engine is not ready.',
+  refused: (reason) => `The engine refused to make the picture: ${reason}`,
+  failed: 'The engine could not make the picture.',
+};
 
 /** Check that a voice can be cloned from an uploaded clip, or refuse it. */
 function checkVoiceClip(clip: Uint8Array): void {
@@ -142,6 +125,33 @@ export function characterRoutes(
     return character;
   };
 
+  /**
+   * Finish replacing one of the character's files: `record` the new one,
+   * delete the `old` one it takes the place of, and return the character as
+   * it now is.
+   */
+  const replaced = (
+    id: string,
+    old: string | undefined,
+    record: () => void,
+  ): Character => {
+    record();
+    if (old !== undefined) media.remove(old);
+    const character = characters.find(id);
+    if (character === undefined) throw new Error(`Character ${id} has gone.`);
+    return character;
+  };
+
+  const setVoice = (id: string, file: string | null): Character =>
+    replaced(id, characters.voiceFile(id), () => {
+      characters.setVoiceFile(id, file);
+    });
+
+  const setPicture = (id: string, file: string): Character =>
+    replaced(id, characters.imageFile(id), () => {
+      characters.setImageFile(id, file);
+    });
+
   routes.get('/', (c) => c.json(characters.list()));
 
   routes.post('/', async (c) =>
@@ -170,16 +180,6 @@ export function characterRoutes(
     return c.body(null, 204);
   });
 
-  /** Put `file` in place of the character's reference picture. */
-  const replacePicture = (id: string, file: string): Character => {
-    const old = characters.imageFile(id);
-    characters.setImageFile(id, file);
-    if (old !== undefined) media.remove(old);
-    const character = characters.find(id);
-    if (character === undefined) throw new Error(`Character ${id} has gone.`);
-    return character;
-  };
-
   // Have the engine paint the character's reference picture from its
   // appearance: the one sent, which may not be saved yet, or else the saved
   // one. Every request paints a new picture.
@@ -203,11 +203,11 @@ export function characterRoutes(
         seed: randomInt(MAX_SEED),
       });
     } catch (error) {
-      throw notPainted(error);
+      throw engineFailure(error, NOT_PAINTED);
     }
     // The character may have been deleted while its picture was painted.
     const { id } = existing(c);
-    return c.json(replacePicture(id, media.save('images', 'png', picture)));
+    return c.json(setPicture(id, media.save('images', 'png', picture)));
   });
 
   // Use a picture of the user's own. The body is the image file itself.
@@ -226,7 +226,7 @@ export function characterRoutes(
       if (kind === undefined) {
         throw new ApiError(400, 'A picture must be a PNG, JPEG or WebP image.');
       }
-      return c.json(replacePicture(id, media.save('images', kind, picture)));
+      return c.json(setPicture(id, media.save('images', kind, picture)));
     },
   );
 
@@ -245,16 +245,6 @@ export function characterRoutes(
     });
   });
 
-  /** Put `file` in place of the character's voice clip, or take the clip away. */
-  const replaceVoice = (id: string, file: string | null): Character => {
-    const old = characters.voiceFile(id);
-    characters.setVoiceFile(id, file);
-    if (old !== undefined) media.remove(old);
-    const character = characters.find(id);
-    if (character === undefined) throw new Error(`Character ${id} has gone.`);
-    return character;
-  };
-
   // Give the character a voice. The body is the clip itself, a WAV file.
   routes.put(
     '/:id/voice',
@@ -268,14 +258,12 @@ export function characterRoutes(
       const { id } = existing(c);
       const clip = new Uint8Array(await c.req.arrayBuffer());
       checkVoiceClip(clip);
-      return c.json(replaceVoice(id, media.save('voices', 'wav', clip)));
+      return c.json(setVoice(id, media.save('voices', 'wav', clip)));
     },
   );
 
   // Back to the engine's built-in voice.
-  routes.delete('/:id/voice', (c) =>
-    c.json(replaceVoice(existing(c).id, null)),
-  );
+  routes.delete('/:id/voice', (c) => c.json(setVoice(existing(c).id, null)));
 
   // Have the character's voice ready before it first speaks. Asked for when
   // a chat opens; it answers at once and the engine does the work after.

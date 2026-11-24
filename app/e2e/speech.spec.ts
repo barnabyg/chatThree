@@ -1,6 +1,12 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
-import { openEmptyChat, send } from './helpers.ts';
+import {
+  engineReady,
+  openEmptyChat,
+  playback,
+  send,
+  watchPlayback,
+} from './helpers.ts';
 
 function conversation(page: Page) {
   return page.getByRole('list', { name: 'Conversation' });
@@ -9,12 +15,6 @@ function conversation(page: Page) {
 /** The reply that is still being written, if there is one. */
 function arriving(page: Page) {
   return conversation(page).locator('[aria-busy="true"]');
-}
-
-async function engineReady(page: Page): Promise<void> {
-  await expect(page.getByRole('region', { name: 'Engine' })).toContainText(
-    'Engine ready',
-  );
 }
 
 test('a reply is spoken a sentence at a time, in order, starting before the reply has all arrived', async ({
@@ -32,6 +32,7 @@ test('a reply is spoken a sentence at a time, in order, starting before the repl
     ],
     chunkDelayMs: 1500,
   });
+  await watchPlayback(page);
   await openEmptyChat(page);
   await engineReady(page);
 
@@ -41,6 +42,10 @@ test('a reply is spoken a sentence at a time, in order, starting before the repl
   await expect
     .poll(() => app.spoken(), { intervals: [100] })
     .toEqual(['Come in.', 'Sit by the stove.']);
+  // And the first of them is heard: sound has started.
+  await expect
+    .poll(async () => (await playback(page)).started, { intervals: [100] })
+    .toBeGreaterThan(0);
   await expect(arriving(page)).toBeVisible();
 
   await expect(arriving(page)).toBeHidden();
@@ -51,7 +56,11 @@ test('a reply is spoken a sentence at a time, in order, starting before the repl
       'Sit by the stove.',
       'You can tell me why you are here when you have stopped shaking.',
     ]);
-  // Every clip is played to its end, after which there is nothing to stop.
+  // Every clip is played to its end, one at a time, after which there is
+  // nothing to stop.
+  await expect
+    .poll(() => playback(page))
+    .toEqual({ started: 3, finished: 3, halted: 0 });
   await expect(
     page.getByRole('button', { name: 'Stop speaking' }),
   ).toBeHidden();
@@ -110,23 +119,38 @@ test('text too long for one request is split before it is sent to the engine', a
 test.describe('with clips that take a while to play', () => {
   test.use({ appEnv: { FAKE_ENGINE_CLIP_MS: '20000' } });
 
-  test('speaking can be stopped, and stays stopped', async ({
+  test('stopping halts the clip being played and cancels the ones not yet played', async ({
     page,
     openai,
+    app,
   }) => {
     openai.respondWith({
       kind: 'reply',
       chunks: ['"The lamp is lit. The door is barred. Now we wait."'],
     });
+    await watchPlayback(page);
     await openEmptyChat(page);
     await engineReady(page);
     await send(page, 'What now?');
     const stop = page.getByRole('button', { name: 'Stop speaking' });
     await expect(stop).toBeVisible();
+    // All three clips are made while the first, a long one, is playing.
+    await expect.poll(async () => (await app.spoken()).length).toBe(3);
+    await expect.poll(() => playback(page)).toMatchObject({ started: 1 });
 
     await stop.click();
 
     await expect(stop).toBeHidden();
+    // The clip that was playing is halted, and the two after it never start.
+    await expect
+      .poll(() => playback(page))
+      .toEqual({ started: 1, finished: 0, halted: 1 });
+    await page.waitForTimeout(500);
+    expect(await playback(page)).toEqual({
+      started: 1,
+      finished: 0,
+      halted: 1,
+    });
     // The text of the reply is untouched.
     await expect(conversation(page)).toContainText('Now we wait.');
     await expect(page.getByRole('button', { name: 'Send' })).toBeVisible();

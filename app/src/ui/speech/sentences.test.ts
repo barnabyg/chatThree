@@ -8,7 +8,7 @@ function spoken(
   pieces: string[],
   maxLength?: number,
 ): string[] {
-  const splitter = speechSplitter(scope, maxLength);
+  const splitter = speechSplitter(scope, { maxLength });
   return [
     ...pieces.flatMap((piece) => splitter.push(piece)),
     ...splitter.end(),
@@ -108,7 +108,7 @@ describe('text longer than the engine takes in one request', () => {
   });
 
   test('is split while it is still arriving', () => {
-    const splitter = speechSplitter('everything', 50);
+    const splitter = speechSplitter('everything', { maxLength: 50 });
 
     expect(splitter.push(long.slice(0, 80))).toEqual([
       'The road ran on past the mill, over the bridge,',
@@ -207,6 +207,88 @@ describe('speaking only dialogue', () => {
       'This is the sea clearing its throat.',
       'Sit down.',
     ]);
+  });
+
+  test('a word stressed with asterisks in the middle of speech is spoken, not taken for an action', () => {
+    expect(
+      spoken('dialogue', ['I do *not* want that. *She frowns at you.*']),
+    ).toEqual(['I do not want that.']);
+  });
+
+  test('bold text is spoken, not taken for an action', () => {
+    expect(
+      spoken('dialogue', ['**Never** again, I said. *She leaves.*']),
+    ).toEqual(['Never again, I said.']);
+  });
+
+  test('an action of one word is still an action', () => {
+    expect(spoken('dialogue', ['*sighs* I told you so. *shrugs*'])).toEqual([
+      'I told you so.',
+    ]);
+  });
+
+  test('a stray asterisk, such as a list marker, does not silence what follows', () => {
+    expect(
+      spoken('dialogue', ['*She counts on her fingers.*\n* Tea\n* Bread']),
+    ).toEqual(['Tea', 'Bread']);
+  });
+
+  test('an action left open ends with its line', () => {
+    expect(spoken('dialogue', ['*She turns away\nCome back here.'])).toEqual([
+      'Come back here.',
+    ]);
+  });
+
+  test('speech carried over several paragraphs, each opening with a quotation mark, is all spoken', () => {
+    expect(
+      spoken('dialogue', [
+        'She began. "The first night was calm.\n"The second was not." She stopped.',
+      ]),
+    ).toEqual(['The first night was calm.', 'The second was not.']);
+  });
+
+  test('a quotation mark left open does not turn the next paragraph inside out', () => {
+    expect(
+      spoken('dialogue', ['"Wait here\nShe left the room. "I am back."']),
+    ).toEqual(['Wait here', 'I am back.']);
+  });
+
+  test('narration leading up to the first quotation is dropped, even after an action', () => {
+    expect(
+      spoken('dialogue', ['*She pours the tea.* She says, "Drink."']),
+    ).toEqual(['Drink.']);
+  });
+
+  describe('when the previous message shows how the character writes', () => {
+    test('a reply after one without quotation marks is spoken from its first sentence', () => {
+      const splitter = speechSplitter('dialogue', {
+        previous: '*She looks you over.* Sit by the stove.',
+      });
+
+      expect(splitter.push('This is the sea clearing its throat. Sit')).toEqual(
+        ['This is the sea clearing its throat.'],
+      );
+      expect(splitter.end()).toEqual(['Sit']);
+    });
+
+    test('a reply after one with quotation marks waits to see what is speech', () => {
+      const splitter = speechSplitter('dialogue', {
+        previous: 'She nodded. "Sit by the stove."',
+      });
+
+      expect(splitter.push('She looked up at last. Then')).toEqual([]);
+      expect(splitter.push(' she said, "Come in." She')).toEqual([]);
+      expect(splitter.end()).toEqual(['Come in.']);
+    });
+
+    test('quotation marks in the reply still settle it, whatever came before', () => {
+      const splitter = speechSplitter('dialogue', {
+        previous: '*She looks you over.* Sit by the stove.',
+      });
+
+      expect(splitter.push('She says, "Drink." She waits')).toEqual([]);
+      expect(splitter.end()).toEqual(['Drink.']);
+    });
   });
 
   test('a reply that is all narration says nothing', () => {
