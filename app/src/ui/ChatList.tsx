@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ChatSummary } from '../shared/api.ts';
-import { api, onDataChanged } from './api.ts';
+import { api, errorMessage, onDataChanged } from './api.ts';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { navigate } from './router.ts';
 
@@ -19,6 +19,7 @@ export function ChatList({ currentId }: { currentId: string | undefined }) {
   const [chats, setChats] = useState<ChatSummary[]>([]);
   /** The chat the user has asked to delete, until they answer. */
   const [deleting, setDeleting] = useState<ChatSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let current = true;
@@ -42,17 +43,25 @@ export function ChatList({ currentId }: { currentId: string | undefined }) {
 
   const confirmDelete = (chat: ChatSummary): void => {
     setDeleting(null);
+    setError(null);
     api.deleteChat(chat.id).then(
       () => {
         if (chat.id === currentId) navigate('/');
       },
-      () => undefined,
+      (reason: unknown) => {
+        setError(errorMessage(reason));
+      },
     );
   };
 
   return (
     <nav aria-label="Chats" className="chat-list">
       {chats.length === 0 && <p className="hint">No chats yet.</p>}
+      {error !== null && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
       <ul>
         {chats.map((chat) => (
           <li key={chat.id}>

@@ -166,6 +166,32 @@ test('the chat list shows every chat, moves between them, and deletes one', asyn
   await expect(links).toHaveText([/Mara Quill\s*A Quiet Morning/]);
 });
 
+test('a chat cannot be deleted while a reply is being written in it, and says why', async ({
+  page,
+  openai,
+}) => {
+  openai.respondWith({
+    kind: 'reply',
+    chunks: ['Slow', ' and', ' steady.'],
+    chunkDelayMs: 1_000,
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Start chat' }).click();
+  await send(page, 'Take your time.');
+  await expect(messages(page).last()).toContainText('Slow');
+
+  await page.getByRole('button', { name: /^Delete the chat with/ }).click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Delete chat' })
+    .click();
+
+  await expect(
+    page.getByRole('navigation', { name: 'Chats' }).getByRole('alert'),
+  ).toHaveText('A reply is being written in this chat. Stop it first.');
+  await expect(chatLinks(page)).toHaveCount(1);
+});
+
 test('deleting a scenario with chats says what happens to them, and asks first', async ({
   page,
 }) => {
