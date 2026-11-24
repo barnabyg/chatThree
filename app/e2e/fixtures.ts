@@ -120,7 +120,7 @@ interface Fixtures {
  */
 export const test = base.extend<Fixtures>({
   appEnv: [{}, { option: true }],
-  // eslint-disable-next-line no-empty-pattern -- Playwright requires fixtures to destructure their dependencies.
+  // eslint-disable-next-line no-empty-pattern -- Playwright requires a fixture to destructure its dependencies, even when it has none. Remove if Playwright comes to accept a plain parameter.
   openai: async ({}, use) => {
     const openai = await startFakeOpenAI();
     await use(openai);
