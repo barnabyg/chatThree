@@ -154,7 +154,7 @@ test('a database from a newer version of the app is refused, not damaged', () =>
   expect(() => openDatabase(file)).toThrow(/newer version of chatThree/);
 });
 
-test('a character saved before voice clips existed is still there, with the built-in voice', () => {
+test('a character saved before voice clips and pictures existed is still there, with neither', () => {
   // The characters table exactly as schema version 3 wrote it.
   const file = databaseFile();
   const old = new Database(file);
@@ -202,6 +202,7 @@ test('a character saved before voice clips existed is still there, with the buil
       name: 'Tomas Reed',
       persona: 'A ferryman.',
       hasVoice: false,
+      imageUrl: null,
     }),
   ]);
 });

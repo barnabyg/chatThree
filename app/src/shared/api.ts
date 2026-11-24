@@ -35,6 +35,11 @@ export interface Character extends CharacterInput {
    * voice cloned from that clip, or in the engine's built-in voice without.
    */
   hasVoice: boolean;
+  /**
+   * Where the character's reference picture is served from, or `null` if it
+   * has none. The address changes whenever the picture does.
+   */
+  imageUrl: string | null;
 }
 
 /**

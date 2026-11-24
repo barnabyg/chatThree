@@ -7,10 +7,10 @@
 // caches a picture by its address.
 
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-export type MediaFolder = 'voices';
+export type MediaFolder = 'voices' | 'images';
 
 export class MediaStore {
   readonly #root: string;
@@ -30,6 +30,16 @@ export class MediaStore {
   /** Where the file is on this computer, which is how the engine is told of it. */
   path(name: string): string {
     return path.join(this.#root, name);
+  }
+
+  /** The file's contents, or `undefined` if it has gone. */
+  read(name: string): Uint8Array<ArrayBuffer> | undefined {
+    try {
+      return new Uint8Array(readFileSync(this.path(name)));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+      throw error;
+    }
   }
 
   /** Delete the file. One that has already gone is not an error. */

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 import type { Character, CharacterInput } from '../../shared/api.ts';
 import type { Db } from './database.ts';
 
@@ -6,6 +7,7 @@ interface CharacterRow extends CharacterInput {
   id: string;
   chatCount: number;
   voiceFile: string | null;
+  imageFile: string | null;
 }
 
 const SELECT = `
@@ -17,11 +19,25 @@ const SELECT = `
     characters.example_dialogue AS exampleDialogue,
     characters.appearance,
     characters.voice_file AS voiceFile,
+    characters.image_file AS imageFile,
     (SELECT COUNT(*) FROM chats WHERE chats.character_id = characters.id) AS chatCount
   FROM characters`;
 
-function toCharacter({ voiceFile, ...row }: CharacterRow): Character {
-  return { ...row, hasVoice: voiceFile !== null };
+function toCharacter({
+  voiceFile,
+  imageFile,
+  ...row
+}: CharacterRow): Character {
+  return {
+    ...row,
+    hasVoice: voiceFile !== null,
+    // Served by api/characters.ts. The file's name is in the address so that
+    // a new picture has a new address, and a browser never shows the old one.
+    imageUrl:
+      imageFile === null
+        ? null
+        : `/api/characters/${row.id}/image?v=${encodeURIComponent(path.parse(imageFile).name)}`,
+  };
 }
 
 /** The user's characters, saved in the database. */
@@ -66,7 +82,7 @@ export class CharacterStore {
         now,
         now,
       );
-    return { ...input, id, chatCount: 0, hasVoice: false };
+    return { ...input, id, chatCount: 0, hasVoice: false, imageUrl: null };
   }
 
   /** Returns the updated character, or `undefined` if there is none with `id`. */
@@ -102,6 +118,23 @@ export class CharacterStore {
     this.#db
       .prepare(
         'UPDATE characters SET voice_file = ?, updated_at = ? WHERE id = ?',
+      )
+      .run(file, new Date().toISOString(), id);
+  }
+
+  /**
+   * The character's reference picture, as the name of a file in the media
+   * store, or `undefined` if the character has none.
+   */
+  imageFile(id: string): string | undefined {
+    return this.#row(id)?.imageFile ?? undefined;
+  }
+
+  /** Give the character a reference picture. */
+  setImageFile(id: string, file: string): void {
+    this.#db
+      .prepare(
+        'UPDATE characters SET image_file = ?, updated_at = ? WHERE id = ?',
       )
       .run(file, new Date().toISOString(), id);
   }

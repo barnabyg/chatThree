@@ -198,6 +198,14 @@ export const api = {
     sendFile<Character>('PUT', `/api/characters/${id}/voice`, clip),
   removeVoice: (id: string) =>
     request<Character>('DELETE', `/api/characters/${id}/voice`),
+  /** Have the engine make a character's reference picture from `appearance`. */
+  generatePicture: (id: string, appearance: string) =>
+    request<Character>('POST', `/api/characters/${id}/image/generate`, {
+      appearance,
+    }),
+  /** Use an image file of the user's own as a character's reference picture. */
+  setPicture: (id: string, picture: Blob) =>
+    sendFile<Character>('PUT', `/api/characters/${id}/image`, picture),
   /**
    * Have a character's voice made ready ahead of its first sentence. Nothing
    * waits on it and nothing is shown if it fails: speaking still works.

@@ -8,6 +8,8 @@ interface Item {
   name: string;
   excerpt: string;
   chatCount: number;
+  /** The address of a picture to show beside it, if it has one. */
+  imageUrl?: string | null;
 }
 
 /** What differs between the list of characters and the list of scenarios. */
@@ -33,12 +35,15 @@ export const CHARACTERS: Kind = {
   chatLabel: (name) => `Chat with ${name}`,
   chatsOf: (name) => `with ${name}`,
   list: async () =>
-    (await api.listCharacters()).map(({ id, name, persona, chatCount }) => ({
-      id,
-      name,
-      excerpt: persona,
-      chatCount,
-    })),
+    (await api.listCharacters()).map(
+      ({ id, name, persona, chatCount, imageUrl }) => ({
+        id,
+        name,
+        excerpt: persona,
+        chatCount,
+        imageUrl,
+      }),
+    ),
   remove: api.deleteCharacter,
 };
 
@@ -114,6 +119,13 @@ export function LibraryPage({ kind }: { kind: Kind }) {
       <ul className="cards" aria-label={kind.heading}>
         {items?.map((item) => (
           <li key={item.id} className="card">
+            {typeof item.imageUrl === 'string' && (
+              <img
+                className="card-picture"
+                src={item.imageUrl}
+                alt={`Picture of ${item.name}`}
+              />
+            )}
             <div className="card-text">
               <h2>{item.name}</h2>
               <p className="hint">{chats(item.chatCount)}</p>

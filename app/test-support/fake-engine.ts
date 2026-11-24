@@ -13,6 +13,8 @@
 //   per line: `{ "path": "/speech", "body": { ... } }`.
 // A voice clip is checked as the real engine checks it: the file must be
 // there, and hold more than 5 seconds of sound.
+// A picture is a small square of one colour, taken from the seed, so that
+// another seed gives another picture.
 // FAKE_ENGINE_CLIP_MS: how long each spoken clip lasts (default 150).
 // FAKE_ENGINE_SPEECH_FAILS: text that cannot be spoken. A request to speak
 //   anything containing it fails, as when the model breaks on a sentence.
@@ -27,6 +29,7 @@ import {
 import { parseArgs } from 'node:util';
 import { MIN_VOICE_SECONDS } from '../src/shared/api.ts';
 import { encodeWav, wavSeconds } from '../src/shared/wav.ts';
+import { solidPng } from './png.ts';
 
 const { values } = parseArgs({ options: { port: { type: 'string' } } });
 const mode = process.env.FAKE_ENGINE_MODE ?? 'ready';
@@ -130,6 +133,18 @@ function speech(body: Record<string, unknown>, response: ServerResponse): void {
   response.end(clip());
 }
 
+function image(body: Record<string, unknown>, response: ServerResponse): void {
+  if (typeof body.prompt !== 'string' || body.prompt === '') {
+    sendJson(response, 422, { detail: 'prompt is required' });
+    return;
+  }
+  const seed = typeof body.seed === 'number' ? body.seed : 0;
+  response.writeHead(200, { 'Content-Type': 'image/png' });
+  response.end(
+    solidPng(16, 16, [(seed >> 16) & 0xff, (seed >> 8) & 0xff, seed & 0xff]),
+  );
+}
+
 async function job(
   request: IncomingMessage,
   response: ServerResponse,
@@ -151,6 +166,9 @@ async function job(
       return;
     case '/voice':
       prepareVoice(body, response);
+      return;
+    case '/image':
+      image(body, response);
       return;
     default:
       response.statusCode = 404;

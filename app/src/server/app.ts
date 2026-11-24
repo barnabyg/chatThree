@@ -62,7 +62,7 @@ export function createApp(dependencies: AppDependencies): Hono {
   );
   app.route(
     '/api/characters',
-    characterRoutes(characters, replies, media, warmer),
+    characterRoutes(characters, replies, media, warmer, jobs),
   );
   app.route('/api/scenarios', scenarioRoutes(scenarios, replies));
   app.route('/api/settings', settingsRoutes(settings));

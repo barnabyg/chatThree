@@ -47,8 +47,9 @@ activity.
 
 - **Characters**: a name, a persona, a speaking style, example dialogue and
   an appearance. The persona, speaking style and example dialogue go into the
-  prompt; the appearance is kept for pictures. A character can also be given
-  a voice of its own: see [Speech](#speech).
+  prompt; the appearance is what the character's reference picture is made
+  from. A character can also be given a voice of its own: see
+  [Speech](#speech).
 - **Scenarios**: a title, a premise, the part you play (a name and a short
   description), an opening message and a starting location. The opening
   message becomes the character's first message in a new chat; the rest goes
@@ -69,10 +70,29 @@ Chats and settings are kept on this computer, outside the repository:
 | `%LOCALAPPDATA%\chatThree\chatthree.db` | Chats and messages (SQLite) |
 | `%LOCALAPPDATA%\chatThree\settings.json` | The model, the speech settings and a saved API key |
 | `%LOCALAPPDATA%\chatThree\voices\` | The characters' voice clips |
+| `%LOCALAPPDATA%\chatThree\images\` | The characters' reference pictures |
 
 Set `CHATTHREE_DATA_DIR` to keep them somewhere else. On macOS the default is
 `~/Library/Application Support/chatThree`, and on Linux
 `~/.local/share/chatthree`.
+
+## Reference pictures
+
+Each character can have a reference picture, which will keep the character
+looking the same from scene to scene once scenes are illustrated. Edit the
+character and, under **Picture**:
+
+- **Generate picture** has the engine paint one from the appearance text as
+  it reads in the editor at that moment, saved or not. It takes a few
+  seconds.
+- **Generate another** paints a different one from the same text, in place
+  of the first. Change the appearance between tries to steer it.
+- **Upload a picture** uses a PNG, JPEG or WebP image of your own instead.
+
+The picture is saved as soon as it is made or chosen, is shown in the editor
+and beside the character in the list, and is kept in the app's data folder.
+If the engine is not ready, generating says so; uploading and the rest of
+the editor do not need the engine.
 
 ## Speech
 
@@ -190,6 +210,28 @@ and little background noise.
    longer than 5 seconds; the earlier clip is still in use.
 8. Choose **Remove voice clip**, then **Preview voice**. Expect the built-in
    voice again, and `%LOCALAPPDATA%\chatThree\voices` to be empty.
+
+## Manual check: a reference picture
+
+Needs the real engine, so a GPU.
+
+1. Start the app: `cd C:\docs\git\chatThree; pwsh ./start.ps1`
+2. Wait until the page shows **Engine ready**.
+3. Choose **Characters**, then **Edit** on Mara Quill. Under **Picture**,
+   choose **Generate picture**. Expect, within about 10 seconds, a portrait
+   that fits the appearance text: a weathered woman in her fifties with
+   grey-streaked dark hair, in a heavy jumper.
+4. Choose **Generate another**. Expect a visibly different picture of the
+   same description to take its place.
+5. Change the appearance to `A young man with red hair and a green scarf.`
+   and, without saving, choose **Generate another**. Expect a picture of
+   that description.
+6. Reload the page. Expect the last picture still to be shown, and the
+   appearance text to be the original (it was not saved).
+7. Under **Upload a picture**, choose any PNG or JPEG image. Expect it to
+   take the generated picture's place.
+8. Choose **Characters**. Expect the picture beside Mara Quill, and exactly
+   one file in `%LOCALAPPDATA%\chatThree\images`.
 
 ## Check it
 

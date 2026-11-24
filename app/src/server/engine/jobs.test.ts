@@ -87,6 +87,24 @@ test('preparing a voice sends its clip and waits for the engine to finish', asyn
   ]);
 });
 
+test('painting sends what to paint and returns the picture', async () => {
+  const { jobs, received } = await engine((response) => {
+    response.writeHead(200, { 'Content-Type': 'image/png' });
+    response.end(Buffer.from([137, 80, 78, 71]));
+  });
+  const request = {
+    prompt: 'A lighthouse.',
+    width: 768,
+    height: 1024,
+    seed: 7,
+  };
+
+  const picture = await jobs.paint(request);
+
+  expect([...picture]).toEqual([137, 80, 78, 71]);
+  expect(received).toEqual([{ path: '/image', body: request }]);
+});
+
 test('an engine that is not ready is unavailable', async () => {
   const jobs = engineJobs({ url: () => undefined });
 

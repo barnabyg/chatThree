@@ -144,6 +144,11 @@ const MIGRATIONS: readonly ((db: Db) => void)[] = [
   (db) => {
     db.exec('ALTER TABLE characters ADD COLUMN voice_file TEXT');
   },
+
+  // 5: a reference picture per character, kept the same way as the voice clip.
+  (db) => {
+    db.exec('ALTER TABLE characters ADD COLUMN image_file TEXT');
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

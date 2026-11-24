@@ -13,7 +13,7 @@ import type {
 } from '../shared/api.ts';
 import { createApp } from './app.ts';
 import type { ChatProvider, ReplyRequest } from './chat/provider.ts';
-import type { EngineJobs } from './engine/jobs.ts';
+import type { EngineJobs, PaintRequest } from './engine/jobs.ts';
 import { ReplyService } from './chat/replies.ts';
 import type { EngineControl } from './engine/supervisor.ts';
 import { VoiceWarmer } from './engine/warmer.ts';
@@ -54,7 +54,8 @@ export function stubEngine(initial: EngineStatus): StubEngine {
 /** One job the fake engine was asked to do. */
 export type JobRequest =
   | { job: 'speak'; text: string; voice?: string }
-  | { job: 'prepare-voice'; voice: string };
+  | { job: 'prepare-voice'; voice: string }
+  | ({ job: 'paint' } & PaintRequest);
 
 export type FakeJobs = EngineJobs & {
   /** Every job asked for, oldest first. */
@@ -64,6 +65,12 @@ export type FakeJobs = EngineJobs & {
   /** Make every job from now on fail with `error`. */
   failWith(error: Error): void;
 };
+
+/** What the fake engine paints for `seed`: a PNG file's first bytes, then the seed. */
+export function fakePicture(seed: number): Uint8Array<ArrayBuffer> {
+  const seedBytes = new Uint8Array(new Uint32Array([seed]).buffer);
+  return new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, ...seedBytes]);
+}
 
 /** An engine that does every job at once, and records what it was asked. */
 export function fakeJobs(): FakeJobs {
@@ -93,6 +100,12 @@ export function fakeJobs(): FakeJobs {
     prepareVoice(voice) {
       return Promise.resolve().then(() => {
         record({ job: 'prepare-voice', voice });
+      });
+    },
+    paint(request) {
+      return Promise.resolve().then(() => {
+        record({ job: 'paint', ...request });
+        return fakePicture(request.seed);
       });
     },
   };

@@ -61,6 +61,7 @@ describe('creating a character', () => {
       id: created.id,
       chatCount: 0,
       hasVoice: false,
+      imageUrl: null,
     });
   });
 

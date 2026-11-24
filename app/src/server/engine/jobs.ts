@@ -4,6 +4,8 @@ import type { EngineControl } from './supervisor.ts';
 
 const SPEECH_TIMEOUT_MS = 60_000;
 const VOICE_TIMEOUT_MS = 60_000;
+// An image waits its turn behind speech, and gives way to it between steps.
+const IMAGE_TIMEOUT_MS = 180_000;
 
 /** The engine cannot take jobs: it is loading, has failed, or has gone. */
 export class EngineUnavailableError extends Error {
@@ -28,6 +30,16 @@ export interface SpeakOptions {
   signal?: AbortSignal;
 }
 
+export interface PaintRequest {
+  /** What the picture should show. */
+  prompt: string;
+  /** In pixels: each a multiple of 16, from 256 to 2048. */
+  width: number;
+  height: number;
+  /** The same prompt and seed give the same picture; another seed, another picture. */
+  seed: number;
+}
+
 export interface EngineJobs {
   /** Speak `text`. Resolves to the clip, as a WAV file. */
   speak(text: string, options?: SpeakOptions): Promise<Uint8Array<ArrayBuffer>>;
@@ -36,6 +48,8 @@ export interface EngineJobs {
    * sentence spoken in it does not wait for that.
    */
   prepareVoice(voice: string): Promise<void>;
+  /** Make a picture. Resolves to it, as a PNG file. */
+  paint(request: PaintRequest): Promise<Uint8Array<ArrayBuffer>>;
 }
 
 /** The engine's reason for refusing a request, from FastAPI's error body. */
@@ -99,6 +113,10 @@ export function engineJobs(engine: Pick<EngineControl, 'url'>): EngineJobs {
     },
     async prepareVoice(voice) {
       await post('/voice', { voice }, VOICE_TIMEOUT_MS);
+    },
+    async paint(request) {
+      const response = await post('/image', request, IMAGE_TIMEOUT_MS);
+      return new Uint8Array(await response.arrayBuffer());
     },
   };
 }
