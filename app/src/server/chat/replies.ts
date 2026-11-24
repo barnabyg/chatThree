@@ -28,7 +28,8 @@ export class ChatBusyError extends Error {
 /** A request that makes no sense for the chat as it stands. */
 export class ChatRequestError extends Error {}
 
-function userMessage(error: unknown): string {
+/** Why no reply could be produced, in words for the user. */
+function describeFailure(error: unknown): string {
   if (error instanceof ProviderError) return error.message;
   console.error('Unexpected failure while writing a reply:', error);
   return 'Something went wrong while writing the reply. Try again.';
@@ -199,7 +200,7 @@ export class ReplyService {
     } catch (error) {
       // A stopped reply keeps what was written; any other failure discards it.
       if (!signal.aborted) {
-        yield { type: 'error', message: userMessage(error) };
+        yield { type: 'error', message: describeFailure(error) };
         return;
       }
     }

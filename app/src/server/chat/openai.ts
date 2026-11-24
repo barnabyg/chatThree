@@ -73,7 +73,8 @@ async function rejection(response: Response): Promise<ProviderError> {
   );
 }
 
-function unreachable(error: unknown): ProviderError {
+/** The error to report when OpenAI could not be reached, or was cut off. */
+function networkFailure(error: unknown): ProviderError {
   const cause = error instanceof Error ? error.cause : undefined;
   const detail =
     cause instanceof Error
@@ -128,7 +129,7 @@ export function openAIProvider(options: OpenAIOptions): ChatProvider {
         });
       } catch (error) {
         if (signal.aborted) throw error;
-        throw unreachable(error);
+        throw networkFailure(error);
       }
       if (!response.ok) throw await rejection(response);
       if (response.body === null) {
@@ -169,7 +170,7 @@ export function openAIProvider(options: OpenAIOptions): ChatProvider {
         }
       } catch (error) {
         if (error instanceof ProviderError || signal.aborted) throw error;
-        throw unreachable(error);
+        throw networkFailure(error);
       }
       throw new ProviderError(
         'The connection to OpenAI ended before the reply was complete. Try again.',
