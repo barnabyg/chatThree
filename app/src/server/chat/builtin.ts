@@ -2,6 +2,9 @@
 //
 // They are the seed for a new database: once there, each is an ordinary
 // character or scenario the user can edit or delete (see store/database.ts).
+// Editing them here changes what a database created from now on starts
+// with. It changes no existing database, and no table layout: the
+// migrations that insert them are otherwise frozen.
 
 import type { CharacterInput, ScenarioInput } from '../../shared/api.ts';
 
