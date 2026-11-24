@@ -5,11 +5,13 @@ import { engineRoutes } from './api/engine.ts';
 import { scenarioRoutes } from './api/scenarios.ts';
 import { ApiError } from './api/errors.ts';
 import { settingsRoutes } from './api/settings.ts';
+import { speechRoutes } from './api/speech.ts';
 import {
   ChatBusyError,
   ChatRequestError,
   type ReplyService,
 } from './chat/replies.ts';
+import type { EngineJobs } from './engine/jobs.ts';
 import type { EngineControl } from './engine/supervisor.ts';
 import { localOnly } from './localOnly.ts';
 import type { SettingsStore } from './settings.ts';
@@ -21,6 +23,8 @@ import type { ScenarioStore } from './store/scenarios.ts';
 export interface AppDependencies {
   uiDir: string;
   engine: EngineControl;
+  /** The jobs the engine does: speech and pictures. */
+  jobs: EngineJobs;
   chats: ChatStore;
   characters: CharacterStore;
   scenarios: ScenarioStore;
@@ -30,8 +34,16 @@ export interface AppDependencies {
 
 /** The HTTP application: the JSON API under `/api`, the UI everywhere else. */
 export function createApp(dependencies: AppDependencies): Hono {
-  const { uiDir, engine, chats, characters, scenarios, settings, replies } =
-    dependencies;
+  const {
+    uiDir,
+    engine,
+    jobs,
+    chats,
+    characters,
+    scenarios,
+    settings,
+    replies,
+  } = dependencies;
   const app = new Hono();
   app.use(localOnly);
 
@@ -44,6 +56,7 @@ export function createApp(dependencies: AppDependencies): Hono {
   app.route('/api/characters', characterRoutes(characters, replies));
   app.route('/api/scenarios', scenarioRoutes(scenarios, replies));
   app.route('/api/settings', settingsRoutes(settings));
+  app.route('/api/speech', speechRoutes(jobs));
   app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));
 
   // Every API failure is `{ "error": "<message for the user>" }`.

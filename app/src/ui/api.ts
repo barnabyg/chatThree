@@ -10,6 +10,7 @@ import type {
   ScenarioInput,
   Settings,
   SettingsUpdate,
+  SpeechRequest,
 } from '../shared/api.ts';
 
 const NOT_RUNNING =
@@ -40,10 +41,12 @@ async function send(
   method: string,
   url: string,
   body?: unknown,
+  signal?: AbortSignal,
 ): Promise<Response> {
   try {
     return await fetch(url, {
       method,
+      ...(signal !== undefined && { signal }),
       ...(body !== undefined && {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -75,6 +78,16 @@ async function request<T>(
   return response.status === 204
     ? (undefined as T)
     : ((await response.json()) as T);
+}
+
+/** Have one sentence spoken. Resolves to the clip. Changes nothing on the server. */
+async function speak(
+  request: SpeechRequest,
+  signal: AbortSignal,
+): Promise<Blob> {
+  const response = await send('POST', '/api/speech', request, signal);
+  if (!response.ok) throw new Error(await failure(response));
+  return response.blob();
 }
 
 /**
@@ -170,4 +183,5 @@ export const api = {
   getSettings: () => request<Settings>('GET', '/api/settings'),
   updateSettings: (update: SettingsUpdate) =>
     request<Settings>('PUT', '/api/settings', update),
+  speak,
 };

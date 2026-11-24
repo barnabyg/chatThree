@@ -66,11 +66,35 @@ Chats and settings are kept on this computer, outside the repository:
 | File | Holds |
 |---|---|
 | `%LOCALAPPDATA%\chatThree\chatthree.db` | Chats and messages (SQLite) |
-| `%LOCALAPPDATA%\chatThree\settings.json` | The model and a saved API key |
+| `%LOCALAPPDATA%\chatThree\settings.json` | The model, the speech settings and a saved API key |
 
 Set `CHATTHREE_DATA_DIR` to keep them somewhere else. On macOS the default is
 `~/Library/Application Support/chatThree`, and on Linux
 `~/.local/share/chatthree`.
+
+## Speech
+
+Replies are spoken aloud as they arrive, by the engine, in its built-in voice.
+The engine returns each clip whole, so the app splits the reply into sentences
+as it streams in, has each one spoken, and plays the clips in order: the first
+sentence is heard while the rest is still being written.
+
+- **Speak replies** in a chat's header turns speech off and on. The choice is
+  saved, and is also in **Settings**.
+- **Stop** ends the reply and what is being said. Once the reply has all
+  arrived, **Stop speaking** ends only the speech.
+- **Settings > What is spoken** chooses between only what the character says
+  (the default) and the whole reply. What the character says is the text in
+  double quotation marks. A reply with no quotation marks that marks its actions
+  with `*asterisks*`, as the built-in character's do, is written the other way
+  round: there, everything outside the asterisks is spoken. A reply with
+  neither is spoken whole, once it has all arrived.
+- Formatting marks such as asterisks are never spoken, and a sentence longer
+  than the engine takes in one request (600 characters) is split first.
+
+Text chat does not depend on speech. If the engine is not ready, or cannot
+speak a sentence, the reply still arrives and the chat says that speech is
+unavailable.
 
 ## Configuration
 
@@ -107,6 +131,26 @@ Everything works without any of these. They are read when the app starts.
 5. Run the `nvidia-smi` command again. Expect the figure to be back to what
    the desktop alone uses (about 1.5 GB), and this to print nothing:
    `Get-CimInstance Win32_Process | Where-Object CommandLine -like '*chatthree_engine*'`
+
+## Manual check: spoken replies
+
+Needs the real engine, so a GPU, and speakers or headphones.
+
+1. Start the app: `cd C:\docs\git\chatThree; pwsh ./start.ps1`
+2. Wait until the page shows **Engine ready**.
+3. Choose **New chat**, then **Start chat**, and send
+   `Is it always this rough out here?`
+4. Expect to hear the reply in the engine's built-in voice, starting while
+   the text is still arriving. The sentences come in order and do not
+   overlap. The actions between asterisks are not read out.
+5. Send another message and, while it is being spoken, choose **Stop
+   speaking** (or **Stop** if the reply is still arriving). Expect the sound
+   to end at once and not to resume.
+6. Untick **Speak replies** and send a message. Expect silence. Reload the
+   page: the box is still unticked.
+7. Tick **Speak replies** again. In **Settings**, set **What is spoken** to
+   **The whole reply** and save. Back in the chat, send a message. Expect the
+   actions to be read out as well, and the word "asterisk" never to be said.
 
 ## Check it
 

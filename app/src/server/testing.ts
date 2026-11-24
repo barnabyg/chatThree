@@ -13,6 +13,7 @@ import type {
 } from '../shared/api.ts';
 import { createApp } from './app.ts';
 import type { ChatProvider, ReplyRequest } from './chat/provider.ts';
+import type { EngineJobs } from './engine/jobs.ts';
 import { ReplyService } from './chat/replies.ts';
 import type { EngineControl } from './engine/supervisor.ts';
 import { SettingsStore } from './settings.ts';
@@ -35,6 +36,7 @@ export function stubEngine(initial: EngineStatus): StubEngine {
   };
   return {
     status: () => current,
+    url: () => undefined,
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -44,6 +46,45 @@ export function stubEngine(initial: EngineStatus): StubEngine {
       return Promise.resolve();
     },
     set,
+  };
+}
+
+/** One job the fake engine was asked to do. */
+export interface JobRequest {
+  job: 'speak';
+  text: string;
+}
+
+export type FakeJobs = EngineJobs & {
+  /** Every job asked for, oldest first. */
+  requests: JobRequest[];
+  /** What every spoken sentence comes back as. */
+  clip: Uint8Array<ArrayBuffer>;
+  /** Make every job from now on fail with `error`. */
+  failWith(error: Error): void;
+};
+
+/** An engine that does every job at once, and records what it was asked. */
+export function fakeJobs(): FakeJobs {
+  const requests: JobRequest[] = [];
+  const clip = new Uint8Array([82, 73, 70, 70, 1, 2, 3]);
+  let failure: Error | undefined;
+  const record = (request: JobRequest): void => {
+    if (failure !== undefined) throw failure;
+    requests.push(request);
+  };
+  return {
+    requests,
+    clip,
+    failWith(error) {
+      failure = error;
+    },
+    speak(text) {
+      return Promise.resolve().then(() => {
+        record({ job: 'speak', text });
+        return clip;
+      });
+    },
   };
 }
 
@@ -98,6 +139,7 @@ export function scriptedProvider(): ScriptedProvider {
 export interface TestApp {
   app: Hono;
   provider: ScriptedProvider;
+  jobs: FakeJobs;
   chats: ChatStore;
   characters: CharacterStore;
   scenarios: ScenarioStore;
@@ -141,9 +183,11 @@ export function testApp(
     options.environmentApiKey,
   );
   const provider = scriptedProvider();
+  const jobs = fakeJobs();
   const app = createApp({
     uiDir: options.uiDir ?? path.join(directory, 'no-ui'),
     engine: options.engine ?? stubEngine({ state: 'ready' }),
+    jobs,
     chats,
     characters,
     scenarios,
@@ -162,6 +206,7 @@ export function testApp(
   return {
     app,
     provider,
+    jobs,
     chats,
     characters,
     scenarios,

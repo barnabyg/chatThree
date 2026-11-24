@@ -6,6 +6,7 @@ import { createApp } from './app.ts';
 import { openAIProvider } from './chat/openai.ts';
 import { ReplyService } from './chat/replies.ts';
 import type { AppConfig } from './config.ts';
+import { engineJobs } from './engine/jobs.ts';
 import { EngineSupervisor } from './engine/supervisor.ts';
 import { LOOPBACK } from './loopback.ts';
 import { SettingsStore } from './settings.ts';
@@ -49,6 +50,7 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
   const app = createApp({
     uiDir: config.uiDir,
     engine,
+    jobs: engineJobs(engine),
     chats,
     characters,
     scenarios,

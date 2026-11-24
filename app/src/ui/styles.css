@@ -224,6 +224,21 @@ textarea {
   resize: vertical;
 }
 
+input[type='checkbox'] {
+  width: auto;
+}
+
+/* A checkbox with its label beside it. */
+label.toggle,
+.form label.toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
 .form {
   display: flex;
   flex-direction: column;
@@ -462,6 +477,14 @@ legend {
   white-space: pre-wrap;
 }
 
+.speech-problem {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--warn);
+  border-radius: 0.5rem;
+  color: var(--warn);
+}
+
 .conversation-actions {
   display: flex;
   gap: 0.5rem;
@@ -484,6 +507,10 @@ legend {
 .composer textarea {
   flex: 1;
   resize: none;
+}
+
+.composer button {
+  white-space: nowrap;
 }
 
 /* Engine status. */

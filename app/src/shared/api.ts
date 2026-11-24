@@ -88,10 +88,30 @@ export type ReplyEvent =
   /** No reply could be produced. The user's message is still saved. */
   | { type: 'error'; message: string };
 
+/**
+ * The most text the engine speaks in one request (MAX_SPEECH_CHARACTERS in
+ * the engine's server.py). Longer text is split before it is sent.
+ */
+export const MAX_SPEECH_CHARACTERS = 600;
+
+/**
+ * How much of a reply is spoken: only what the character says, or the
+ * narration as well. See ui/speech/sentences.ts for how speech is told apart.
+ */
+export type SpeechScope = 'dialogue' | 'everything';
+
+/** One piece of text to speak. The answer is the clip, as `audio/wav`. */
+export interface SpeechRequest {
+  text: string;
+}
+
 export interface Settings {
   model: string;
   /** How many tokens of conversation are sent to the model each turn, at most. */
   contextTokenBudget: number;
+  /** When true, replies are not spoken aloud. */
+  speechMuted: boolean;
+  speechScope: SpeechScope;
   /**
    * Where the OpenAI API key in use comes from. The key itself never leaves
    * the server.
@@ -102,6 +122,8 @@ export interface Settings {
 export interface SettingsUpdate {
   model?: string;
   contextTokenBudget?: number;
+  speechMuted?: boolean;
+  speechScope?: SpeechScope;
   /** A new key to save, or `null` to forget the saved one. */
   apiKey?: string | null;
 }
