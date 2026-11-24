@@ -258,7 +258,7 @@ describe('illustrating a message', () => {
 
     await expect
       .poll(async () => (await readChat(app, chat.id)).illustrating[0]?.error)
-      .toBe('The picture cannot be made because the engine is not ready.');
+      .toBe('A picture cannot be made because the engine is not ready.');
   });
 
   test("a deleted message's pictures are deleted with it", async () => {

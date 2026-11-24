@@ -11,7 +11,7 @@ import type { VoiceWarmer } from '../engine/warmer.ts';
 import type { Illustrator } from '../scene/illustrator.ts';
 import type { CharacterStore } from '../store/characters.ts';
 import type { MediaStore } from '../store/media.ts';
-import { engineFailure, type EngineFailureWords } from './engineFailures.ts';
+import { engineFailure, NOT_PAINTED } from './engineFailures.ts';
 import { ApiError, readBody } from './errors.ts';
 
 const MAX_NAME_LENGTH = 100;
@@ -52,12 +52,6 @@ function pictureKind(bytes: Uint8Array): string | undefined {
   if (ascii(0, 'RIFF') && ascii(8, 'WEBP')) return 'webp';
   return undefined;
 }
-
-const NOT_PAINTED: EngineFailureWords = {
-  unavailable: 'A picture cannot be made because the engine is not ready.',
-  refused: (reason) => `The engine refused to make the picture: ${reason}`,
-  failed: 'The engine could not make the picture.',
-};
 
 /** Check that a voice can be cloned from an uploaded clip, or refuse it. */
 function checkVoiceClip(clip: Uint8Array): void {

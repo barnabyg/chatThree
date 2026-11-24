@@ -9,12 +9,8 @@
 import { randomInt } from 'node:crypto';
 import type { IllustrationProgress } from '../../shared/api.ts';
 import { ProviderError, type ChatProvider } from '../chat/provider.ts';
-import {
-  EngineFailedError,
-  EngineRefusedError,
-  EngineUnavailableError,
-  type EngineJobs,
-} from '../engine/jobs.ts';
+import { engineFailureMessage, NOT_PAINTED } from '../api/engineFailures.ts';
+import type { EngineJobs } from '../engine/jobs.ts';
 import type { SettingsStore } from '../settings.ts';
 import type { CharacterStore } from '../store/characters.ts';
 import type { ChatStore } from '../store/chats.ts';
@@ -57,19 +53,13 @@ function describeFailure(error: unknown): string {
   ) {
     return error.message;
   }
-  if (error instanceof EngineUnavailableError) {
-    return 'The picture cannot be made because the engine is not ready.';
-  }
-  if (error instanceof EngineRefusedError) {
-    return `The engine refused to make the picture: ${error.message}`;
-  }
-  if (error instanceof EngineFailedError) {
-    return 'The engine could not make the picture.';
-  }
+  const engine = engineFailureMessage(error, NOT_PAINTED);
+  if (engine !== undefined) return engine;
   console.error('Unexpected failure while illustrating:', error);
   return 'Something went wrong while making the picture.';
 }
 
+/** What the illustrator works with. */
 export interface IllustratorDependencies {
   chats: ChatStore;
   characters: CharacterStore;
@@ -102,6 +92,10 @@ interface PaintJob {
   described: Described;
 }
 
+/**
+ * Makes chats' illustrations, by hand and after replies, and keeps track of
+ * how far each has got.
+ */
 export class Illustrator {
   readonly #chats: ChatStore;
   readonly #characters: CharacterStore;
@@ -453,10 +447,7 @@ export class Illustrator {
       });
       const file = this.#media.save('scenes', 'png', scene);
       // The message may have gone while it was painted.
-      if (
-        this.#scenes.addIllustration(chatId, messageId, location.id, file) ===
-        undefined
-      ) {
+      if (!this.#scenes.addIllustration(chatId, messageId, location.id, file)) {
         this.#media.remove(file);
       }
       this.#clear(chatId, messageId);
@@ -488,14 +479,14 @@ export class Illustrator {
       seed: randomInt(MAX_SEED),
     });
     const file = this.#media.save('locations', 'png', picture);
-    const old = this.#scenes.setLocationImage(location.id, file);
-    if (old === false) {
+    const saved = this.#scenes.setLocationImage(location.id, file);
+    if (saved === undefined) {
       this.#media.remove(file);
       throw new IllustrationRequestError(
         'That place is no longer in the chat.',
       );
     }
-    if (old !== undefined) this.#media.remove(old);
+    if (saved.replaced !== undefined) this.#media.remove(saved.replaced);
     return file;
   }
 }

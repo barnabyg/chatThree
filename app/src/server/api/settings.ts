@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { ILLUSTRATION_MODES } from '../../shared/api.ts';
 import { isWellFormedApiKey } from '../apiKey.ts';
 import {
   MAX_ILLUSTRATION_COOLDOWN,
@@ -26,7 +27,7 @@ const update = z.strictObject({
     .optional(),
   illustrationMode: z
     .enum(
-      ['off', 'scene-changes', 'key-moments', 'every-reply'],
+      ILLUSTRATION_MODES,
       'The illustration mode must be "off", "scene-changes", "key-moments" or "every-reply".',
     )
     .optional(),

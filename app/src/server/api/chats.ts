@@ -18,14 +18,8 @@ import type { ChatStore } from '../store/chats.ts';
 import type { MediaStore } from '../store/media.ts';
 import type { ScenarioStore } from '../store/scenarios.ts';
 import type { SceneStore, StoredLocation } from '../store/scenes.ts';
-import { engineFailure, type EngineFailureWords } from './engineFailures.ts';
+import { engineFailure, NOT_PAINTED } from './engineFailures.ts';
 import { ApiError, readBody } from './errors.ts';
-
-const NOT_PAINTED: EngineFailureWords = {
-  unavailable: 'A picture cannot be made because the engine is not ready.',
-  refused: (reason) => `The engine refused to make the picture: ${reason}`,
-  failed: 'The engine could not make the picture.',
-};
 
 const MAX_MESSAGE_LENGTH = 20_000;
 
@@ -101,6 +95,7 @@ function toLocation(
   };
 }
 
+/** What the chat routes work with. */
 export interface ChatRouteDependencies {
   chats: ChatStore;
   characters: CharacterStore;
@@ -152,7 +147,10 @@ export function chatRoutes({
       messages,
       location: current,
       locations: scenes.locations(id).map((place) => toLocation(id, place)),
-      illustrations: scenes.illustrations(id),
+      illustrations: scenes.illustrations(id).map((illustration) => ({
+        ...illustration,
+        imageUrl: `/api/chats/${id}/illustrations/${String(illustration.id)}/image`,
+      })),
       // A failure stays until it is tried again, unless its message has gone.
       illustrating: illustrator
         .progress(id)
@@ -274,6 +272,7 @@ export function chatRoutes({
     return c.json(view(existing(c)));
   });
 
+  // One of the chat's illustrations. Its address only ever serves that picture.
   routes.get('/:id/illustrations/:illustrationId/image', (c) => {
     const chat = existing(c);
     const id = idParam(c.req.param('illustrationId'));

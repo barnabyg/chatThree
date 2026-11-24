@@ -3,11 +3,12 @@
 // the chats never carries the API key with it.
 
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import type {
-  IllustrationMode,
-  Settings,
-  SettingsUpdate,
-  SpeechScope,
+import {
+  ILLUSTRATION_MODES,
+  type IllustrationMode,
+  type Settings,
+  type SettingsUpdate,
+  type SpeechScope,
 } from '../shared/api.ts';
 
 export const DEFAULT_MODEL = 'gpt-5.5';
@@ -21,12 +22,6 @@ export const DEFAULT_ILLUSTRATION_MODE: IllustrationMode = 'key-moments';
 export const DEFAULT_ILLUSTRATION_COOLDOWN = 3;
 export const MIN_ILLUSTRATION_COOLDOWN = 1;
 export const MAX_ILLUSTRATION_COOLDOWN = 100;
-const ILLUSTRATION_MODES: readonly unknown[] = [
-  'off',
-  'scene-changes',
-  'key-moments',
-  'every-reply',
-] satisfies IllustrationMode[];
 /** Narration is skipped unless the user asks for it. */
 export const DEFAULT_SPEECH_SCOPE: SpeechScope = 'dialogue';
 
@@ -62,7 +57,9 @@ function load(file: string): Saved {
     return {
       ...(typeof model === 'string' && { model }),
       ...(typeof sceneModel === 'string' && { sceneModel }),
-      ...(ILLUSTRATION_MODES.includes(illustrationMode) && {
+      ...((ILLUSTRATION_MODES as readonly unknown[]).includes(
+        illustrationMode,
+      ) && {
         illustrationMode: illustrationMode as IllustrationMode,
       }),
       // A hand-edited cooldown outside what Settings allows is ignored.
@@ -103,14 +100,17 @@ export class SettingsStore {
     return this.#saved.model ?? DEFAULT_MODEL;
   }
 
+  /** The model that describes scenes for illustrations. */
   sceneModel(): string {
     return this.#saved.sceneModel ?? DEFAULT_SCENE_MODEL;
   }
 
+  /** When replies are illustrated without being asked. */
   illustrationMode(): IllustrationMode {
     return this.#saved.illustrationMode ?? DEFAULT_ILLUSTRATION_MODE;
   }
 
+  /** In Key moments, how many replies must pass after a picture before another. */
   illustrationCooldown(): number {
     return this.#saved.illustrationCooldown ?? DEFAULT_ILLUSTRATION_COOLDOWN;
   }

@@ -1,7 +1,6 @@
 // What a chat's illustrations need: the places its story has been, which one
 // it is in now, and the pictures made of its moments.
 
-import type { Illustration } from '../../shared/api.ts';
 import type { Db } from './database.ts';
 
 /** A place in one chat's story. */
@@ -28,11 +27,13 @@ const fromRow = ({ imageFile, ...row }: LocationRow): StoredLocation => ({
 const LOCATION =
   'SELECT id, name, description, image_file AS imageFile FROM locations';
 
-/** Where an illustration is served from (api/chats.ts). */
-function illustrationUrl(chatId: string, id: number): string {
-  return `/api/chats/${chatId}/illustrations/${String(id)}/image`;
+/** A picture of one of a chat's messages. */
+export interface StoredIllustration {
+  id: number;
+  messageId: number;
 }
 
+/** Chats' places and illustrations, saved in the database. */
 export class SceneStore {
   readonly #db: Db;
 
@@ -121,29 +122,29 @@ export class SceneStore {
   }
 
   /**
-   * Record the place's reference picture. Returns the file it replaces, or
-   * `undefined` if it had none; `false` if the place has gone.
+   * Record the place's reference picture. Returns the file it replaces, if
+   * any, or `undefined` if the place has gone.
    */
   setLocationImage(
     locationId: number,
     file: string,
-  ): string | undefined | false {
+  ): { replaced: string | undefined } | undefined {
     return this.#db.transaction(() => {
       const old = this.#db
         .prepare<[number], { imageFile: string | null }>(
           'SELECT image_file AS imageFile FROM locations WHERE id = ?',
         )
         .get(locationId);
-      if (old === undefined) return false;
+      if (old === undefined) return undefined;
       this.#db
         .prepare('UPDATE locations SET image_file = ? WHERE id = ?')
         .run(file, locationId);
-      return old.imageFile ?? undefined;
+      return { replaced: old.imageFile ?? undefined };
     })();
   }
 
   /**
-   * Record a picture of a message, made in `locationId`. Returns `undefined`,
+   * Record a picture of a message, made in `locationId`. Returns false,
    * recording nothing, if the message is no longer in the chat.
    */
   addIllustration(
@@ -151,37 +152,31 @@ export class SceneStore {
     messageId: number,
     locationId: number,
     file: string,
-  ): Illustration | undefined {
+  ): boolean {
     const message = this.#db
       .prepare<[number, string], { id: number }>(
         'SELECT id FROM messages WHERE id = ? AND chat_id = ?',
       )
       .get(messageId, chatId);
-    if (message === undefined) return undefined;
-    const { lastInsertRowid } = this.#db
+    if (message === undefined) return false;
+    this.#db
       .prepare(
         `INSERT INTO illustrations (message_id, location_id, image_file, created_at)
          VALUES (?, (SELECT id FROM locations WHERE id = ?), ?, ?)`,
       )
       .run(messageId, locationId, file, new Date().toISOString());
-    const id = Number(lastInsertRowid);
-    return { id, messageId, imageUrl: illustrationUrl(chatId, id) };
+    return true;
   }
 
   /** The chat's illustrations, oldest first. */
-  illustrations(chatId: string): Illustration[] {
+  illustrations(chatId: string): StoredIllustration[] {
     return this.#db
       .prepare<[string], { id: number; messageId: number }>(
         `SELECT illustrations.id, illustrations.message_id AS messageId
          FROM illustrations JOIN messages ON messages.id = illustrations.message_id
          WHERE messages.chat_id = ? ORDER BY illustrations.id`,
       )
-      .all(chatId)
-      .map(({ id, messageId }) => ({
-        id,
-        messageId,
-        imageUrl: illustrationUrl(chatId, id),
-      }));
+      .all(chatId);
   }
 
   /** The name of an illustration's file, if the chat has that illustration. */

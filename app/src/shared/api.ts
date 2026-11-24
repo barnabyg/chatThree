@@ -184,8 +184,13 @@ export interface SpeechRequest {
  * moves somewhere new, at moments worth it as well (with a cooldown), or
  * every reply.
  */
-export type IllustrationMode =
-  'off' | 'scene-changes' | 'key-moments' | 'every-reply';
+export const ILLUSTRATION_MODES = [
+  'off',
+  'scene-changes',
+  'key-moments',
+  'every-reply',
+] as const;
+export type IllustrationMode = (typeof ILLUSTRATION_MODES)[number];
 
 export interface Settings {
   model: string;
