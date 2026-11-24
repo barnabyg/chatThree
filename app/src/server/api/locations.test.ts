@@ -48,13 +48,24 @@ async function readChat(app: TestApp, id: string): Promise<Chat> {
   return (await (await app.call('GET', `/api/chats/${id}`)).json()) as Chat;
 }
 
-/** Send a message and return the character's reply to it. */
+/**
+ * Wait for the scene call that runs after a reply, which takes an
+ * unscripted answer (staying put) unless one was scripted before the reply.
+ */
+async function sceneFollowed(app: TestApp, chat: Chat): Promise<void> {
+  await expect
+    .poll(async () => (await readChat(app, chat.id)).followingScene)
+    .toBe(false);
+}
+
+/** Send a message and return the character's reply to it, once the scene call after it is done. */
 async function exchange(app: TestApp, chat: Chat): Promise<Message> {
   await replyEvents(
     await app.call('POST', `/api/chats/${chat.id}/messages`, {
       content: 'Go on.',
     }),
   );
+  await sceneFollowed(app, chat);
   const reply = (await readChat(app, chat.id)).messages.at(-1);
   if (reply === undefined) throw new Error('expected a reply');
   return reply;
@@ -173,11 +184,13 @@ describe("following the story's places", () => {
   test('returning to an earlier place reuses its picture', async () => {
     const { app, chat } = await lighthouseChat();
     await illustrated(app, chat, chat.messages[0]);
+    const second = await exchange(app, chat);
     app.provider.scriptStructured(sceneAt(true, 'The lamp room', 'Glass.'));
-    await illustrated(app, chat, await exchange(app, chat));
+    await illustrated(app, chat, second);
+    const third = await exchange(app, chat);
     app.provider.scriptStructured(sceneAt(true, 'the kitchen'));
 
-    const done = await illustrated(app, chat, await exchange(app, chat));
+    const done = await illustrated(app, chat, third);
 
     expect(done.location.name).toBe('The kitchen');
     expect(done.locations).toHaveLength(2);
@@ -203,13 +216,15 @@ describe("following the story's places", () => {
 
   test('deleting or regenerating the reply that moved the story undoes the move', async () => {
     const { app, chat } = await lighthouseChat();
+    const reply = await exchange(app, chat);
     app.provider.scriptStructured(sceneAt(true, 'The jetty', 'Wet planks.'));
-    await illustrated(app, chat, await exchange(app, chat));
+    await illustrated(app, chat, reply);
     expect((await readChat(app, chat.id)).location.name).toBe('The jetty');
 
     await replyEvents(
       await app.call('POST', `/api/chats/${chat.id}/regenerate`),
     );
+    await sceneFollowed(app, chat);
     expect((await readChat(app, chat.id)).location.name).toBe('The kitchen');
 
     app.provider.scriptStructured(sceneAt(true, 'The jetty'));

@@ -178,15 +178,12 @@ export class Illustrator {
   }
 
   /**
-   * After each reply, unless the illustration mode is Off: have the scene
-   * call follow the story, and illustrate the reply if the mode says to.
-   * Nothing that goes wrong
+   * After each reply: have the scene call follow the story, and illustrate
+   * the reply if the illustration mode says to (never, in Off). Nothing that goes wrong
    * here reaches the reply: a failed scene call is logged and the reply is
    * not illustrated.
    */
   afterReply(chatId: string, messageId: number): void {
-    // Off means nothing happens by itself, the scene call included.
-    if (this.#settings.illustrationMode() === 'off') return;
     this.#following.set(chatId, (this.#following.get(chatId) ?? 0) + 1);
     void this.#followReply(chatId, messageId).finally(() => {
       const left = (this.#following.get(chatId) ?? 1) - 1;

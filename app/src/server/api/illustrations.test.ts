@@ -129,7 +129,8 @@ describe('illustrating a message', () => {
     await illustrate(app, chat, reply?.id);
     await settled(app, chat);
 
-    const [request] = app.provider.structuredRequests;
+    // The last one is the Illustrate button's; the one before ran after the reply.
+    const request = app.provider.structuredRequests.at(-1);
     expect(request?.model).toBe('small-model');
     expect(request?.input).toContain('You are soaked through. Come in.');
     expect(request?.input).toContain('Where is the lamp?');

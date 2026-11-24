@@ -167,8 +167,9 @@ export function SettingsPage() {
           After each reply the scene model reads it, follows the story to where
           it is, and says whether the moment is worth a picture. Scene changes
           only paints one when the story moves somewhere; Key moments also
-          paints moments worth it, once the cooldown below has passed. Off makes
-          no scene call. Illustrate works in every mode.
+          paints moments worth it, once the cooldown below has passed. Off
+          paints nothing by itself, but still follows the story. Illustrate
+          works in every mode.
         </p>
 
         <label>

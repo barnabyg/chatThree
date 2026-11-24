@@ -179,14 +179,15 @@ describe('illustrating replies by themselves', () => {
     expect(await illustratedReplies(app, chat)).toEqual([1, 2]);
   });
 
-  test('Off illustrates nothing and makes no scene call', async () => {
+  test('Off illustrates nothing, but still follows the story', async () => {
     const { app, chat } = await setUp('off');
 
     await reply(app, chat, movedTo('The jetty'));
 
     expect(await illustratedReplies(app, chat)).toEqual([]);
-    expect(app.provider.structuredRequests).toEqual([]);
     expect(app.jobs.requests).toEqual([]);
+    expect(app.provider.structuredRequests).toHaveLength(1);
+    expect((await readChat(app, chat.id)).location.name).toBe('The jetty');
   });
 
   test('the Illustrate button works in Off mode', async () => {

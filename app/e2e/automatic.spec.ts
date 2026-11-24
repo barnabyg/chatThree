@@ -51,7 +51,7 @@ test('a reply that moves the story somewhere new is illustrated by itself', asyn
   ]);
 });
 
-test('in Off mode nothing is illustrated by itself, and the mode is kept', async ({
+test('in Off mode nothing is illustrated by itself, the story is still followed, and the mode is kept', async ({
   page,
   app,
   openai,
@@ -76,15 +76,16 @@ test('in Off mode nothing is illustrated by itself, and the mode is kept', async
   await engineReady(page);
   await send(page, 'Show me the lamp.');
   await expect(messages(page)).toHaveCount(3);
+  // The scene call still follows the story to the lamp room.
+  await expect(page.getByTestId('current-location')).toHaveText(
+    'At The lamp room',
+  );
   await send(page, 'It is bright.');
   await expect(messages(page)).toHaveCount(5);
+  await expect.poll(() => openai.structuredRequests.length).toBe(2);
 
-  expect(openai.structuredRequests).toEqual([]);
   expect(
     (await app.engineJobs()).filter((job) => job.path === '/image'),
   ).toEqual([]);
   await expect(page.getByRole('img', { name: /Illustration/ })).toHaveCount(0);
-  await expect(page.getByTestId('current-location')).toHaveText(
-    'At The lighthouse kitchen',
-  );
 });

@@ -144,7 +144,7 @@ by themselves** decides what happens then:
 
 | Mode | A reply is illustrated when |
 |---|---|
-| Off | Never. No scene call is made either, so the chat's place changes only when **Illustrate** is used |
+| Off | Never. The scene call still runs, so the chat still follows the story |
 | Scene changes only | The story moves somewhere else |
 | Key moments (the default) | The story moves somewhere else, or the scene call says the moment is worth it and at least the cooldown's number of replies (**Settings > Cooldown**, 3 unless changed) have passed since the last picture |
 | Every reply | Always |
@@ -381,8 +381,8 @@ picture (see the checks above).
    picture: at most one every three replies, unless the story moves.
 5. In **Settings**, choose **Off** and save, then reload the page. Expect
    **Off** still chosen. Back in the chat, send
-   `Let's go back down to the kitchen.` Expect no picture and the header
-   unchanged. Choose **Illustrate** under the reply: expect a picture.
+   `Let's go back down to the kitchen.` Expect no picture, and the header
+   to say **At The lighthouse kitchen** again. Choose **Illustrate** under the reply: expect a picture.
 6. Choose **Every reply** and save. Send two messages. Expect a picture
    under each reply.
 7. Choose **Key moments** again. In Settings, set **Scene model** to
