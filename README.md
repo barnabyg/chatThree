@@ -38,7 +38,7 @@ app ends the engine's whole process tree.
 Replies come from OpenAI, so chat needs an OpenAI API key. Either set
 `OPENAI_API_KEY` before starting the app, or paste a key into **Settings**. A
 key saved in Settings is used in place of the environment variable, is sent
-only to OpenAI, and is never shown again. The model is also a setting.
+only to the OpenAI API, and is never shown again. The model is also a setting.
 
 The app starts with one character, Mara Quill, and one scenario, The Storm at
 Gull Point. A chat pairs a character with a scenario: **New chat** asks for
@@ -71,6 +71,30 @@ Chats and settings are kept on this computer, outside the repository:
 Set `CHATTHREE_DATA_DIR` to keep them somewhere else. On macOS the default is
 `~/Library/Application Support/chatThree`, and on Linux
 `~/.local/share/chatthree`.
+
+## Configuration
+
+Everything works without any of these. They are read when the app starts.
+
+| Variable | Effect |
+|---|---|
+| `OPENAI_API_KEY` | The API key, unless one is saved in Settings |
+| `OPENAI_BASE_URL` | Where replies are requested, in place of `https://api.openai.com/v1`. The API key is sent there, so point it only at a server you trust. The tests point it at a fake |
+| `CHATTHREE_PORT` | The port to listen on, in place of 3210 |
+| `CHATTHREE_DATA_DIR` | Where chats and settings are kept |
+| `CHATTHREE_ENGINE_COMMAND` | The engine's command line as a JSON array of strings, in place of `uv run ... chatthree_engine.server`. The app adds `--port <n>`. The tests run a fake engine this way |
+| `CHATTHREE_ENGINE_DIR` | The directory the engine is started in, in place of `engine/` |
+
+## Known gaps
+
+- **A killed app leaves the engine running.** Stopping the app with Ctrl+C,
+  or by closing its window, ends the engine. Killing the app's process
+  outright (Task Manager, `Stop-Process`) gives it no chance to, and the
+  engine keeps the GPU until it is ended by hand:
+  `Get-CimInstance Win32_Process | Where-Object CommandLine -like '*chatthree_engine*' | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`
+- **Token counts are estimates.** The conversation budget counts four
+  characters as a token, which suits English prose and undercounts some
+  other languages.
 
 ## Manual check: the engine stops with the app
 
