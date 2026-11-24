@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 $npm = if ($IsWindows) { 'npm.cmd' } else { 'npm' }
 
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-    throw 'Node.js was not found. Install Node.js 24 or newer from https://nodejs.org and run this again.'
+    throw 'Node.js was not found. Install Node.js 24.12 or newer from https://nodejs.org and run this again.'
 }
 
 Push-Location (Join-Path $PSScriptRoot 'app')
