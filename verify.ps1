@@ -54,6 +54,9 @@ $appGates = [ordered]@{
     'type checking'               = { & $npm run --silent typecheck }
     'unit tests'                  = { & $npm run --silent test }
     'end-to-end test browser'     = { & $npx playwright install chromium --only-shell }
+    # The end-to-end tests drive the built UI, so this gate builds it first.
+    # The build gate at the end stays, so that a build failure is reported as
+    # one and the order of gates matches the engine's.
     'end-to-end tests'            = { & $npm run --silent test:e2e }
     'dependency audit'            = { & $npm audit }
     'build'                       = { & $npm run --silent build }
