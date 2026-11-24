@@ -4,6 +4,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import type {
   Character,
+  ChatSummary,
   Message,
   ReplyEvent,
   Scenario,
@@ -58,6 +59,13 @@ export class ReplyService {
 
   isReplying(chatId: string): boolean {
     return this.#inProgress.has(chatId);
+  }
+
+  /** Whether a reply is in progress in any chat that `matches`. */
+  isReplyingWhere(matches: (chat: ChatSummary) => boolean): boolean {
+    return this.#chats
+      .list()
+      .some((chat) => matches(chat) && this.isReplying(chat.id));
   }
 
   /** End the reply in progress in `chatId`, keeping what has been written. */

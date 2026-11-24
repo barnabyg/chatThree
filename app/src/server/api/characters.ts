@@ -3,7 +3,6 @@ import { z } from 'zod';
 import type { Character } from '../../shared/api.ts';
 import type { ReplyService } from '../chat/replies.ts';
 import type { CharacterStore } from '../store/characters.ts';
-import type { ChatStore } from '../store/chats.ts';
 import { ApiError, readBody } from './errors.ts';
 
 const MAX_NAME_LENGTH = 100;
@@ -36,7 +35,6 @@ const characterInput = z.strictObject({
 
 export function characterRoutes(
   characters: CharacterStore,
-  chats: ChatStore,
   replies: ReplyService,
 ): Hono {
   const routes = new Hono();
@@ -65,10 +63,7 @@ export function characterRoutes(
   // Deleting a character deletes its chats with it.
   routes.delete('/:id', (c) => {
     const { id } = existing(c);
-    const replying = chats
-      .list()
-      .some((chat) => chat.character.id === id && replies.isReplying(chat.id));
-    if (replying) {
+    if (replies.isReplyingWhere((chat) => chat.character.id === id)) {
       throw new ApiError(
         409,
         'A reply is being written in a chat with this character. Stop it first.',

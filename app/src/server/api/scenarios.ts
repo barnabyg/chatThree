@@ -2,7 +2,6 @@ import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import type { Scenario } from '../../shared/api.ts';
 import type { ReplyService } from '../chat/replies.ts';
-import type { ChatStore } from '../store/chats.ts';
 import type { ScenarioStore } from '../store/scenarios.ts';
 import { ApiError, readBody } from './errors.ts';
 
@@ -56,7 +55,6 @@ const scenarioInput = z.strictObject({
 
 export function scenarioRoutes(
   scenarios: ScenarioStore,
-  chats: ChatStore,
   replies: ReplyService,
 ): Hono {
   const routes = new Hono();
@@ -85,10 +83,7 @@ export function scenarioRoutes(
   // Deleting a scenario deletes its chats with it.
   routes.delete('/:id', (c) => {
     const { id } = existing(c);
-    const replying = chats
-      .list()
-      .some((chat) => chat.scenario.id === id && replies.isReplying(chat.id));
-    if (replying) {
+    if (replies.isReplyingWhere((chat) => chat.scenario.id === id)) {
       throw new ApiError(
         409,
         'A reply is being written in a chat set in this scenario. Stop it first.',

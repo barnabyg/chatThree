@@ -41,8 +41,8 @@ export function createApp(dependencies: AppDependencies): Hono {
     '/api/chats',
     chatRoutes(chats, characters, scenarios, replies, settings),
   );
-  app.route('/api/characters', characterRoutes(characters, chats, replies));
-  app.route('/api/scenarios', scenarioRoutes(scenarios, chats, replies));
+  app.route('/api/characters', characterRoutes(characters, replies));
+  app.route('/api/scenarios', scenarioRoutes(scenarios, replies));
   app.route('/api/settings', settingsRoutes(settings));
   app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));
 
