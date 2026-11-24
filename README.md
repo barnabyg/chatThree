@@ -137,6 +137,25 @@ Illustrating needs the character's reference picture (see
 [Reference pictures](#reference-pictures)). Without one, **Illustrate** says
 so and links to the character.
 
+Pictures also arrive without being asked. After each reply the scene call
+runs by itself: it follows the story to where the reply takes place, and
+says whether the moment is worth a picture. **Settings > Illustrate replies
+by themselves** decides what happens then:
+
+| Mode | A reply is illustrated when |
+|---|---|
+| Off | Never. No scene call is made either, so the chat's place changes only when **Illustrate** is used |
+| Scene changes only | The story moves somewhere else |
+| Key moments (the default) | The story moves somewhere else, or the scene call says the moment is worth it and at least the cooldown's number of replies (**Settings > Cooldown**, 3 unless changed) have passed since the last picture |
+| Every reply | Always |
+
+**Illustrate** works in every mode, and restarts the cooldown. A character
+without a reference picture is not illustrated by itself. A scene call that
+fails after a reply is logged in the app's console and that reply is not
+illustrated; the reply itself is never affected. The engine paints one
+picture at a time, and a chat has at most one automatic picture waiting:
+a newer one takes the place of one that has not started.
+
 ## Speech
 
 Replies are spoken aloud as they arrive, by the engine: in the character's own
@@ -344,6 +363,32 @@ picture (see the previous check).
 7. Under the kitchen in **Locations**, choose **Generate another**. Expect a
    different picture of the kitchen in its place.
 8. Reload the page. Expect the same places and pictures.
+
+## Manual check: automatic illustration
+
+Needs the real engine, an OpenAI API key, and Mara Quill's reference
+picture (see the checks above).
+
+1. Start the app: `cd C:\docs\git\chatThree; pwsh ./start.ps1`
+2. In **Settings**, expect **Illustrate replies by themselves** to be **Key
+   moments** and **Cooldown** to be 3.
+3. Choose **New chat**, then **Start chat**. Send
+   `Show me the lamp. Let's climb up to the lamp room.` Expect, a few
+   seconds after the reply, a picture under it without choosing
+   **Illustrate**, and the header to name the lamp room.
+4. Send two or three ordinary messages (`It is very bright.`,
+   `How long have you kept this light?`). Expect most of them to get no
+   picture: at most one every three replies, unless the story moves.
+5. In **Settings**, choose **Off** and save, then reload the page. Expect
+   **Off** still chosen. Back in the chat, send
+   `Let's go back down to the kitchen.` Expect no picture and the header
+   unchanged. Choose **Illustrate** under the reply: expect a picture.
+6. Choose **Every reply** and save. Send two messages. Expect a picture
+   under each reply.
+7. Choose **Key moments** again. In Settings, set **Scene model** to
+   `no-such-model` and save. Send a message. Expect the reply as usual, no
+   picture, and in the terminal running the app a line saying the scene
+   call after a reply failed. Put the scene model back.
 
 ## Check it
 

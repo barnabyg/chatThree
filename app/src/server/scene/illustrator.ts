@@ -2,7 +2,9 @@
 // the character's reference picture and the reference picture of the place
 // the story is in. The scene call describes the moment; the engine paints it.
 // Work goes on in the background, and how far it has got is kept here for
-// the chat's view to show.
+// the chat's view to show. After each reply the scene call also runs by
+// itself, to follow the story and, as the illustration mode says, to
+// illustrate the reply without being asked.
 
 import { randomInt } from 'node:crypto';
 import type { IllustrationProgress } from '../../shared/api.ts';
@@ -23,12 +25,13 @@ import {
   type Place,
   placePrompt,
   readScene,
+  type ScenePicture,
   SceneAnswerError,
   scenePrompt,
   sceneRequest,
   startingPlace,
 } from './describe.ts';
-import { nextPlace, type PlaceReport } from './state.ts';
+import { nextPlace, type PlaceReport, shouldIllustrate } from './state.ts';
 
 /** Landscape, as a scene is wider than it is tall. Multiples of 16, as the engine needs. */
 export const SCENE_SIZE = { width: 1152, height: 768 };
@@ -78,6 +81,27 @@ export interface IllustratorDependencies {
   media: MediaStore;
 }
 
+/** A moment the scene call has described, ready to paint. */
+interface Described {
+  characterName: string;
+  picture: ScenePicture;
+  /** Where it is painted. */
+  location: StoredLocation;
+  /** Whether the moment took the story somewhere else. */
+  moved: boolean;
+  /** Whether the scene call said the moment is worth a picture. */
+  worthIt: boolean;
+}
+
+/** A picture waiting for its turn on the engine. */
+interface PaintJob {
+  chatId: string;
+  messageId: number;
+  /** Asked for by the app after a reply, not by the user. */
+  automatic: boolean;
+  described: Described;
+}
+
 export class Illustrator {
   readonly #chats: ChatStore;
   readonly #characters: CharacterStore;
@@ -91,6 +115,15 @@ export class Illustrator {
   readonly #progress = new Map<string, Map<number, IllustrationProgress>>();
   /** Places whose reference picture is being painted, so it is painted once. */
   readonly #paintingPlaces = new Map<number, Promise<string>>();
+  /**
+   * Pictures waiting to be painted, oldest first. One is painted at a time,
+   * as the engine paints one at a time, so that a waiting picture can still
+   * be replaced by a newer one.
+   */
+  readonly #queue: PaintJob[] = [];
+  #painting = false;
+  /** Per chat, how many scene calls after a reply are under way. */
+  readonly #following = new Map<string, number>();
 
   constructor(dependencies: IllustratorDependencies) {
     this.#chats = dependencies.chats;
@@ -110,11 +143,16 @@ export class Illustrator {
     );
   }
 
+  /** Whether the scene call is reading the chat's latest reply. */
+  isFollowing(chatId: string): boolean {
+    return this.#following.has(chatId);
+  }
+
   /**
-   * Start illustrating one of the character's messages. Returns at once;
-   * `progress` follows the work. Throws `IllustrationRequestError` for a
-   * message that cannot be illustrated, and `IllustrationBusyError` for one
-   * that already is being.
+   * Start illustrating one of the character's messages, as the user asked.
+   * Returns at once; `progress` follows the work. Throws
+   * `IllustrationRequestError` for a message that cannot be illustrated,
+   * and `IllustrationBusyError` for one that already is being.
    */
   illustrate(chatId: string, messageId: number): void {
     const message = this.#chats
@@ -133,8 +171,28 @@ export class Illustrator {
     if (current !== undefined && current.state !== 'failed') {
       throw new IllustrationBusyError();
     }
+    // A picture asked for restarts the wait before the next automatic one.
+    this.#scenes.markIllustrated(chatId);
     this.#set(chatId, { messageId, state: 'describing' });
-    void this.#run(chatId, messageId);
+    void this.#describeThenPaint(chatId, messageId);
+  }
+
+  /**
+   * After each reply, unless the illustration mode is Off: have the scene
+   * call follow the story, and illustrate the reply if the mode says to.
+   * Nothing that goes wrong
+   * here reaches the reply: a failed scene call is logged and the reply is
+   * not illustrated.
+   */
+  afterReply(chatId: string, messageId: number): void {
+    // Off means nothing happens by itself, the scene call included.
+    if (this.#settings.illustrationMode() === 'off') return;
+    this.#following.set(chatId, (this.#following.get(chatId) ?? 0) + 1);
+    void this.#followReply(chatId, messageId).finally(() => {
+      const left = (this.#following.get(chatId) ?? 1) - 1;
+      if (left === 0) this.#following.delete(chatId);
+      else this.#following.set(chatId, left);
+    });
   }
 
   /** Delete the files of pictures that nothing refers to any more. */
@@ -145,6 +203,24 @@ export class Illustrator {
         if (!kept.has(file)) this.#media.remove(file);
       }
     }
+  }
+
+  /**
+   * Paint a new reference picture of one of the chat's places, in place of
+   * any it has. Resolves once it is saved.
+   */
+  async repaintPlace(chatId: string, locationId: number): Promise<void> {
+    const location = this.#scenes.location(chatId, locationId);
+    if (location === undefined) {
+      throw new IllustrationRequestError('That place is not in this chat.');
+    }
+    // Waits for one already being painted, so the newest is kept.
+    await this.#paintingPlaces.get(locationId)?.catch(() => undefined);
+    const painting = this.#paintPlace(location).finally(() => {
+      this.#paintingPlaces.delete(locationId);
+    });
+    this.#paintingPlaces.set(locationId, painting);
+    await painting;
   }
 
   /** The path of the chat's character's reference picture, or why there is none. */
@@ -178,82 +254,120 @@ export class Illustrator {
     if (chat?.size === 0) this.#progress.delete(chatId);
   }
 
-  async #run(chatId: string, messageId: number): Promise<void> {
+  #fail(chatId: string, messageId: number, error: unknown): void {
+    this.#set(chatId, {
+      messageId,
+      state: 'failed',
+      error: describeFailure(error),
+    });
+  }
+
+  async #describeThenPaint(chatId: string, messageId: number): Promise<void> {
     try {
-      const chat = this.#chats.find(chatId);
-      const character =
-        chat === undefined
-          ? undefined
-          : this.#characters.find(chat.character.id);
-      const scenario =
-        chat === undefined ? undefined : this.#scenarios.find(chat.scenario.id);
-      if (character === undefined || scenario === undefined) return;
-      const messages = this.#chats.messages(chatId);
-      const upTo = messages.findIndex(({ id }) => id === messageId);
-      if (upTo === -1) return;
-      const start = startingPlace(scenario);
-      const before = this.#scenes.currentLocation(chatId, start);
-
-      const { picture, place } = readScene(
-        await this.#provider.structured({
-          model: this.#settings.sceneModel(),
-          ...sceneRequest({
-            character,
-            scenario,
-            messages: messages.slice(0, upTo + 1),
-            place: before,
-            places: this.#scenes.locations(chatId),
-          }),
-        }),
-      );
-      // Only the latest of the character's messages says where the story is
-      // now; an earlier one is pictured where it took place.
-      const latest =
-        this.#chats
-          .messages(chatId)
-          .findLast(({ role }) => role === 'assistant')?.id === messageId;
-      const location = this.#follow(chatId, start, place, latest);
-
-      if (location.imageFile === undefined) {
-        this.#set(chatId, { messageId, state: 'painting-location' });
+      const described = await this.#describe(chatId, messageId);
+      if (described === undefined) {
+        this.#clear(chatId, messageId);
+        return;
       }
-      const placeFile = await this.#placePicture(location);
-
-      this.#set(chatId, { messageId, state: 'painting' });
-      const scene = await this.#jobs.paint({
-        prompt: scenePrompt(character.name, location, picture),
-        ...SCENE_SIZE,
-        seed: randomInt(MAX_SEED),
-        references: [this.#needPicture(chatId), this.#media.path(placeFile)],
-      });
-      const file = this.#media.save('scenes', 'png', scene);
-      // The message may have been deleted or regenerated while it was painted.
-      if (
-        this.#scenes.addIllustration(chatId, messageId, location.id, file) ===
-        undefined
-      ) {
-        this.#media.remove(file);
-      }
-      this.#clear(chatId, messageId);
+      this.#enqueue({ chatId, messageId, automatic: false, described });
     } catch (error) {
-      this.#set(chatId, {
-        messageId,
-        state: 'failed',
-        error: describeFailure(error),
-      });
+      this.#fail(chatId, messageId, error);
     }
+  }
+
+  async #followReply(chatId: string, messageId: number): Promise<void> {
+    let described: Described | undefined;
+    try {
+      described = await this.#describe(chatId, messageId);
+    } catch (error) {
+      console.error(
+        `The scene call after a reply failed, so the reply was not illustrated: ${describeFailure(error)}`,
+      );
+      return;
+    }
+    if (described === undefined) return;
+    const chat = this.#chats.find(chatId);
+    const illustrate = shouldIllustrate(
+      this.#settings.illustrationMode(),
+      this.#settings.illustrationCooldown(),
+      {
+        moved: described.moved,
+        worthIt: described.worthIt,
+        repliesSinceImage: this.#scenes.repliesSinceIllustration(chatId),
+      },
+    );
+    // A character without a reference picture cannot be illustrated; the
+    // Illustrate button says so when it is asked.
+    if (
+      !illustrate ||
+      chat === undefined ||
+      this.#characters.imageFile(chat.character.id) === undefined ||
+      this.#progress.get(chatId)?.has(messageId) === true
+    ) {
+      return;
+    }
+    this.#scenes.markIllustrated(chatId);
+    this.#enqueue({ chatId, messageId, automatic: true, described });
+  }
+
+  /**
+   * Have the scene call describe a message, and follow the story to the
+   * place it reports. `undefined` if the message or the chat has gone.
+   */
+  async #describe(
+    chatId: string,
+    messageId: number,
+  ): Promise<Described | undefined> {
+    const chat = this.#chats.find(chatId);
+    const character =
+      chat === undefined ? undefined : this.#characters.find(chat.character.id);
+    const scenario =
+      chat === undefined ? undefined : this.#scenarios.find(chat.scenario.id);
+    if (character === undefined || scenario === undefined) return undefined;
+    const messages = this.#chats.messages(chatId);
+    const upTo = messages.findIndex(({ id }) => id === messageId);
+    if (upTo === -1) return undefined;
+    const start = startingPlace(scenario);
+    const before = this.#scenes.currentLocation(chatId, start);
+
+    const { picture, place, worthIt } = readScene(
+      await this.#provider.structured({
+        model: this.#settings.sceneModel(),
+        ...sceneRequest({
+          character,
+          scenario,
+          messages: messages.slice(0, upTo + 1),
+          place: before,
+          places: this.#scenes.locations(chatId),
+        }),
+      }),
+    );
+    // Only the latest of the character's messages says where the story is
+    // now; an earlier one is pictured where it took place.
+    const latest =
+      this.#chats.messages(chatId).findLast(({ role }) => role === 'assistant')
+        ?.id === messageId;
+    const { location, moved } = this.#follow(chatId, start, place, latest);
+    return {
+      characterName: character.name,
+      picture,
+      location,
+      moved,
+      worthIt,
+    };
   }
 
   /**
    * The place a scene call's report puts the scene in, recorded among the
-   * chat's places if it is new. With `move`, the chat's story is there now.
+   * chat's places if it is new, and whether that is a move. With `move`,
+   * the chat's story is there now.
    */
   #follow(
     chatId: string,
     start: Place,
     report: PlaceReport,
     move: boolean,
-  ): StoredLocation {
+  ): { location: StoredLocation; moved: boolean } {
     // Read again: the story may have moved while the scene was described.
     const current = this.#scenes.currentLocation(chatId, start);
     const next = nextPlace(current, this.#scenes.locations(chatId), report);
@@ -264,30 +378,82 @@ export class Illustrator {
           ? (this.#scenes.location(chatId, next.id) ?? current)
           : this.#scenes.addLocation(chatId, next);
     if (move) this.#scenes.moveTo(chatId, location.id);
-    return location;
+    return { location, moved: location.id !== current.id };
   }
 
   /**
-   * Paint a new reference picture of one of the chat's places, in place of
-   * any it has. Resolves once it is saved.
+   * Put a picture in line to be painted. A chat has at most one automatic
+   * picture waiting: a newer one takes the place of one not yet started.
    */
-  async repaintPlace(chatId: string, locationId: number): Promise<void> {
-    const location = this.#scenes.location(chatId, locationId);
-    if (location === undefined) {
-      throw new IllustrationRequestError('That place is not in this chat.');
+  #enqueue(job: PaintJob): void {
+    if (job.automatic) {
+      const waiting = this.#queue.findIndex(
+        (queued) => queued.automatic && queued.chatId === job.chatId,
+      );
+      if (waiting !== -1) {
+        const [replaced] = this.#queue.splice(waiting, 1);
+        if (replaced !== undefined) {
+          this.#clear(replaced.chatId, replaced.messageId);
+        }
+      }
     }
-    // Waits for one already being painted, so the newest is kept.
-    await this.#paintingPlaces.get(locationId)?.catch(() => undefined);
-    const painting = this.#paintPlace(location).finally(() => {
-      this.#paintingPlaces.delete(locationId);
-    });
-    this.#paintingPlaces.set(locationId, painting);
-    await painting;
+    this.#set(job.chatId, { messageId: job.messageId, state: 'waiting' });
+    this.#queue.push(job);
+    void this.#drain();
+  }
+
+  /** Paint the waiting pictures, one at a time, until there are none. */
+  async #drain(): Promise<void> {
+    if (this.#painting) return;
+    this.#painting = true;
+    try {
+      for (let job = this.#queue.shift(); job; job = this.#queue.shift()) {
+        await this.#paint(job);
+      }
+    } finally {
+      this.#painting = false;
+    }
+  }
+
+  async #paint({ chatId, messageId, described }: PaintJob): Promise<void> {
+    const { characterName, picture, location } = described;
+    try {
+      // The message may have been deleted or regenerated while it waited.
+      if (!this.#chats.messages(chatId).some(({ id }) => id === messageId)) {
+        this.#clear(chatId, messageId);
+        return;
+      }
+      const placeFile = await this.#placePicture(chatId, messageId, location);
+      this.#set(chatId, { messageId, state: 'painting' });
+      const scene = await this.#jobs.paint({
+        prompt: scenePrompt(characterName, location, picture),
+        ...SCENE_SIZE,
+        seed: randomInt(MAX_SEED),
+        references: [this.#needPicture(chatId), this.#media.path(placeFile)],
+      });
+      const file = this.#media.save('scenes', 'png', scene);
+      // The message may have gone while it was painted.
+      if (
+        this.#scenes.addIllustration(chatId, messageId, location.id, file) ===
+        undefined
+      ) {
+        this.#media.remove(file);
+      }
+      this.#clear(chatId, messageId);
+    } catch (error) {
+      this.#fail(chatId, messageId, error);
+    }
   }
 
   /** The file of the place's reference picture, painting it first if it has none. */
-  async #placePicture(location: StoredLocation): Promise<string> {
-    if (location.imageFile !== undefined) return location.imageFile;
+  async #placePicture(
+    chatId: string,
+    messageId: number,
+    location: StoredLocation,
+  ): Promise<string> {
+    const saved = this.#scenes.location(chatId, location.id)?.imageFile;
+    if (saved !== undefined) return saved;
+    this.#set(chatId, { messageId, state: 'painting-location' });
     const painting =
       this.#paintingPlaces.get(location.id) ??
       this.#paintPlace(location).finally(() => {

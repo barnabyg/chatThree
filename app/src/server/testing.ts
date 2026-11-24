@@ -153,6 +153,7 @@ export const PLAIN_SCENE = {
   lighting: 'lamplight',
   moved: false,
   location: { name: '', description: '' },
+  worthIllustrating: false,
 };
 
 export type ScriptedProvider = ChatProvider & {
@@ -282,6 +283,16 @@ export function testApp(
     jobs,
     media,
   });
+  const replies = new ReplyService(
+    chats,
+    characters,
+    scenarios,
+    settings,
+    provider,
+  );
+  replies.onReplySaved((chatId, message) => {
+    illustrator.afterReply(chatId, message.id);
+  });
   const app = createApp({
     uiDir: options.uiDir ?? path.join(directory, 'no-ui'),
     engine,
@@ -293,7 +304,7 @@ export function testApp(
     scenarios,
     scenes,
     settings,
-    replies: new ReplyService(chats, characters, scenarios, settings, provider),
+    replies,
     illustrator,
   });
   const call: TestApp['call'] = async (method, url, body) =>

@@ -27,6 +27,8 @@ export interface ScenePicture {
 export interface Scene {
   picture: ScenePicture;
   place: PlaceReport;
+  /** Whether the moment is worth a picture without being asked. */
+  worthIt: boolean;
 }
 
 const sceneAnswer = z.object({
@@ -36,6 +38,7 @@ const sceneAnswer = z.object({
   lighting: z.string().trim(),
   moved: z.boolean(),
   location: z.object({ name: z.string(), description: z.string() }),
+  worthIllustrating: z.boolean(),
 });
 
 export const SCENE_SCHEMA = {
@@ -74,6 +77,11 @@ export const SCENE_SCHEMA = {
       required: ['name', 'description'],
       additionalProperties: false,
     },
+    worthIllustrating: {
+      type: 'boolean',
+      description:
+        'Whether this moment is a key moment of the story, worth a picture by itself: an arrival, a revelation, a turn in the action or the mood. Most moments are not.',
+    },
   },
   required: [
     'action',
@@ -82,6 +90,7 @@ export const SCENE_SCHEMA = {
     'lighting',
     'moved',
     'location',
+    'worthIllustrating',
   ],
   additionalProperties: false,
 } as const;
@@ -160,8 +169,12 @@ export function sceneRequest({
 export function readScene(answer: unknown): Scene {
   const result = sceneAnswer.safeParse(answer);
   if (!result.success) throw new SceneAnswerError();
-  const { moved, location, ...picture } = result.data;
-  return { picture, place: { moved, ...location } };
+  const { moved, location, worthIllustrating, ...picture } = result.data;
+  return {
+    picture,
+    place: { moved, ...location },
+    worthIt: worthIllustrating,
+  };
 }
 
 /** What the engine is asked to paint for a place's reference picture. */

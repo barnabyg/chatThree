@@ -124,6 +124,7 @@ test('a failed illustration shows why, can be tried again, and the chat carries 
       lighting: 'storm light',
       moved: false,
       location: { name: '', description: '' },
+      worthIllustrating: false,
     },
   });
   await failure.getByRole('button', { name: 'Try again' }).click();

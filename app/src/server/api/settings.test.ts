@@ -14,6 +14,8 @@ test('settings start with the default model and say where the key comes from', a
   expect(await response.json()).toEqual({
     model: DEFAULT_MODEL,
     sceneModel: DEFAULT_SCENE_MODEL,
+    illustrationMode: 'key-moments',
+    illustrationCooldown: 3,
     contextTokenBudget: DEFAULT_CONTEXT_TOKEN_BUDGET,
     speechMuted: false,
     speechScope: 'dialogue',
@@ -140,4 +142,27 @@ test('an empty model name is refused with a reason', async () => {
   expect(await response.json()).toEqual({
     error: 'The model name cannot be empty.',
   });
+});
+
+test('the illustration mode and cooldown can be changed, within limits', async () => {
+  const app = testApp();
+
+  const response = await app.call('PUT', '/api/settings', {
+    illustrationMode: 'every-reply',
+    illustrationCooldown: 5,
+  });
+  const badMode = await app.call('PUT', '/api/settings', {
+    illustrationMode: 'sometimes',
+  });
+  const badCooldown = await app.call('PUT', '/api/settings', {
+    illustrationCooldown: 0,
+  });
+
+  expect(await response.json()).toMatchObject({
+    illustrationMode: 'every-reply',
+    illustrationCooldown: 5,
+  });
+  expect(badMode.status).toBe(400);
+  expect(badCooldown.status).toBe(400);
+  expect(app.settings.illustrationMode()).toBe('every-reply');
 });

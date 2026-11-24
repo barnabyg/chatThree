@@ -95,6 +95,7 @@ export const DEFAULT_SCENE = {
   lighting: 'grey storm light',
   moved: false,
   location: { name: '', description: '' },
+  worthIllustrating: false,
 };
 
 const DEFAULT_STRUCTURED: StructuredBehaviour = {

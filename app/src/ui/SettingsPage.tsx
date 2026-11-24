@@ -1,5 +1,10 @@
 import { type SyntheticEvent, useEffect, useState } from 'react';
-import type { Settings, SettingsUpdate, SpeechScope } from '../shared/api.ts';
+import type {
+  IllustrationMode,
+  Settings,
+  SettingsUpdate,
+  SpeechScope,
+} from '../shared/api.ts';
 import { api } from './api.ts';
 
 const KEY_SOURCE: Record<Settings['apiKey'], string> = {
@@ -13,6 +18,9 @@ export function SettingsPage() {
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState('');
   const [sceneModel, setSceneModel] = useState('');
+  const [illustrationMode, setIllustrationMode] =
+    useState<IllustrationMode>('key-moments');
+  const [cooldown, setCooldown] = useState('');
   const [budget, setBudget] = useState('');
   const [speak, setSpeak] = useState(true);
   const [speechScope, setSpeechScope] = useState<SpeechScope>('dialogue');
@@ -25,6 +33,8 @@ export function SettingsPage() {
     setSettings(loaded);
     setModel(loaded.model);
     setSceneModel(loaded.sceneModel);
+    setIllustrationMode(loaded.illustrationMode);
+    setCooldown(String(loaded.illustrationCooldown));
     setBudget(String(loaded.contextTokenBudget));
     setSpeak(!loaded.speechMuted);
     setSpeechScope(loaded.speechScope);
@@ -70,6 +80,8 @@ export function SettingsPage() {
       {
         model,
         sceneModel,
+        illustrationMode,
+        illustrationCooldown: Number(cooldown),
         contextTokenBudget: Number(budget),
         speechMuted: !speak,
         speechScope,
@@ -135,6 +147,47 @@ export function SettingsPage() {
         <p className="hint">
           The OpenAI model that reads the latest messages and describes the
           moment for an illustration. A small, cheap model does it well.
+        </p>
+
+        <label>
+          Illustrate replies by themselves
+          <select
+            value={illustrationMode}
+            onChange={(event) => {
+              setIllustrationMode(event.target.value as IllustrationMode);
+            }}
+          >
+            <option value="off">Off</option>
+            <option value="scene-changes">Scene changes only</option>
+            <option value="key-moments">Key moments</option>
+            <option value="every-reply">Every reply</option>
+          </select>
+        </label>
+        <p className="hint">
+          After each reply the scene model reads it, follows the story to where
+          it is, and says whether the moment is worth a picture. Scene changes
+          only paints one when the story moves somewhere; Key moments also
+          paints moments worth it, once the cooldown below has passed. Off makes
+          no scene call. Illustrate works in every mode.
+        </p>
+
+        <label>
+          Cooldown (replies)
+          <input
+            type="number"
+            required
+            min={1}
+            max={100}
+            step={1}
+            value={cooldown}
+            onChange={(event) => {
+              setCooldown(event.target.value);
+            }}
+          />
+        </label>
+        <p className="hint">
+          In Key moments, how many replies must pass after a picture before
+          another moment worth one is painted. A move is painted at once.
         </p>
 
         <label>

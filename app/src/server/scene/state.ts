@@ -1,5 +1,7 @@
-// How a chat's scene changes as the story goes on. Pure, so that each rule
-// can be tested on its own.
+// How a chat's scene changes as the story goes on, and when a reply is
+// illustrated by itself. Pure, so that each rule can be tested on its own.
+
+import type { IllustrationMode } from '../../shared/api.ts';
 
 /** A place the chat's story has been, as far as these rules need it. */
 export interface KnownPlace {
@@ -44,4 +46,43 @@ export function nextPlace(
   const earlier = known.find((place) => sameName(place.name, name));
   if (earlier !== undefined) return { kind: 'return', id: earlier.id };
   return { kind: 'new', name, description: report.description.trim() };
+}
+
+/** What the app knows about a reply when it decides whether to illustrate it. */
+export interface ReplyMoment {
+  /** Whether the reply took the story somewhere else. */
+  moved: boolean;
+  /** Whether the scene call said the moment is worth a picture. */
+  worthIt: boolean;
+  /**
+   * How many of the character's replies there have been since a picture was
+   * last asked for in the chat, counting this one; `undefined` if none ever was.
+   */
+  repliesSinceImage: number | undefined;
+}
+
+/**
+ * Whether a reply is illustrated without being asked. A move always is,
+ * except when Off; in Key moments, a moment worth it is too, once
+ * `cooldown` replies have passed since the last picture.
+ */
+export function shouldIllustrate(
+  mode: IllustrationMode,
+  cooldown: number,
+  { moved, worthIt, repliesSinceImage }: ReplyMoment,
+): boolean {
+  switch (mode) {
+    case 'off':
+      return false;
+    case 'every-reply':
+      return true;
+    case 'scene-changes':
+      return moved;
+    case 'key-moments':
+      return (
+        moved ||
+        (worthIt &&
+          (repliesSinceImage === undefined || repliesSinceImage >= cooldown))
+      );
+  }
 }

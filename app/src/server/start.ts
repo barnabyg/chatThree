@@ -67,6 +67,9 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
   });
   // Pictures left behind by a run that ended part-way through making one.
   illustrator.prune();
+  replies.onReplySaved((chatId, message) => {
+    illustrator.afterReply(chatId, message.id);
+  });
   const app = createApp({
     uiDir: config.uiDir,
     engine,

@@ -6,6 +6,7 @@ import { readBody } from './errors.ts';
 
 const MIN_TOKEN_BUDGET = 100;
 const MAX_TOKEN_BUDGET = 1_000_000;
+const MAX_COOLDOWN = 100;
 
 const update = z.strictObject({
   model: z
@@ -19,6 +20,20 @@ const update = z.strictObject({
     .trim()
     .min(1, 'The scene model name cannot be empty.')
     .max(200, 'The scene model name is too long.')
+    .optional(),
+  illustrationMode: z
+    .enum(
+      ['off', 'scene-changes', 'key-moments', 'every-reply'],
+      'The illustration mode must be "off", "scene-changes", "key-moments" or "every-reply".',
+    )
+    .optional(),
+  illustrationCooldown: z
+    .int('The cooldown must be a whole number of replies.')
+    .min(1, 'The cooldown must be at least 1 reply.')
+    .max(
+      MAX_COOLDOWN,
+      `The cooldown can be at most ${String(MAX_COOLDOWN)} replies.`,
+    )
     .optional(),
   contextTokenBudget: z
     .int('The conversation budget must be a whole number of tokens.')
@@ -63,6 +78,8 @@ export function settingsRoutes(settings: SettingsStore): Hono {
     const {
       model,
       sceneModel,
+      illustrationMode,
+      illustrationCooldown,
       contextTokenBudget,
       speechMuted,
       speechScope,
@@ -72,6 +89,8 @@ export function settingsRoutes(settings: SettingsStore): Hono {
       settings.update({
         ...(model !== undefined && { model }),
         ...(sceneModel !== undefined && { sceneModel }),
+        ...(illustrationMode !== undefined && { illustrationMode }),
+        ...(illustrationCooldown !== undefined && { illustrationCooldown }),
         ...(contextTokenBudget !== undefined && { contextTokenBudget }),
         ...(speechMuted !== undefined && { speechMuted }),
         ...(speechScope !== undefined && { speechScope }),

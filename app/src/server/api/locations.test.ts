@@ -31,6 +31,8 @@ function sceneAt(moved: boolean, name: string, description = '') {
 async function lighthouseChat(): Promise<{ app: TestApp; chat: Chat }> {
   const app = testApp();
   const character = await builtInCharacter(app);
+  // Replies are not illustrated by themselves here: see automatic.test.ts.
+  app.settings.update({ illustrationMode: 'off' });
   await app.upload(
     'PUT',
     `/api/characters/${character.id}/image`,

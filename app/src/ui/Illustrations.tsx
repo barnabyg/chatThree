@@ -6,6 +6,7 @@ const PROGRESS: Record<
   string
 > = {
   describing: 'Describing the scene…',
+  waiting: 'Waiting for the engine…',
   'painting-location': 'Painting the location…',
   painting: 'Painting the scene…',
 };

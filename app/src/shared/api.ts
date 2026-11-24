@@ -97,6 +97,7 @@ export interface IllustrationProgress {
   messageId: number;
   state:
     | 'describing' // the scene call is writing the picture's description
+    | 'waiting' // waiting for the engine to finish other pictures
     | 'painting-location' // the engine is painting the location's reference picture
     | 'painting' // the engine is painting the scene
     | 'failed';
@@ -123,6 +124,11 @@ export interface Chat {
   illustrations: Illustration[];
   /** Illustrations being made, or that failed, one per message at most. */
   illustrating: IllustrationProgress[];
+  /**
+   * True while the scene call reads the latest reply, after which the
+   * chat's place may change and an illustration may start.
+   */
+  followingScene: boolean;
   /**
    * How many messages, counted from the oldest, are no longer sent to the
    * model because the conversation has outgrown its token budget.
@@ -173,10 +179,24 @@ export interface SpeechRequest {
   characterId?: string;
 }
 
+/**
+ * When replies are illustrated without being asked: never, when the story
+ * moves somewhere new, at moments worth it as well (with a cooldown), or
+ * every reply.
+ */
+export type IllustrationMode =
+  'off' | 'scene-changes' | 'key-moments' | 'every-reply';
+
 export interface Settings {
   model: string;
   /** The OpenAI model that describes scenes for illustration: a cheap one will do. */
   sceneModel: string;
+  illustrationMode: IllustrationMode;
+  /**
+   * In Key moments, how many replies must pass after a picture before a
+   * moment worth one is illustrated again.
+   */
+  illustrationCooldown: number;
   /** How many tokens of conversation are sent to the model each turn, at most. */
   contextTokenBudget: number;
   /** When true, replies are not spoken aloud. */
@@ -192,6 +212,8 @@ export interface Settings {
 export interface SettingsUpdate {
   model?: string;
   sceneModel?: string;
+  illustrationMode?: IllustrationMode;
+  illustrationCooldown?: number;
   contextTokenBudget?: number;
   speechMuted?: boolean;
   speechScope?: SpeechScope;

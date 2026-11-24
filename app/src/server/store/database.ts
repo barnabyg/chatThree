@@ -178,6 +178,12 @@ const MIGRATIONS: readonly ((db: Db) => void)[] = [
       CREATE INDEX illustrations_by_message ON illustrations (message_id, id);
     `);
   },
+
+  // 7: when a picture was last asked for in a chat, as the newest message's
+  // id at the time, so that automatic pictures can wait a number of replies.
+  (db) => {
+    db.exec('ALTER TABLE chats ADD COLUMN illustrated_through INTEGER');
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

@@ -13,6 +13,7 @@ const SCENE = {
   expression: 'determined',
   framing: 'wide shot',
   lighting: 'storm light',
+  worthIllustrating: false,
 };
 
 /** Illustrate a message and wait until its picture is there. */
@@ -33,6 +34,10 @@ test('when the story moves somewhere new, the place gets its own picture and ill
   app,
   openai,
 }) => {
+  // Only the Illustrate button paints here: see automatic.spec.ts.
+  await page.request.put('/api/settings', {
+    data: { illustrationMode: 'off' },
+  });
   await giveMaraAPicture(page);
   await openLighthouseChat(page);
   await engineReady(page);

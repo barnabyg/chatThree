@@ -3,19 +3,36 @@
 // the chats never carries the API key with it.
 
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import type { Settings, SettingsUpdate, SpeechScope } from '../shared/api.ts';
+import type {
+  IllustrationMode,
+  Settings,
+  SettingsUpdate,
+  SpeechScope,
+} from '../shared/api.ts';
 
 export const DEFAULT_MODEL = 'gpt-5.5';
 /** Describing a scene is a small, structured job: a small model does it. */
 export const DEFAULT_SCENE_MODEL = 'gpt-5-mini';
 /** Roughly 60,000 characters of conversation per turn. */
 export const DEFAULT_CONTEXT_TOKEN_BUDGET = 16_000;
+/** Pictures arrive at moves and moments worth them, not on every reply. */
+export const DEFAULT_ILLUSTRATION_MODE: IllustrationMode = 'key-moments';
+/** Replies that pass after a picture before a key moment is illustrated again. */
+export const DEFAULT_ILLUSTRATION_COOLDOWN = 3;
+const ILLUSTRATION_MODES: readonly unknown[] = [
+  'off',
+  'scene-changes',
+  'key-moments',
+  'every-reply',
+] satisfies IllustrationMode[];
 /** Narration is skipped unless the user asks for it. */
 export const DEFAULT_SPEECH_SCOPE: SpeechScope = 'dialogue';
 
 interface Saved {
   model?: string;
   sceneModel?: string;
+  illustrationMode?: IllustrationMode;
+  illustrationCooldown?: number;
   contextTokenBudget?: number;
   speechMuted?: boolean;
   speechScope?: SpeechScope;
@@ -33,6 +50,8 @@ function load(file: string): Saved {
     const {
       model,
       sceneModel,
+      illustrationMode,
+      illustrationCooldown,
       contextTokenBudget,
       speechMuted,
       speechScope,
@@ -41,6 +60,10 @@ function load(file: string): Saved {
     return {
       ...(typeof model === 'string' && { model }),
       ...(typeof sceneModel === 'string' && { sceneModel }),
+      ...(ILLUSTRATION_MODES.includes(illustrationMode) && {
+        illustrationMode: illustrationMode as IllustrationMode,
+      }),
+      ...(typeof illustrationCooldown === 'number' && { illustrationCooldown }),
       ...(typeof contextTokenBudget === 'number' && { contextTokenBudget }),
       ...(typeof speechMuted === 'boolean' && { speechMuted }),
       ...((speechScope === 'dialogue' || speechScope === 'everything') && {
@@ -77,6 +100,14 @@ export class SettingsStore {
     return this.#saved.sceneModel ?? DEFAULT_SCENE_MODEL;
   }
 
+  illustrationMode(): IllustrationMode {
+    return this.#saved.illustrationMode ?? DEFAULT_ILLUSTRATION_MODE;
+  }
+
+  illustrationCooldown(): number {
+    return this.#saved.illustrationCooldown ?? DEFAULT_ILLUSTRATION_COOLDOWN;
+  }
+
   /** How many tokens of conversation to send each turn, at most. */
   contextTokenBudget(): number {
     return this.#saved.contextTokenBudget ?? DEFAULT_CONTEXT_TOKEN_BUDGET;
@@ -92,6 +123,8 @@ export class SettingsStore {
     return {
       model: this.model(),
       sceneModel: this.sceneModel(),
+      illustrationMode: this.illustrationMode(),
+      illustrationCooldown: this.illustrationCooldown(),
       contextTokenBudget: this.contextTokenBudget(),
       speechMuted: this.#saved.speechMuted ?? false,
       speechScope: this.#saved.speechScope ?? DEFAULT_SPEECH_SCOPE,
@@ -108,6 +141,12 @@ export class SettingsStore {
     const next: Saved = { ...this.#saved };
     if (update.model !== undefined) next.model = update.model;
     if (update.sceneModel !== undefined) next.sceneModel = update.sceneModel;
+    if (update.illustrationMode !== undefined) {
+      next.illustrationMode = update.illustrationMode;
+    }
+    if (update.illustrationCooldown !== undefined) {
+      next.illustrationCooldown = update.illustrationCooldown;
+    }
     if (update.contextTokenBudget !== undefined) {
       next.contextTokenBudget = update.contextTokenBudget;
     }

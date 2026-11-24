@@ -182,6 +182,34 @@ export class SceneStore {
       .get(id, chatId)?.file;
   }
 
+  /** Record that a picture has just been asked for in the chat. */
+  markIllustrated(chatId: string): void {
+    this.#db
+      .prepare(
+        `UPDATE chats SET illustrated_through =
+           (SELECT COALESCE(MAX(id), 0) FROM messages WHERE chat_id = ?)
+         WHERE id = ?`,
+      )
+      .run(chatId, chatId);
+  }
+
+  /**
+   * How many of the character's messages have been added since a picture
+   * was last asked for in the chat, or `undefined` if none ever was.
+   */
+  repliesSinceIllustration(chatId: string): number | undefined {
+    const row = this.#db
+      .prepare<[string], { mark: number | null; replies: number }>(
+        `SELECT illustrated_through AS mark,
+           (SELECT COUNT(*) FROM messages
+            WHERE messages.chat_id = chats.id AND messages.role = 'assistant'
+              AND messages.id > COALESCE(chats.illustrated_through, 0)) AS replies
+         FROM chats WHERE id = ?`,
+      )
+      .get(chatId);
+    return row?.mark === null || row === undefined ? undefined : row.replies;
+  }
+
   /** Every file the chats' pictures are kept in. */
   files(): Set<string> {
     const rows = this.#db

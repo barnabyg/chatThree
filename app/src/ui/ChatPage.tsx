@@ -22,13 +22,14 @@ const ILLUSTRATION_POLL_MS = 1_000;
 function scenePart({
   illustrations,
   illustrating,
+  followingScene,
   location,
   locations,
 }: Chat): Pick<
   Chat,
-  'illustrations' | 'illustrating' | 'location' | 'locations'
+  'illustrations' | 'illustrating' | 'followingScene' | 'location' | 'locations'
 > {
-  return { illustrations, illustrating, location, locations };
+  return { illustrations, illustrating, followingScene, location, locations };
 }
 
 function MessageItem({
@@ -118,9 +119,12 @@ export function ChatPage({ chatId }: { chatId: string }) {
     };
   }, [waitingForEarlierReply, chat]);
 
-  // While pictures are being made, look again until they are done. Only
-  // what belongs to the pictures is taken: the conversation is this page's.
+  // While pictures are being made, or the scene call is reading the latest
+  // reply (after which one may start), look again until that is done. Only
+  // what belongs to the pictures and places is taken: the conversation is
+  // this page's.
   const illustrating =
+    chat?.followingScene === true ||
     chat?.illustrating.some(({ state }) => state !== 'failed') === true;
   useEffect(() => {
     if (!illustrating) return;

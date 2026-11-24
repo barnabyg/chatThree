@@ -157,6 +157,7 @@ export function chatRoutes({
       illustrating: illustrator
         .progress(id)
         .filter(({ messageId }) => ids.has(messageId)),
+      followingScene: illustrator.isFollowing(id),
       notSent: countNotSent(messages, settings.contextTokenBudget()),
       replying: replies.isReplying(id),
     };
