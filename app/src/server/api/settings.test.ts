@@ -28,6 +28,20 @@ test('a key can be saved, and is never sent back', async () => {
   expect(app.settings.apiKey()).toBe('sk-secret-123');
 });
 
+test('a key that could not be a key is refused, without repeating it', async () => {
+  const app = testApp();
+
+  const response = await app.call('PUT', '/api/settings', {
+    apiKey: 'sk-secret\n-123',
+  });
+
+  const text = await response.text();
+  expect(response.status).toBe(400);
+  expect(text).toContain('An API key cannot contain spaces');
+  expect(text).not.toContain('sk-secret');
+  expect(app.settings.apiKey()).toBeUndefined();
+});
+
 test('the saved key can be forgotten', async () => {
   const app = testApp();
   await app.call('PUT', '/api/settings', { apiKey: 'sk-secret-123' });

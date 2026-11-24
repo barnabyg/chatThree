@@ -3,6 +3,7 @@
 // The request is plain `fetch` rather than OpenAI's SDK: the app uses one
 // endpoint, and this keeps the dependency list short.
 
+import { isWellFormedApiKey } from '../apiKey.ts';
 import {
   type ChatProvider,
   ProviderError,
@@ -97,6 +98,12 @@ export function openAIProvider(options: OpenAIOptions): ChatProvider {
       if (apiKey === undefined || apiKey === '') {
         throw new ProviderError(
           'No OpenAI API key is set. Add one in Settings, or set OPENAI_API_KEY before starting chatThree.',
+        );
+      }
+
+      if (!isWellFormedApiKey(apiKey)) {
+        throw new ProviderError(
+          'The OpenAI API key is not a valid key: it contains a space, a line break or another character a key cannot have. Enter it again in Settings.',
         );
       }
 

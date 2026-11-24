@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { isWellFormedApiKey } from '../apiKey.ts';
 import type { SettingsStore } from '../settings.ts';
 import { readBody } from './errors.ts';
 
@@ -29,6 +30,10 @@ const update = z.strictObject({
     .trim()
     .min(1, 'The API key cannot be empty.')
     .max(500, 'The API key is too long.')
+    .refine(
+      isWellFormedApiKey,
+      'An API key cannot contain spaces, line breaks or other special characters.',
+    )
     .nullable()
     .optional(),
 });

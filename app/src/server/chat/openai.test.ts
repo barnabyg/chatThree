@@ -99,6 +99,21 @@ test('says the key was rejected when it is invalid, without repeating it', async
   );
 });
 
+test.each([
+  ['a line break', 'sk-test\n-0000'],
+  ['a space', 'sk-test -0000'],
+  ['an invisible character', 'sk-test\u200B-0000'],
+])(
+  'a key containing %s is reported as malformed, without repeating it or calling OpenAI',
+  async (_what, key) => {
+    const message = await failure(provider(key).streamReply(request()));
+
+    expect(message).toContain('is not a valid key');
+    expect(message).not.toContain('sk-test');
+    expect(openai.requests).toHaveLength(0);
+  },
+);
+
 test("passes on OpenAI's reason when it rejects the request", async () => {
   openai.respondWith({
     kind: 'http-error',
