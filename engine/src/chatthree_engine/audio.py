@@ -9,8 +9,25 @@ from typing import TYPE_CHECKING, Any
 import soundfile
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     import numpy as np
     import numpy.typing as npt
+
+# Chatterbox refuses to clone a voice from a clip of 5 seconds or less.
+MIN_VOICE_SECONDS = 5.0
+
+
+def clip_seconds(clip: Path) -> float:
+    """Length of the recording in `clip`, or ValueError if it cannot be read as audio."""
+    # soundfile publishes no usable type information for this call.
+    info: Any = soundfile.info
+    try:
+        details = info(str(clip))
+    except soundfile.LibsndfileError as error:
+        msg = f"The voice clip is not a recording the engine can read: {clip}"
+        raise ValueError(msg) from error
+    return float(details.frames) / float(details.samplerate)
 
 
 @dataclass(frozen=True)

@@ -39,13 +39,24 @@ class SpeechModel:
         """Output sample rate in hertz."""
         return int(self._model.sr)
 
-    def prepare_voice(self, reference_clip: Path) -> None:
-        """Clone a voice from a reference clip (Turbo needs more than 5 seconds)."""
-        key = reference_clip.resolve()
+    def has_voice(self, voice: Path) -> bool:
+        """Whether the voice in this clip is already prepared."""
+        return voice.resolve() in self._voices
+
+    def prepare_voice(self, voice: Path) -> None:
+        """Clone a voice from a reference clip (Turbo needs more than 5 seconds).
+
+        A voice is remembered by its clip's path, so a clip that changes needs a new path.
+        """
+        key = voice.resolve()
         if key in self._voices:
             return
-        with torch.inference_mode():
-            self._model.prepare_conditionals(str(key))
+        try:
+            with torch.inference_mode():
+                self._model.prepare_conditionals(str(key))
+        except AssertionError as error:
+            # Chatterbox asserts on a clip it cannot clone from, such as one that is too short.
+            raise ValueError(str(error)) from error
         self._voices[key] = self._model.conds
 
     def synthesise(self, text: str, voice: Path | None = None) -> Speech:

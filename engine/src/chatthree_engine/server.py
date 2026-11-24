@@ -19,7 +19,7 @@ from fastapi import FastAPI, HTTPException, Response
 from PIL import Image
 from pydantic import BaseModel, Field
 
-from chatthree_engine.audio import Speech
+from chatthree_engine.audio import MIN_VOICE_SECONDS, Speech, clip_seconds
 from chatthree_engine.cpu import run_at_full_speed
 from chatthree_engine.gate import GpuGate
 
@@ -28,12 +28,21 @@ DEFAULT_PORT = 8765
 MAX_SPEECH_CHARACTERS = 600
 MAX_REFERENCES = 4
 SIDE_STEP = 16
+HTTP_NO_CONTENT = 204
 HTTP_BAD_REQUEST = 400
 HTTP_UNAVAILABLE = 503
 
 
 class Synthesiser(Protocol):
     """What the API needs from a speech model."""
+
+    def has_voice(self, voice: Path) -> bool:
+        """Whether the voice in this clip is already prepared."""
+        ...
+
+    def prepare_voice(self, voice: Path) -> None:
+        """Clone the voice in this clip, so that speaking in it later does not wait for that."""
+        ...
 
     def synthesise(self, text: str, voice: Path | None = None) -> Speech:
         """Speak `text` in the cloned `voice`, or the built-in voice when None."""
@@ -87,6 +96,12 @@ class SpeechRequest(BaseModel):
     voice: Path | None = Field(default=None, description="Reference clip to clone; built-in voice when omitted.")
 
 
+class VoiceRequest(BaseModel):
+    """One voice to prepare ahead of the first sentence spoken in it."""
+
+    voice: Path = Field(description="Reference clip to clone.")
+
+
 class ImageRequest(BaseModel):
     """One image to generate, optionally steered by reference images."""
 
@@ -132,6 +147,22 @@ def _existing(path: Path, what: str) -> Path:
     return path
 
 
+def _voice_clip(path: Path) -> Path:
+    """Check that a voice can be cloned from the clip at `path`, or refuse the request."""
+    _existing(path, "voice clip")
+    try:
+        seconds = clip_seconds(path)
+    except ValueError as error:
+        raise HTTPException(HTTP_BAD_REQUEST, detail=str(error)) from error
+    if seconds <= MIN_VOICE_SECONDS:
+        detail = (
+            f"The voice clip is {seconds:.1f} seconds long. "
+            f"It must be longer than {MIN_VOICE_SECONDS:g} seconds to clone a voice from."
+        )
+        raise HTTPException(HTTP_BAD_REQUEST, detail=detail)
+    return path
+
+
 def create_app(loader: Callable[[], Engine] = load_engine) -> FastAPI:
     """Build the API. `loader` supplies the models, so tests can pass fakes."""
     loading = _Loading(loader)
@@ -150,13 +181,28 @@ def create_app(loader: Callable[[], Engine] = load_engine) -> FastAPI:
     @app.post("/speech", response_class=Response, responses={200: {"content": {"audio/wav": {}}}})
     def speech(request: SpeechRequest) -> Response:  # pyright: ignore[reportUnusedFunction] - registered by the decorator
         engine = loading.engine()
-        voice = None if request.voice is None else _existing(request.voice, "voice clip")
+        voice = None if request.voice is None else _voice_clip(request.voice)
         try:
             with engine.gate.speech():
                 clip = engine.speech.synthesise(request.text, voice)
         except ValueError as error:
             raise HTTPException(HTTP_BAD_REQUEST, detail=str(error)) from error
         return Response(clip.wav_bytes(), media_type="audio/wav", headers={"X-Audio-Seconds": f"{clip.seconds:.2f}"})
+
+    # Cloning a voice takes seconds, so the app asks for it when a chat opens
+    # and the first sentence spoken in that voice does not have to wait.
+    @app.post("/voice", status_code=HTTP_NO_CONTENT)
+    def voice(request: VoiceRequest) -> None:  # pyright: ignore[reportUnusedFunction] - registered by the decorator
+        engine = loading.engine()
+        clip = _voice_clip(request.voice)
+        # A voice that is already prepared needs no GPU, so it does not queue for one.
+        if engine.speech.has_voice(clip):
+            return
+        try:
+            with engine.gate.speech():
+                engine.speech.prepare_voice(clip)
+        except ValueError as error:
+            raise HTTPException(HTTP_BAD_REQUEST, detail=str(error)) from error
 
     @app.post("/image", response_class=Response, responses={200: {"content": {"image/png": {}}}})
     def image(request: ImageRequest) -> Response:  # pyright: ignore[reportUnusedFunction] - registered by the decorator
