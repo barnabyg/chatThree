@@ -63,8 +63,13 @@ export type FakeJobs = EngineJobs & {
   requests: JobRequest[];
   /** What every spoken sentence comes back as. */
   clip: Uint8Array<ArrayBuffer>;
-  /** Make every job from now on fail with `error`. */
-  failWith(error: Error): void;
+  /** Make every job from now on fail with `error`, or work again with `undefined`. */
+  failWith(error: Error | undefined): void;
+  /**
+   * Make pictures take until the returned function is called, as a real one
+   * takes seconds.
+   */
+  holdPainting(): () => void;
 };
 
 /** What the fake engine paints for `seed`: a PNG file's first bytes, then the seed. */
@@ -78,6 +83,7 @@ export function fakeJobs(): FakeJobs {
   const requests: JobRequest[] = [];
   const clip = new Uint8Array([82, 73, 70, 70, 1, 2, 3]);
   let failure: Error | undefined;
+  let painting = Promise.resolve();
   const record = (request: JobRequest): void => {
     if (failure !== undefined) throw failure;
     requests.push(request);
@@ -87,6 +93,15 @@ export function fakeJobs(): FakeJobs {
     clip,
     failWith(error) {
       failure = error;
+    },
+    holdPainting() {
+      let finish = (): void => undefined;
+      painting = new Promise((resolve) => {
+        finish = resolve;
+      });
+      return () => {
+        finish();
+      };
     },
     speak(text, options = {}) {
       return Promise.resolve().then(() => {
@@ -104,7 +119,7 @@ export function fakeJobs(): FakeJobs {
       });
     },
     paint(request) {
-      return Promise.resolve().then(() => {
+      return painting.then(() => {
         record({ job: 'paint', ...request });
         return fakePicture(request.seed);
       });

@@ -93,6 +93,8 @@ The picture is saved as soon as it is made or chosen, is shown in the editor
 and beside the character in the list, and is kept in the app's data folder.
 If the engine is not ready, generating says so; uploading and the rest of
 the editor do not need the engine.
+If a picture is uploaded while another is being generated, the uploaded one
+is kept.
 
 ## Speech
 
@@ -107,11 +109,20 @@ sentence is heard while the rest is still being written.
 - **Stop** ends the reply and what is being said. Once the reply has all
   arrived, **Stop speaking** ends only the speech.
 - **Settings > What is spoken** chooses between only what the character says
-  (the default) and the whole reply. What the character says is the text in
-  double quotation marks. A reply with no quotation marks that marks its actions
-  with `*asterisks*`, as the built-in character's do, is written the other way
-  round: there, everything outside the asterisks is spoken. A reply with
-  neither is spoken whole, once it has all arrived.
+  (the default) and the whole reply. Characters are written in two ways, and
+  the app goes by which one a reply uses:
+  - `She nods. "Come in," she says.` Speech is in double quotation marks,
+    and only that is spoken.
+  - `*She nods.* Come in.` Actions are between asterisks, as the built-in
+    character's are, and everything else is spoken.
+
+  A word stressed with asterisks (`I do *not* want that`) and a title or
+  single word in quotation marks (`Have you read "Dune"?`) are part of the
+  text around them, not an action or a line of dialogue. A reply with
+  neither quotation marks nor actions is spoken whole. The character's
+  previous message gives a head start on which way a reply is written;
+  without one, speech starts at the reply's first quotation or action, or
+  at its end if it has neither.
 - Formatting marks such as asterisks are never spoken, and a sentence longer
   than the engine takes in one request (600 characters) is split first.
 
@@ -150,6 +161,14 @@ Everything works without any of these. They are read when the app starts.
   outright (Task Manager, `Stop-Process`) gives it no chance to, and the
   engine keeps the GPU until it is ended by hand:
   `Get-CimInstance Win32_Process | Where-Object CommandLine -like '*chatthree_engine*' | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`
+- **Speech and narration are told apart by rule of thumb.** A reply that
+  changes how it is written part-way (narration first, then quotation marks,
+  after a message that had none) can have a sentence of narration spoken,
+  because what has been sent to be spoken cannot be taken back. Dialogue in
+  single quotation marks is not recognised.
+- **A sentence already sent to the engine is always finished.** Stopping
+  speech stops the sound at once, but the engine completes the clip it is
+  making.
 - **Token counts are estimates.** The conversation budget counts four
   characters as a token, which suits English prose and undercounts some
   other languages.

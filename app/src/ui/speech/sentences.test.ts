@@ -259,6 +259,38 @@ describe('speaking only dialogue', () => {
     ).toEqual(['Drink.']);
   });
 
+  test('a title or a word in quotation marks is part of what is said, not a line of dialogue', () => {
+    expect(
+      spoken('dialogue', [
+        '*smiles* I heard you say "maybe" earlier. Have you read "Dune"? It is my favourite.',
+      ]),
+    ).toEqual([
+      'I heard you say maybe earlier.',
+      'Have you read Dune?',
+      'It is my favourite.',
+    ]);
+  });
+
+  test('a title in quotation marks in the narration does not make the narration speech', () => {
+    expect(
+      spoken('dialogue', [
+        'She put down "Dune" and looked up. "A good book," she said.',
+      ]),
+    ).toEqual(['A good book,']);
+  });
+
+  test('a long speech is spoken from its first sentence, before its closing quotation mark', () => {
+    const splitter = speechSplitter('dialogue');
+
+    expect(splitter.push('She said, "Come in. Sit')).toEqual(['Come in.']);
+  });
+
+  test('speech broken off with a dash is still speech', () => {
+    expect(spoken('dialogue', ['"But I never—" She stopped.'])).toEqual([
+      'But I never—',
+    ]);
+  });
+
   describe('when the previous message shows how the character writes', () => {
     test('a reply after one without quotation marks is spoken from its first sentence', () => {
       const splitter = speechSplitter('dialogue', {

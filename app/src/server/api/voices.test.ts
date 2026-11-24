@@ -1,10 +1,12 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import type { Character } from '../../shared/api.ts';
 import { recording } from '../../../test-support/recording.ts';
+import { EngineUnavailableError } from '../engine/jobs.ts';
 import {
   builtInCharacter,
+  LOCAL,
   stubEngine,
   type TestApp,
   testApp,
@@ -152,6 +154,36 @@ test("deleting a character deletes its voice clip's file", async () => {
   expect(existsSync(clip)).toBe(false);
 });
 
+test('a clip still arriving when its character is deleted is not kept', async () => {
+  const app = testApp();
+  const character = await builtInCharacter(app);
+  // The clip arrives in two parts, with the character deleted in between.
+  const clip = recording(6);
+  let finish = (): void => undefined;
+  const arriving = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(clip.subarray(0, 100));
+      finish = () => {
+        controller.enqueue(clip.subarray(100));
+        controller.close();
+      };
+    },
+  });
+  const upload = app.app.request(`/api/characters/${character.id}/voice`, {
+    method: 'PUT',
+    headers: { ...LOCAL, 'Content-Type': 'application/octet-stream' },
+    body: arriving,
+    duplex: 'half',
+  });
+
+  await app.call('DELETE', `/api/characters/${character.id}`);
+  finish();
+
+  expect((await upload).status).toBe(404);
+  const folder = path.join(app.dataDir, 'voices');
+  expect(existsSync(folder) ? readdirSync(folder) : []).toEqual([]);
+});
+
 test('speaking as a character that does not exist is a 404', async () => {
   const response = await testApp().call('POST', '/api/speech', {
     text: 'Sit down.',
@@ -197,6 +229,37 @@ describe('warming a voice up', () => {
     expect(response.status).toBe(204);
     await Promise.resolve();
     expect(app.jobs.requests).toEqual([]);
+  });
+
+  test('missed because the engine had just gone, happens when the engine is next ready', async () => {
+    const engine = stubEngine({ state: 'ready' });
+    const app = testApp({ engine });
+    const character = await builtInCharacter(app);
+    await giveVoice(app, character);
+    app.jobs.failWith(new EngineUnavailableError());
+    await warm(app, character);
+    await Promise.resolve();
+    app.jobs.failWith(undefined);
+
+    engine.set({ state: 'ready' });
+
+    await expect.poll(() => app.jobs.requests).toHaveLength(1);
+    expect(app.jobs.requests[0]?.job).toBe('prepare-voice');
+  });
+
+  test('is done again when the engine comes back from a restart, which forgets every voice', async () => {
+    const engine = stubEngine({ state: 'ready' });
+    const app = testApp({ engine });
+    const character = await builtInCharacter(app);
+    await giveVoice(app, character);
+    await warm(app, character);
+    await expect.poll(() => app.jobs.requests).toHaveLength(1);
+
+    engine.set({ state: 'loading' });
+    engine.set({ state: 'ready' });
+
+    await expect.poll(() => app.jobs.requests).toHaveLength(2);
+    expect(app.jobs.requests[1]).toEqual(app.jobs.requests[0]);
   });
 
   test('asked while the engine is still loading, happens once the engine is ready', async () => {

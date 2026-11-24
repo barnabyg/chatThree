@@ -4,22 +4,29 @@
 // few seconds. Asked for when a chat opens, that wait is over before the
 // first reply arrives.
 
-import type { EngineJobs } from './jobs.ts';
+import { type EngineJobs, EngineUnavailableError } from './jobs.ts';
 import type { EngineControl } from './supervisor.ts';
 
 export class VoiceWarmer {
   readonly #engine: EngineControl;
   readonly #jobs: EngineJobs;
-  /** Clips asked for while the engine was not ready. */
+  /** Clips to prepare when the engine is next ready. */
   readonly #waiting = new Set<string>();
+  /**
+   * The clip last asked for: most likely the voice of the chat that is
+   * open. An engine that restarts has forgotten it.
+   */
+  #latest: string | undefined;
 
   constructor(engine: EngineControl, jobs: EngineJobs) {
     this.#engine = engine;
     this.#jobs = jobs;
     engine.subscribe((status) => {
       if (status.state !== 'ready') return;
-      for (const clip of this.#waiting) this.#prepare(clip);
+      const clips = new Set(this.#waiting);
+      if (this.#latest !== undefined) clips.add(this.#latest);
       this.#waiting.clear();
+      for (const clip of clips) this.#prepare(clip);
     });
   }
 
@@ -30,12 +37,19 @@ export class VoiceWarmer {
    * logged.
    */
   warm(clip: string): void {
+    this.#latest = clip;
     if (this.#engine.status().state === 'ready') this.#prepare(clip);
     else this.#waiting.add(clip);
   }
 
   #prepare(clip: string): void {
     this.#jobs.prepareVoice(clip).catch((error: unknown) => {
+      if (error instanceof EngineUnavailableError) {
+        // The engine went away between reporting ready and being asked, as
+        // at the start of a restart. It is asked again when it is back.
+        this.#waiting.add(clip);
+        return;
+      }
       console.warn(
         `The voice in ${clip} could not be prepared ahead of time: ${error instanceof Error ? error.message : String(error)}`,
       );

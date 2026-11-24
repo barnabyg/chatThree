@@ -30,7 +30,8 @@ test('a reply is spoken a sentence at a time, in order, starting before the repl
       ' "You can tell me why you are here',
       ' when you have stopped shaking."',
     ],
-    chunkDelayMs: 1500,
+    // The second half waits until the test has looked at the first.
+    holdAfter: 2,
   });
   await watchPlayback(page);
   await openEmptyChat(page);
@@ -40,13 +41,16 @@ test('a reply is spoken a sentence at a time, in order, starting before the repl
 
   // The first sentences are sent to be spoken while the rest is being written.
   await expect
-    .poll(() => app.spoken(), { intervals: [100] })
+    .poll(() => app.spoken())
     .toEqual(['Come in.', 'Sit by the stove.']);
   // And the first of them is heard: sound has started.
   await expect
-    .poll(async () => (await playback(page)).started, { intervals: [100] })
+    .poll(async () => (await playback(page)).started)
     .toBeGreaterThan(0);
   await expect(arriving(page)).toBeVisible();
+  await expect(arriving(page)).not.toContainText('stopped shaking');
+
+  openai.release();
 
   await expect(arriving(page)).toBeHidden();
   await expect

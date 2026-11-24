@@ -127,6 +127,44 @@ describe('generating a reference picture', () => {
     expect(pictureFiles(app)).toHaveLength(1);
   });
 
+  test('the address of a picture that has been replaced serves nothing', async () => {
+    const app = testApp();
+    const character = await builtInCharacter(app);
+    const first = (await (await generate(app, character)).json()) as Character;
+    await generate(app, character);
+
+    const old = await picture(app, first);
+
+    expect(old.status).toBe(404);
+    // Without a version, the address serves whichever picture is current.
+    const current = await app.call(
+      'GET',
+      `/api/characters/${character.id}/image`,
+    );
+    expect(current.status).toBe(200);
+    expect(current.headers.get('cache-control')).toBe('no-cache');
+  });
+
+  test('a picture uploaded while one is being made is kept, and the made one is not', async () => {
+    const app = testApp();
+    const character = await builtInCharacter(app);
+    const finishPainting = app.jobs.holdPainting();
+    const generating = generate(app, character);
+
+    await app.upload('PUT', `/api/characters/${character.id}/image`, JPEG);
+    finishPainting();
+    const response = await generating;
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error:
+        'The picture was changed while a new one was being made, so the new one was not kept.',
+    });
+    const served = await picture(app, await builtInCharacter(app));
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(JPEG);
+    expect(pictureFiles(app)).toHaveLength(1);
+  });
+
   test('is refused for a character with no appearance, saying what to do', async () => {
     const app = testApp();
     const character = await builtInCharacter(app);

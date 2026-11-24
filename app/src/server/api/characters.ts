@@ -1,4 +1,5 @@
 import { randomInt } from 'node:crypto';
+import path from 'node:path';
 import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { z } from 'zod';
@@ -195,6 +196,7 @@ export function characterRoutes(
         'Describe the appearance first: the picture is made from it.',
       );
     }
+    const before = characters.imageFile(character.id);
     let picture: Uint8Array;
     try {
       picture = await jobs.paint({
@@ -205,8 +207,16 @@ export function characterRoutes(
     } catch (error) {
       throw engineFailure(error, NOT_PAINTED);
     }
-    // The character may have been deleted while its picture was painted.
+    // Painting takes seconds. The character may have been deleted in that
+    // time, or given another picture, which is newer than the one asked for
+    // here and must not be lost to it.
     const { id } = existing(c);
+    if (characters.imageFile(id) !== before) {
+      throw new ApiError(
+        409,
+        'The picture was changed while a new one was being made, so the new one was not kept.',
+      );
+    }
     return c.json(setPicture(id, media.save('images', 'png', picture)));
   });
 
@@ -220,8 +230,11 @@ export function characterRoutes(
       },
     }),
     async (c) => {
-      const { id } = existing(c);
+      existing(c);
       const picture = new Uint8Array(await c.req.arrayBuffer());
+      // Looked up again: the character may have been deleted while the file
+      // was arriving, and a file saved for it then would never be removed.
+      const { id } = existing(c);
       const kind = pictureKind(picture);
       if (kind === undefined) {
         throw new ApiError(400, 'A picture must be a PNG, JPEG or WebP image.');
@@ -230,18 +243,28 @@ export function characterRoutes(
     },
   );
 
+  // The picture. An address with a version (`?v=`, as `imageUrl` has) only
+  // ever serves that picture, so a browser may keep it for good; one that
+  // has been replaced is gone.
   routes.get('/:id/image', (c) => {
     const file = characters.imageFile(existing(c).id);
-    const picture = file === undefined ? undefined : media.read(file);
+    const version = c.req.query('v');
+    const picture =
+      file === undefined ||
+      (version !== undefined && version !== path.parse(file).name)
+        ? undefined
+        : media.read(file);
     if (file === undefined || picture === undefined) {
-      throw new ApiError(404, 'That character has no picture.');
+      throw new ApiError(404, 'That character has no such picture.');
     }
     return c.body(picture, 200, {
       'Content-Type':
-        PICTURE_TYPES[file.slice(file.lastIndexOf('.') + 1)] ??
+        PICTURE_TYPES[path.extname(file).slice(1)] ??
         'application/octet-stream',
-      // The address names the file, so what it serves never changes.
-      'Cache-Control': 'private, max-age=31536000, immutable',
+      'Cache-Control':
+        version === undefined
+          ? 'no-cache'
+          : 'private, max-age=31536000, immutable',
     });
   });
 
@@ -255,8 +278,10 @@ export function characterRoutes(
       },
     }),
     async (c) => {
-      const { id } = existing(c);
+      existing(c);
       const clip = new Uint8Array(await c.req.arrayBuffer());
+      // Looked up again, for the same reason as a picture's upload.
+      const { id } = existing(c);
       checkVoiceClip(clip);
       return c.json(setVoice(id, media.save('voices', 'wav', clip)));
     },

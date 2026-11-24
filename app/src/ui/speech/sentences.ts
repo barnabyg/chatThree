@@ -14,17 +14,20 @@
 //   *She nods.* Come in.                actions are between asterisks, and
 //                                       everything else is speech
 //
-// So text in quotation marks is always speech, an action between asterisks
-// never is, and what the rest is depends on which of the two the reply uses.
-// That is settled by the first quotation mark (the rest is narration) or the
-// first action (the rest is speech). Until then the rest is held back,
+// So a line of dialogue in quotation marks is always speech, an action
+// between asterisks never is, and what the rest is depends on which of the
+// two the reply uses. That is settled by the first line of dialogue (the
+// rest is narration) or the first action (the rest is speech). A title or a
+// single word in quotation marks is not a line of dialogue: it reads as part
+// of the text around it. What tells them apart is that dialogue ends in
+// punctuation inside its quotation marks, or runs to more than a phrase. Until then the rest is held back,
 // unless the character's previous message had no quotation marks, in which
 // case it is taken for speech at once. A reply with neither marks nor a
 // previous message to go by is all speech, and is spoken when it ends.
 //
 // The text arrives a piece at a time and what has been sent to be spoken
 // cannot be taken back, so a reply that changes its ways part-way can have
-// a sentence of narration spoken before its first quotation mark.
+// a sentence of narration spoken before its first line of dialogue.
 //
 // Formatting marks are never spoken in either scope.
 
@@ -219,15 +222,24 @@ function everything(sentences: Sentences): SpeechSplitter {
   };
 }
 
+/** A quotation longer than this is dialogue, whatever it ends with. */
+const MAX_QUOTED_PHRASE = 80;
+
 const hasQuotationMarks = (text: string): boolean => /["“”]/.test(text);
 
 function dialogue(
   sentences: Sentences,
   previous: string | undefined,
 ): SpeechSplitter {
-  let inQuotes = false;
   /**
-   * What text outside quotation marks and actions is. Until that is known
+   * Whether a quotation is being read. One just opened is `unsettled` until
+   * it shows itself to be a line of dialogue or only a quoted phrase.
+   */
+  let quotation: 'none' | 'unsettled' | 'dialogue' = 'none';
+  /** The text of an unsettled quotation so far. */
+  let quoted = '';
+  /**
+   * What text outside dialogue and actions is. Until that is known
    * (see the top of this file) such text is `held`.
    */
   let bare: 'undecided' | 'speech' | 'narration' =
@@ -289,39 +301,82 @@ function dialogue(
     else if (next !== undefined && !isSpace(next)) span = { text: '', bold };
   };
 
-  const quotationMark = (mark: string): void => {
-    inQuotes = mark === '"' ? !inQuotes : mark === '“';
+  /** Take text that is not dialogue: part of an action, if one is open. */
+  const takeUnquoted = (text: string): void => {
+    if (span === null) takeBare(text);
+    else span.text += text;
+  };
+
+  /** The quotation being read is a line of dialogue: speak it. */
+  const settleAsDialogue = (): void => {
     if (bare !== 'narration') {
-      // Quotation marks settle it: only what is inside them is speech. What
-      // led up to the first one was narration, held or half-said.
+      // Dialogue settles it: only what is inside quotation marks is speech.
+      // What led up to the first line of it was narration, held or half-said.
       if (bare === 'speech') sentences.discardUnfinished();
       bare = 'narration';
       held = '';
     }
+    sentences.add(quoted);
+    quoted = '';
+    quotation = 'dialogue';
+  };
+
+  /**
+   * The quotation being read has ended: at its closing mark, or `cutShort`
+   * by the end of its line or of the reply.
+   */
+  const endQuotation = (cutShort = false): void => {
+    if (quotation === 'unsettled') {
+      if (!cutShort && !/[,.!?…—–-]$/.test(quoted.trimEnd())) {
+        // A title or a word in quotation marks, read as the text around it.
+        const phrase = quoted;
+        quoted = '';
+        quotation = 'none';
+        takeUnquoted(phrase);
+        return;
+      }
+      settleAsDialogue();
+    }
+    quotation = 'none';
     // Keeps two quotations apart when they join into one sentence.
-    if (!inQuotes) sentences.add(' ');
+    sentences.add(' ');
+    if (cutShort) sentences.flush();
+  };
+
+  const quotationMark = (mark: string): void => {
+    if (quotation !== 'none') {
+      // An opening mark inside a quotation opens nothing new.
+      if (mark !== '“') endQuotation();
+    } else if (mark !== '”') {
+      quotation = 'unsettled';
+    }
   };
 
   const take = (character: string): void => {
     // Inside quotation marks, asterisks are only stress on a word.
     if (character === '*') {
-      if (!inQuotes) asterisks += 1;
+      if (quotation === 'none') asterisks += 1;
       return;
     }
     if (asterisks > 0) settleAsterisks(character);
     if (character === '\n') {
       // Neither an action nor a quotation runs on past the end of its line:
       // one left open by mistake must not swallow the rest of the reply.
+      if (quotation !== 'none') endQuotation(true);
       endSpan(true);
-      if (inQuotes) sentences.flush();
-      inQuotes = false;
       lastBare = '';
     }
     if (character === '"' || character === '“' || character === '”') {
       quotationMark(character);
-    } else if (inQuotes) sentences.add(character);
-    else if (span !== null) span.text += character;
-    else takeBare(character);
+    } else if (quotation === 'dialogue') {
+      sentences.add(character);
+    } else if (quotation === 'unsettled') {
+      quoted += character;
+      // More than a phrase: a sentence that carries on, or simply long.
+      if (/[,.!?…]\s$/.test(quoted) || quoted.length > MAX_QUOTED_PHRASE) {
+        settleAsDialogue();
+      }
+    } else takeUnquoted(character);
   };
 
   return {
@@ -331,8 +386,9 @@ function dialogue(
     },
     end() {
       if (asterisks > 0) settleAsterisks(undefined);
+      if (quotation !== 'none') endQuotation(true);
       endSpan(true);
-      // Neither quotation marks nor an action: the reply was all speech.
+      // Neither dialogue nor an action: the reply was all speech.
       if (bare === 'undecided') sentences.add(held);
       sentences.flush();
       return sentences.take();

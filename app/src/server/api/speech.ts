@@ -49,7 +49,8 @@ export function speechRoutes(
     try {
       const clip = await jobs.speak(text, {
         ...(voice !== undefined && { voice }),
-        // The browser gives up on clips it no longer wants, and so does the job.
+        // The browser gives up on clips it no longer wants, and the app then
+        // stops waiting for them. The engine still finishes the sentence.
         signal: c.req.raw.signal,
       });
       return c.body(clip, 200, { 'Content-Type': 'audio/wav' });
