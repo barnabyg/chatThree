@@ -113,14 +113,14 @@ describe('starting a chat', () => {
     expect(list).toEqual([
       {
         id: older.id,
-        character: older.character,
+        character: { id: older.character.id, name: older.character.name },
         scenario: older.scenario,
         lastActivityAt: (await readChat(app, older.id)).messages.at(-1)
           ?.createdAt,
       },
       {
         id: newer.id,
-        character: newer.character,
+        character: { id: newer.character.id, name: newer.character.name },
         scenario: newer.scenario,
         lastActivityAt: expect.any(String) as string,
       },

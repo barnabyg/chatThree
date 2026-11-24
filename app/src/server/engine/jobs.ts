@@ -38,6 +38,11 @@ export interface PaintRequest {
   height: number;
   /** The same prompt and seed give the same picture; another seed, another picture. */
   seed: number;
+  /**
+   * Paths of pictures on this computer that steer the new one: who is in it
+   * and where. At most four.
+   */
+  references?: string[];
 }
 
 export interface EngineJobs {

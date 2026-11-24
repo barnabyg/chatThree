@@ -5,6 +5,7 @@ import { temporaryDirectory } from '../../test-support/temporary.ts';
 import {
   DEFAULT_CONTEXT_TOKEN_BUDGET,
   DEFAULT_MODEL,
+  DEFAULT_SCENE_MODEL,
   SettingsStore,
 } from './settings.ts';
 
@@ -17,6 +18,7 @@ test('with nothing saved, the model is the default and the key comes from the en
 
   expect(settings.view()).toEqual({
     model: DEFAULT_MODEL,
+    sceneModel: DEFAULT_SCENE_MODEL,
     contextTokenBudget: DEFAULT_CONTEXT_TOKEN_BUDGET,
     speechMuted: false,
     speechScope: 'dialogue',

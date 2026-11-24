@@ -6,6 +6,8 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import type { Settings, SettingsUpdate, SpeechScope } from '../shared/api.ts';
 
 export const DEFAULT_MODEL = 'gpt-5.5';
+/** Describing a scene is a small, structured job: a small model does it. */
+export const DEFAULT_SCENE_MODEL = 'gpt-5-mini';
 /** Roughly 60,000 characters of conversation per turn. */
 export const DEFAULT_CONTEXT_TOKEN_BUDGET = 16_000;
 /** Narration is skipped unless the user asks for it. */
@@ -13,6 +15,7 @@ export const DEFAULT_SPEECH_SCOPE: SpeechScope = 'dialogue';
 
 interface Saved {
   model?: string;
+  sceneModel?: string;
   contextTokenBudget?: number;
   speechMuted?: boolean;
   speechScope?: SpeechScope;
@@ -29,6 +32,7 @@ function load(file: string): Saved {
     if (typeof saved !== 'object' || saved === null) throw new Error();
     const {
       model,
+      sceneModel,
       contextTokenBudget,
       speechMuted,
       speechScope,
@@ -36,6 +40,7 @@ function load(file: string): Saved {
     } = saved;
     return {
       ...(typeof model === 'string' && { model }),
+      ...(typeof sceneModel === 'string' && { sceneModel }),
       ...(typeof contextTokenBudget === 'number' && { contextTokenBudget }),
       ...(typeof speechMuted === 'boolean' && { speechMuted }),
       ...((speechScope === 'dialogue' || speechScope === 'everything') && {
@@ -68,6 +73,10 @@ export class SettingsStore {
     return this.#saved.model ?? DEFAULT_MODEL;
   }
 
+  sceneModel(): string {
+    return this.#saved.sceneModel ?? DEFAULT_SCENE_MODEL;
+  }
+
   /** How many tokens of conversation to send each turn, at most. */
   contextTokenBudget(): number {
     return this.#saved.contextTokenBudget ?? DEFAULT_CONTEXT_TOKEN_BUDGET;
@@ -82,6 +91,7 @@ export class SettingsStore {
   view(): Settings {
     return {
       model: this.model(),
+      sceneModel: this.sceneModel(),
       contextTokenBudget: this.contextTokenBudget(),
       speechMuted: this.#saved.speechMuted ?? false,
       speechScope: this.#saved.speechScope ?? DEFAULT_SPEECH_SCOPE,
@@ -97,6 +107,7 @@ export class SettingsStore {
   update(update: SettingsUpdate): Settings {
     const next: Saved = { ...this.#saved };
     if (update.model !== undefined) next.model = update.model;
+    if (update.sceneModel !== undefined) next.sceneModel = update.sceneModel;
     if (update.contextTokenBudget !== undefined) {
       next.contextTokenBudget = update.contextTokenBudget;
     }

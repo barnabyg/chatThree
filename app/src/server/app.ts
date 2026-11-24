@@ -12,6 +12,11 @@ import {
   type ReplyService,
 } from './chat/replies.ts';
 import type { EngineJobs } from './engine/jobs.ts';
+import {
+  IllustrationBusyError,
+  IllustrationRequestError,
+  type Illustrator,
+} from './scene/illustrator.ts';
 import type { EngineControl } from './engine/supervisor.ts';
 import type { VoiceWarmer } from './engine/warmer.ts';
 import { localOnly } from './localOnly.ts';
@@ -21,6 +26,7 @@ import type { CharacterStore } from './store/characters.ts';
 import type { ChatStore } from './store/chats.ts';
 import type { MediaStore } from './store/media.ts';
 import type { ScenarioStore } from './store/scenarios.ts';
+import type { SceneStore } from './store/scenes.ts';
 
 export interface AppDependencies {
   uiDir: string;
@@ -33,8 +39,11 @@ export interface AppDependencies {
   chats: ChatStore;
   characters: CharacterStore;
   scenarios: ScenarioStore;
+  /** Chats' places and illustrations. */
+  scenes: SceneStore;
   settings: SettingsStore;
   replies: ReplyService;
+  illustrator: Illustrator;
 }
 
 /** The HTTP application: the JSON API under `/api`, the UI everywhere else. */
@@ -48,8 +57,10 @@ export function createApp(dependencies: AppDependencies): Hono {
     chats,
     characters,
     scenarios,
+    scenes,
     settings,
     replies,
+    illustrator,
   } = dependencies;
   const app = new Hono();
   app.use(localOnly);
@@ -58,13 +69,22 @@ export function createApp(dependencies: AppDependencies): Hono {
   app.route('/api/engine', engineRoutes(engine));
   app.route(
     '/api/chats',
-    chatRoutes(chats, characters, scenarios, replies, settings),
+    chatRoutes({
+      chats,
+      characters,
+      scenarios,
+      scenes,
+      replies,
+      illustrator,
+      settings,
+      media,
+    }),
   );
   app.route(
     '/api/characters',
-    characterRoutes(characters, replies, media, warmer, jobs),
+    characterRoutes(characters, replies, media, warmer, jobs, illustrator),
   );
-  app.route('/api/scenarios', scenarioRoutes(scenarios, replies));
+  app.route('/api/scenarios', scenarioRoutes(scenarios, replies, illustrator));
   app.route('/api/settings', settingsRoutes(settings));
   app.route('/api/speech', speechRoutes(jobs, characters, media));
   app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));
@@ -78,6 +98,12 @@ export function createApp(dependencies: AppDependencies): Hono {
       return c.json({ error: error.message }, 409);
     }
     if (error instanceof ChatRequestError) {
+      return c.json({ error: error.message }, 400);
+    }
+    if (error instanceof IllustrationBusyError) {
+      return c.json({ error: error.message }, 409);
+    }
+    if (error instanceof IllustrationRequestError) {
       return c.json({ error: error.message }, 400);
     }
     // Only the error is logged, never the request: it may hold an API key.

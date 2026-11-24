@@ -182,6 +182,12 @@ export const api = {
   regenerate: (chatId: string) => reply(`/api/chats/${chatId}/regenerate`),
   deleteLastMessage: (chatId: string) =>
     request<Chat>('DELETE', `/api/chats/${chatId}/messages/last`),
+  /** Start a picture of one of the character's messages. Resolves to the chat, showing it under way. */
+  illustrate: (chatId: string, messageId: number) =>
+    request<Chat>(
+      'POST',
+      `/api/chats/${chatId}/messages/${String(messageId)}/illustrate`,
+    ),
   stopReply: (chatId: string) =>
     request<undefined>('POST', `/api/chats/${chatId}/stop`),
   listCharacters: () => request<Character[]>('GET', '/api/characters'),

@@ -16,6 +16,8 @@ import { ChatStore } from './store/chats.ts';
 import { openDatabase } from './store/database.ts';
 import { MediaStore } from './store/media.ts';
 import { ScenarioStore } from './store/scenarios.ts';
+import { SceneStore } from './store/scenes.ts';
+import { Illustrator } from './scene/illustrator.ts';
 
 export interface RunningApp {
   url: string;
@@ -34,15 +36,17 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
     path.join(config.dataDir, 'settings.json'),
     config.openai.apiKey,
   );
+  const scenes = new SceneStore(database);
+  const provider = openAIProvider({
+    baseUrl: config.openai.baseUrl,
+    apiKey: () => settings.apiKey(),
+  });
   const replies = new ReplyService(
     chats,
     characters,
     scenarios,
     settings,
-    openAIProvider({
-      baseUrl: config.openai.baseUrl,
-      apiKey: () => settings.apiKey(),
-    }),
+    provider,
   );
   const engine = new EngineSupervisor({
     ...config.engine,
@@ -50,17 +54,32 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
     env: { OPENAI_API_KEY: undefined },
   });
   const jobs = engineJobs(engine);
+  const media = new MediaStore(config.dataDir);
+  const illustrator = new Illustrator({
+    chats,
+    characters,
+    scenarios,
+    scenes,
+    settings,
+    provider,
+    jobs,
+    media,
+  });
+  // Pictures left behind by a run that ended part-way through making one.
+  illustrator.prune();
   const app = createApp({
     uiDir: config.uiDir,
     engine,
     jobs,
     warmer: new VoiceWarmer(engine, jobs),
-    media: new MediaStore(config.dataDir),
+    media,
     chats,
     characters,
     scenarios,
+    scenes,
     settings,
     replies,
+    illustrator,
   });
   const server = serve({
     fetch: app.fetch,

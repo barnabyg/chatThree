@@ -67,12 +67,45 @@ export interface Scenario extends ScenarioInput {
   chatCount: number;
 }
 
+/** A picture of a moment in a chat, made from one of the character's messages. */
+export interface Illustration {
+  id: number;
+  /** The character's message it illustrates. */
+  messageId: number;
+  /** Where the picture is served from. It never changes. */
+  imageUrl: string;
+}
+
+/**
+ * How far an illustration of a message has got, while it is being made or
+ * once it has failed. A finished one is an `Illustration`.
+ */
+export interface IllustrationProgress {
+  messageId: number;
+  state:
+    | 'describing' // the scene call is writing the picture's description
+    | 'painting-location' // the engine is painting the location's reference picture
+    | 'painting' // the engine is painting the scene
+    | 'failed';
+  /** Why it failed, in words for the user. Only when `failed`. */
+  error?: string;
+}
+
 export interface Chat {
   id: string;
-  character: { id: string; name: string };
+  character: {
+    id: string;
+    name: string;
+    /** The character's reference picture, which illustrations need. */
+    imageUrl: string | null;
+  };
   scenario: { id: string; title: string };
   /** The whole conversation, oldest first. */
   messages: Message[];
+  /** Pictures of the conversation's moments, oldest first. */
+  illustrations: Illustration[];
+  /** Illustrations being made, or that failed, one per message at most. */
+  illustrating: IllustrationProgress[];
   /**
    * How many messages, counted from the oldest, are no longer sent to the
    * model because the conversation has outgrown its token budget.
@@ -125,6 +158,8 @@ export interface SpeechRequest {
 
 export interface Settings {
   model: string;
+  /** The OpenAI model that describes scenes for illustration: a cheap one will do. */
+  sceneModel: string;
   /** How many tokens of conversation are sent to the model each turn, at most. */
   contextTokenBudget: number;
   /** When true, replies are not spoken aloud. */
@@ -139,6 +174,7 @@ export interface Settings {
 
 export interface SettingsUpdate {
   model?: string;
+  sceneModel?: string;
   contextTokenBudget?: number;
   speechMuted?: boolean;
   speechScope?: SpeechScope;

@@ -1,11 +1,15 @@
-import { afterEach, beforeEach, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   FAKE_API_KEY,
   type FakeOpenAI,
   startFakeOpenAI,
 } from '../../../test-support/fake-openai.ts';
 import { openAIProvider } from './openai.ts';
-import { ProviderError, type ReplyRequest } from './provider.ts';
+import {
+  ProviderError,
+  type ReplyRequest,
+  type StructuredRequest,
+} from './provider.ts';
 
 // The provider is tested over real HTTP against a fake OpenAI server that
 // speaks the Responses API's streaming format.
@@ -173,4 +177,109 @@ test('stops asking OpenAI for more when the reply is aborted', async () => {
   await expect(reading).rejects.toThrow();
   expect(pieces).toEqual(['one']);
   await expect.poll(() => openai.requests[0]?.abandoned).toBe(true);
+});
+
+describe('structured answers', () => {
+  function structuredRequest(
+    overrides: Partial<StructuredRequest> = {},
+  ): StructuredRequest {
+    return {
+      model: 'scene-model',
+      instructions: 'Describe the scene.',
+      input: 'Mara: The lamp is lit.',
+      schemaName: 'scene',
+      schema: {
+        type: 'object',
+        properties: { action: { type: 'string' } },
+        required: ['action'],
+        additionalProperties: false,
+      },
+      ...overrides,
+    };
+  }
+
+  async function structuredFailure(answer: Promise<unknown>): Promise<string> {
+    try {
+      await answer;
+    } catch (error) {
+      if (error instanceof ProviderError) return error.message;
+      throw error;
+    }
+    throw new Error('expected the request to fail');
+  }
+
+  test('returns the JSON the model wrote to the schema', async () => {
+    openai.respondToStructuredWith({
+      kind: 'json',
+      value: { action: 'trimming the lamp' },
+    });
+
+    const answer = await provider().structured(structuredRequest());
+
+    expect(answer).toEqual({ action: 'trimming the lamp' });
+  });
+
+  test('asks for the schema, without streaming or storing, and apart from replies', async () => {
+    await provider().structured(structuredRequest());
+
+    expect(openai.requests).toHaveLength(0);
+    expect(openai.structuredRequests[0]).toEqual({
+      model: 'scene-model',
+      instructions: 'Describe the scene.',
+      input: 'Mara: The lamp is lit.',
+      stream: false,
+      store: false,
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'scene',
+          strict: true,
+          schema: structuredRequest().schema,
+        },
+      },
+    });
+  });
+
+  test('says a key is needed when none is set, without calling OpenAI', async () => {
+    const message = await structuredFailure(
+      provider('').structured(structuredRequest()),
+    );
+
+    expect(message).toContain('No OpenAI API key is set');
+    expect(openai.structuredRequests).toHaveLength(0);
+  });
+
+  test("passes on OpenAI's reason when it rejects the request", async () => {
+    openai.respondToStructuredWith({
+      kind: 'http-error',
+      status: 400,
+      message: 'Invalid schema.',
+    });
+
+    const message = await structuredFailure(
+      provider().structured(structuredRequest()),
+    );
+
+    expect(message).toBe('OpenAI returned an error (400): Invalid schema.');
+  });
+
+  test('reports a refusal with the reason the model gave', async () => {
+    openai.respondToStructuredWith({ kind: 'refusal', text: 'No.' });
+
+    const message = await structuredFailure(
+      provider().structured(structuredRequest()),
+    );
+
+    expect(message).toBe('The model declined to answer: No.');
+  });
+
+  test('reports an answer that is not JSON', async () => {
+    openai.respondToStructuredWith({ kind: 'text', text: 'not json' });
+
+    const message = await structuredFailure(
+      provider().structured(structuredRequest()),
+    );
+
+    expect(message).toBe('OpenAI sent back an answer that is not JSON.');
+  });
 });

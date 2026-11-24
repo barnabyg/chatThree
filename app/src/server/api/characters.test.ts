@@ -126,7 +126,11 @@ describe('chatting with a character', () => {
 
     const chat = await chatWith(app, tomas);
 
-    expect(chat.character).toEqual({ id: tomas.id, name: 'Tomas Reed' });
+    expect(chat.character).toEqual({
+      id: tomas.id,
+      name: 'Tomas Reed',
+      imageUrl: null,
+    });
     expect((await list(app)).find(({ id }) => id === tomas.id)?.chatCount).toBe(
       1,
     );

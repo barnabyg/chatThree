@@ -12,6 +12,7 @@ export function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState('');
+  const [sceneModel, setSceneModel] = useState('');
   const [budget, setBudget] = useState('');
   const [speak, setSpeak] = useState(true);
   const [speechScope, setSpeechScope] = useState<SpeechScope>('dialogue');
@@ -23,6 +24,7 @@ export function SettingsPage() {
   const show = (loaded: Settings): void => {
     setSettings(loaded);
     setModel(loaded.model);
+    setSceneModel(loaded.sceneModel);
     setBudget(String(loaded.contextTokenBudget));
     setSpeak(!loaded.speechMuted);
     setSpeechScope(loaded.speechScope);
@@ -67,6 +69,7 @@ export function SettingsPage() {
     update(
       {
         model,
+        sceneModel,
         contextTokenBudget: Number(budget),
         speechMuted: !speak,
         speechScope,
@@ -117,6 +120,22 @@ export function SettingsPage() {
           />
         </label>
         <p className="hint">The OpenAI model that writes the replies.</p>
+
+        <label>
+          Scene model
+          <input
+            type="text"
+            required
+            value={sceneModel}
+            onChange={(event) => {
+              setSceneModel(event.target.value);
+            }}
+          />
+        </label>
+        <p className="hint">
+          The OpenAI model that reads the latest messages and describes the
+          moment for an illustration. A small, cheap model does it well.
+        </p>
 
         <label>
           Conversation budget (tokens)

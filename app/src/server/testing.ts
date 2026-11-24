@@ -13,7 +13,13 @@ import type {
   ScenarioInput,
 } from '../shared/api.ts';
 import { createApp } from './app.ts';
-import type { ChatProvider, ReplyRequest } from './chat/provider.ts';
+import type {
+  ChatProvider,
+  ReplyRequest,
+  StructuredRequest,
+} from './chat/provider.ts';
+import { Illustrator } from './scene/illustrator.ts';
+import { SceneStore } from './store/scenes.ts';
 import type { EngineJobs, PaintRequest } from './engine/jobs.ts';
 import { ReplyService } from './chat/replies.ts';
 import type { EngineControl } from './engine/supervisor.ts';
@@ -136,11 +142,26 @@ export interface ScriptedReply {
   thenWait?: boolean;
 }
 
+/** How the scripted provider answers one structured request: with this, or by failing with it. */
+export type ScriptedAnswer = { value: unknown } | { fail: Error };
+
+/** A scene that stays put: what an unscripted structured request gets. */
+export const PLAIN_SCENE = {
+  action: 'Mara trims the wick of the great lamp.',
+  expression: 'intent',
+  framing: 'medium shot',
+  lighting: 'lamplight',
+};
+
 export type ScriptedProvider = ChatProvider & {
   /** Every request received, oldest first. */
   requests: ReplyRequest[];
   /** Queue the answers to the next requests. Unscripted requests get "Hello." */
   script(...replies: ScriptedReply[]): void;
+  /** Every structured request received, oldest first. */
+  structuredRequests: StructuredRequest[];
+  /** Queue the answers to the next structured requests. Unscripted ones get `PLAIN_SCENE`. */
+  scriptStructured(...answers: ScriptedAnswer[]): void;
 };
 
 function untilAborted(signal: AbortSignal): Promise<never> {
@@ -156,10 +177,23 @@ function untilAborted(signal: AbortSignal): Promise<never> {
 export function scriptedProvider(): ScriptedProvider {
   const requests: ReplyRequest[] = [];
   const queue: ScriptedReply[] = [];
+  const structuredRequests: StructuredRequest[] = [];
+  const answers: ScriptedAnswer[] = [];
   return {
     requests,
     script(...replies) {
       queue.push(...replies);
+    },
+    structuredRequests,
+    scriptStructured(...next) {
+      answers.push(...next);
+    },
+    async structured(request) {
+      structuredRequests.push(request);
+      await Promise.resolve();
+      const answer = answers.shift() ?? { value: PLAIN_SCENE };
+      if ('fail' in answer) throw answer.fail;
+      return answer.value;
     },
     async *streamReply(request) {
       requests.push(request);
@@ -182,6 +216,7 @@ export interface TestApp {
   chats: ChatStore;
   characters: CharacterStore;
   scenarios: ScenarioStore;
+  scenes: SceneStore;
   settings: SettingsStore;
   /** Where the app keeps its files. */
   dataDir: string;
@@ -233,17 +268,31 @@ export function testApp(
   const jobs = fakeJobs();
   const engine = options.engine ?? stubEngine({ state: 'ready' });
   const dataDir = path.join(directory, 'data');
+  const media = new MediaStore(dataDir);
+  const scenes = new SceneStore(database);
+  const illustrator = new Illustrator({
+    chats,
+    characters,
+    scenarios,
+    scenes,
+    settings,
+    provider,
+    jobs,
+    media,
+  });
   const app = createApp({
     uiDir: options.uiDir ?? path.join(directory, 'no-ui'),
     engine,
     jobs,
     warmer: new VoiceWarmer(engine, jobs),
-    media: new MediaStore(dataDir),
+    media,
     chats,
     characters,
     scenarios,
+    scenes,
     settings,
     replies: new ReplyService(chats, characters, scenarios, settings, provider),
+    illustrator,
   });
   const call: TestApp['call'] = async (method, url, body) =>
     app.request(url, {
@@ -261,6 +310,7 @@ export function testApp(
     chats,
     characters,
     scenarios,
+    scenes,
     settings,
     dataDir,
     call,

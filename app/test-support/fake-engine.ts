@@ -14,7 +14,9 @@
 // A voice clip is checked as the real engine checks it: the file must be
 // there, and hold more than 5 seconds of sound.
 // A picture is a small square of one colour, taken from the seed, so that
-// another seed gives another picture.
+// another seed gives another picture. Its reference pictures must be there,
+// as the real engine needs them to be.
+// FAKE_ENGINE_IMAGE_MS: how long each picture takes to paint (default 0).
 // FAKE_ENGINE_CLIP_MS: how long each spoken clip lasts (default 150).
 // FAKE_ENGINE_SPEECH_FAILS: text that cannot be spoken. A request to speak
 //   anything containing it fails, as when the model breaks on a sentence.
@@ -26,6 +28,7 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from 'node:http';
+import { setTimeout as delay } from 'node:timers/promises';
 import { parseArgs } from 'node:util';
 import { MIN_VOICE_SECONDS } from '../src/shared/api.ts';
 import { encodeWav, wavSeconds } from '../src/shared/wav.ts';
@@ -38,6 +41,7 @@ const pidFile = process.env.FAKE_ENGINE_PID_FILE;
 const logFile = process.env.FAKE_ENGINE_LOG_FILE;
 const clipMs = Number(process.env.FAKE_ENGINE_CLIP_MS ?? '150');
 const speechFails = process.env.FAKE_ENGINE_SPEECH_FAILS;
+const imageMs = Number(process.env.FAKE_ENGINE_IMAGE_MS ?? '0');
 
 const CLIP_SAMPLE_RATE = 8_000;
 
@@ -133,11 +137,27 @@ function speech(body: Record<string, unknown>, response: ServerResponse): void {
   response.end(clip());
 }
 
-function image(body: Record<string, unknown>, response: ServerResponse): void {
+async function image(
+  body: Record<string, unknown>,
+  response: ServerResponse,
+): Promise<void> {
   if (typeof body.prompt !== 'string' || body.prompt === '') {
     sendJson(response, 422, { detail: 'prompt is required' });
     return;
   }
+  const references: unknown[] = Array.isArray(body.references)
+    ? body.references
+    : [];
+  const missing = references.find(
+    (reference) => typeof reference !== 'string' || !existsSync(reference),
+  );
+  if (missing !== undefined) {
+    sendJson(response, 400, {
+      detail: `reference image not found: ${JSON.stringify(missing)}`,
+    });
+    return;
+  }
+  if (imageMs > 0) await delay(imageMs);
   const seed = typeof body.seed === 'number' ? body.seed : 0;
   response.writeHead(200, { 'Content-Type': 'image/png' });
   response.end(
@@ -168,7 +188,7 @@ async function job(
       prepareVoice(body, response);
       return;
     case '/image':
-      image(body, response);
+      await image(body, response);
       return;
     default:
       response.statusCode = 404;

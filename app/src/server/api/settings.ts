@@ -14,6 +14,12 @@ const update = z.strictObject({
     .min(1, 'The model name cannot be empty.')
     .max(200, 'The model name is too long.')
     .optional(),
+  sceneModel: z
+    .string()
+    .trim()
+    .min(1, 'The scene model name cannot be empty.')
+    .max(200, 'The scene model name is too long.')
+    .optional(),
   contextTokenBudget: z
     .int('The conversation budget must be a whole number of tokens.')
     .min(
@@ -54,11 +60,18 @@ export function settingsRoutes(settings: SettingsStore): Hono {
   routes.get('/', (c) => c.json(settings.view()));
 
   routes.put('/', async (c) => {
-    const { model, contextTokenBudget, speechMuted, speechScope, apiKey } =
-      await readBody(c, update);
+    const {
+      model,
+      sceneModel,
+      contextTokenBudget,
+      speechMuted,
+      speechScope,
+      apiKey,
+    } = await readBody(c, update);
     return c.json(
       settings.update({
         ...(model !== undefined && { model }),
+        ...(sceneModel !== undefined && { sceneModel }),
         ...(contextTokenBudget !== undefined && { contextTokenBudget }),
         ...(speechMuted !== undefined && { speechMuted }),
         ...(speechScope !== undefined && { speechScope }),

@@ -8,6 +8,7 @@ import { wavSeconds } from '../../shared/wav.ts';
 import type { ReplyService } from '../chat/replies.ts';
 import type { EngineJobs } from '../engine/jobs.ts';
 import type { VoiceWarmer } from '../engine/warmer.ts';
+import type { Illustrator } from '../scene/illustrator.ts';
 import type { CharacterStore } from '../store/characters.ts';
 import type { MediaStore } from '../store/media.ts';
 import { engineFailure, type EngineFailureWords } from './engineFailures.ts';
@@ -115,6 +116,7 @@ export function characterRoutes(
   media: MediaStore,
   warmer: VoiceWarmer,
   jobs: EngineJobs,
+  illustrator: Pick<Illustrator, 'prune'>,
 ): Hono {
   const routes = new Hono();
 
@@ -178,6 +180,8 @@ export function characterRoutes(
     const files = [characters.voiceFile(id), characters.imageFile(id)];
     characters.delete(id);
     for (const file of files) if (file !== undefined) media.remove(file);
+    // Its chats' pictures went with them.
+    illustrator.prune();
     return c.body(null, 204);
   });
 

@@ -2,6 +2,7 @@ import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import type { Scenario } from '../../shared/api.ts';
 import type { ReplyService } from '../chat/replies.ts';
+import type { Illustrator } from '../scene/illustrator.ts';
 import type { ScenarioStore } from '../store/scenarios.ts';
 import { ApiError, readBody } from './errors.ts';
 
@@ -56,6 +57,7 @@ const scenarioInput = z.strictObject({
 export function scenarioRoutes(
   scenarios: ScenarioStore,
   replies: ReplyService,
+  illustrator: Pick<Illustrator, 'prune'>,
 ): Hono {
   const routes = new Hono();
 
@@ -90,6 +92,8 @@ export function scenarioRoutes(
       );
     }
     scenarios.delete(id);
+    // Its chats' pictures went with them.
+    illustrator.prune();
     return c.body(null, 204);
   });
 

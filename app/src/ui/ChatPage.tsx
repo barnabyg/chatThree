@@ -1,33 +1,41 @@
 import {
   Fragment,
-  type SyntheticEvent,
   type KeyboardEvent,
+  type ReactNode,
+  type SyntheticEvent,
   useEffect,
   useRef,
   useState,
 } from 'react';
 import type { Chat, Message, ReplyEvent, Settings } from '../shared/api.ts';
 import { api, errorMessage } from './api.ts';
+import { MessageIllustrations } from './Illustrations.tsx';
 import { useSpeech } from './speech/useSpeech.ts';
 
 /** The server's limit on one message. */
 const MAX_MESSAGE_LENGTH = 20_000;
+/** How often the chat is looked at again while a picture is being made. */
+const ILLUSTRATION_POLL_MS = 1_000;
 
 function MessageItem({
   author,
   role,
   content,
   writing = false,
+  children,
 }: {
   author: string;
   role: Message['role'];
   content: string;
   writing?: boolean;
+  /** Shown under the message's text. */
+  children?: ReactNode;
 }) {
   return (
     <li className={`message message-${role}`} aria-busy={writing}>
       <p className="message-author">{author}</p>
       <p className="message-content">{content}</p>
+      {children}
     </li>
   );
 }
@@ -96,9 +104,31 @@ export function ChatPage({ chatId }: { chatId: string }) {
     };
   }, [waitingForEarlierReply, chat]);
 
+  // While pictures are being made, look again until they are done. Only
+  // what belongs to the pictures is taken: the conversation is this page's.
+  const illustrating =
+    chat?.illustrating.some(({ state }) => state !== 'failed') === true;
+  useEffect(() => {
+    if (!illustrating) return;
+    const timer = setInterval(() => {
+      api.getChat(chatId).then(
+        ({ illustrations, illustrating: progress }) => {
+          setChat(
+            (before) =>
+              before && { ...before, illustrations, illustrating: progress },
+          );
+        },
+        () => undefined,
+      );
+    }, ILLUSTRATION_POLL_MS);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [illustrating, chatId]);
+
   useEffect(() => {
     end.current?.scrollIntoView({ block: 'end' });
-  }, [chat?.messages.length, arriving]);
+  }, [chat?.messages.length, chat?.illustrations.length, arriving]);
 
   if (loadError !== null) {
     return (
@@ -211,6 +241,21 @@ export function ChatPage({ chatId }: { chatId: string }) {
     });
   };
 
+  const illustrate = (messageId: number): void => {
+    setError(null);
+    api.illustrate(chat.id, messageId).then(
+      ({ illustrations, illustrating: progress }) => {
+        setChat(
+          (before) =>
+            before && { ...before, illustrations, illustrating: progress },
+        );
+      },
+      (reason: unknown) => {
+        setError(errorMessage(reason));
+      },
+    );
+  };
+
   const stopReply = (): void => {
     speech.stop();
     void api.stopReply(chat.id);
@@ -276,7 +321,24 @@ export function ChatPage({ chatId }: { chatId: string }) {
                 author={message.role === 'user' ? 'You' : chat.character.name}
                 role={message.role}
                 content={message.content}
-              />
+              >
+                {message.role === 'assistant' && (
+                  <MessageIllustrations
+                    characterName={chat.character.name}
+                    characterId={chat.character.id}
+                    hasPicture={chat.character.imageUrl !== null}
+                    illustrations={chat.illustrations.filter(
+                      ({ messageId }) => messageId === message.id,
+                    )}
+                    progress={chat.illustrating.find(
+                      ({ messageId }) => messageId === message.id,
+                    )}
+                    onIllustrate={() => {
+                      illustrate(message.id);
+                    }}
+                  />
+                )}
+              </MessageItem>
             </Fragment>
           ))}
           {arriving !== null && (

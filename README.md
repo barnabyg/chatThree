@@ -68,9 +68,11 @@ Chats and settings are kept on this computer, outside the repository:
 | File | Holds |
 |---|---|
 | `%LOCALAPPDATA%\chatThree\chatthree.db` | Chats and messages (SQLite) |
-| `%LOCALAPPDATA%\chatThree\settings.json` | The model, the speech settings and a saved API key |
+| `%LOCALAPPDATA%\chatThree\settings.json` | The models, the speech settings and a saved API key |
 | `%LOCALAPPDATA%\chatThree\voices\` | The characters' voice clips |
 | `%LOCALAPPDATA%\chatThree\images\` | The characters' reference pictures |
+| `%LOCALAPPDATA%\chatThree\scenes\` | Illustrations of chats |
+| `%LOCALAPPDATA%\chatThree\locations\` | Reference pictures of the places in chats |
 
 Set `CHATTHREE_DATA_DIR` to keep them somewhere else. On macOS the default is
 `~/Library/Application Support/chatThree`, and on Linux
@@ -95,6 +97,32 @@ If the engine is not ready, generating says so; uploading and the rest of
 the editor do not need the engine.
 If a picture is uploaded while another is being generated, the uploaded one
 is kept.
+
+## Illustrations
+
+Every message of the character's has an **Illustrate** button, which paints
+a picture of that moment under the message. It takes two steps:
+
+- A second, small request to OpenAI (the *scene call*) reads the latest
+  messages, up to the one illustrated, and describes the moment as a
+  picture: what the character is doing, their expression, the framing and
+  the light. Its model is **Settings > Scene model**, `gpt-5-mini` unless
+  changed.
+- The engine paints the scene from that description and two reference
+  pictures: the character's, and one of the place. The place's picture is
+  painted from the scenario's starting location the first time a chat
+  needs it, and reused after that.
+
+The message shows how far the picture has got, and speech carries on while
+it is painted. Choosing a picture opens it at full size. Pictures are kept
+with the chat, in the app's data folder; deleting a message or a chat, or
+regenerating a reply, deletes its pictures. If the scene call or the engine
+fails, the message says why and offers **Try again**; the chat carries on
+either way.
+
+Illustrating needs the character's reference picture (see
+[Reference pictures](#reference-pictures)). Without one, **Illustrate** says
+so and links to the character.
 
 ## Speech
 
@@ -251,6 +279,33 @@ Needs the real engine, so a GPU.
    take the generated picture's place.
 8. Choose **Characters**. Expect the picture beside Mara Quill, and exactly
    one file in `%LOCALAPPDATA%\chatThree\images`.
+
+## Manual check: illustrating a message
+
+Needs the real engine, so a GPU, and an OpenAI API key.
+
+1. Start the app: `cd C:\docs\git\chatThree; pwsh ./start.ps1`
+2. Wait until the page shows **Engine ready**.
+3. Choose **New chat**, then **Start chat**. Choose **Illustrate** under
+   Mara's opening message. Expect a note that a reference picture is needed,
+   with a link. (Skip to step 4 if Mara already has a picture.)
+4. Follow the link, choose **Generate picture**, wait for the portrait, and
+   go back to the chat in the sidebar.
+5. Choose **Illustrate** under the opening message. Expect **Describing the
+   scene…**, then **Painting the location…**, then **Painting the scene…**,
+   and within about 20 seconds a wide picture under the message: Mara, as in
+   her portrait, in a lighthouse kitchen with a stove and a stair.
+6. While it is painting, send `Is it always this rough out here?` with
+   **Speak replies** on. Expect the reply to be spoken as promptly as usual.
+7. Choose **Illustrate** under the reply. Expect no **Painting the
+   location…** step this time, and the same kitchen in the new picture.
+8. Choose a picture. Expect it at full size over the page; **Close** or
+   Escape ends that.
+9. Reload the page. Expect both pictures still there.
+10. In **Settings**, set **Scene model** to `no-such-model` and save.
+    Choose **Illustrate** again. Expect an error from OpenAI under the
+    message with **Try again**. Put the scene model back, choose **Try
+    again**, and expect a picture.
 
 ## Check it
 

@@ -4,10 +4,13 @@ import { z } from 'zod';
 import type { Chat, ChatSummary, ReplyEvent } from '../../shared/api.ts';
 import type { ReplyService } from '../chat/replies.ts';
 import { countNotSent } from '../chat/trim.ts';
+import type { Illustrator } from '../scene/illustrator.ts';
 import type { SettingsStore } from '../settings.ts';
 import type { CharacterStore } from '../store/characters.ts';
 import type { ChatStore } from '../store/chats.ts';
+import type { MediaStore } from '../store/media.ts';
 import type { ScenarioStore } from '../store/scenarios.ts';
+import type { SceneStore } from '../store/scenes.ts';
 import { ApiError, readBody } from './errors.ts';
 
 const MAX_MESSAGE_LENGTH = 20_000;
@@ -37,25 +40,59 @@ function streamReply(
   c: Context,
   events: AsyncIterable<ReplyEvent>,
   onAbandoned: () => void,
+  onFinished: () => void = () => undefined,
 ): Response {
   c.header('Content-Type', 'application/x-ndjson');
   c.header('Cache-Control', 'no-cache');
   return stream(c, async (body) => {
     body.onAbort(onAbandoned);
-    for await (const event of events) {
-      if (body.aborted) continue;
-      await body.write(`${JSON.stringify(event)}\n`);
+    try {
+      for await (const event of events) {
+        if (body.aborted) continue;
+        await body.write(`${JSON.stringify(event)}\n`);
+      }
+    } finally {
+      onFinished();
     }
   });
 }
 
-export function chatRoutes(
-  chats: ChatStore,
-  characters: CharacterStore,
-  scenarios: ScenarioStore,
-  replies: ReplyService,
-  settings: SettingsStore,
-): Hono {
+/** A whole number from a route parameter, or `undefined` if it is not one. */
+function idParam(value: string | undefined): number | undefined {
+  return value !== undefined && /^\d{1,15}$/.test(value)
+    ? Number(value)
+    : undefined;
+}
+
+/** Serve a picture the app made, which never changes once made. */
+function servePng(c: Context, picture: Uint8Array<ArrayBuffer>): Response {
+  return c.body(picture, 200, {
+    'Content-Type': 'image/png',
+    'Cache-Control': 'private, max-age=31536000, immutable',
+  });
+}
+
+export interface ChatRouteDependencies {
+  chats: ChatStore;
+  characters: CharacterStore;
+  scenarios: ScenarioStore;
+  scenes: SceneStore;
+  replies: ReplyService;
+  illustrator: Illustrator;
+  settings: SettingsStore;
+  media: MediaStore;
+}
+
+export function chatRoutes({
+  chats,
+  characters,
+  scenarios,
+  scenes,
+  replies,
+  illustrator,
+  settings,
+  media,
+}: ChatRouteDependencies): Hono {
   const routes = new Hono();
 
   const existing = (c: Context): ChatSummary => {
@@ -67,11 +104,20 @@ export function chatRoutes(
 
   const view = ({ id, character, scenario }: ChatSummary): Chat => {
     const messages = chats.messages(id);
+    const ids = new Set(messages.map((message) => message.id));
     return {
       id,
-      character,
+      character: {
+        ...character,
+        imageUrl: characters.find(character.id)?.imageUrl ?? null,
+      },
       scenario,
       messages,
+      illustrations: scenes.illustrations(id),
+      // A failure stays until it is tried again, unless its message has gone.
+      illustrating: illustrator
+        .progress(id)
+        .filter(({ messageId }) => ids.has(messageId)),
       notSent: countNotSent(messages, settings.contextTokenBudget()),
       replying: replies.isReplying(id),
     };
@@ -105,6 +151,7 @@ export function chatRoutes(
       );
     }
     chats.delete(chat.id);
+    illustrator.prune();
     return c.body(null, 204);
   });
 
@@ -118,17 +165,50 @@ export function chatRoutes(
   });
 
   // Replace the last reply with a new one. The answer is a stream of reply events.
+  // The replaced reply's illustrations go with it.
   routes.post('/:id/regenerate', (c) => {
     const chat = existing(c);
-    return streamReply(c, replies.regenerate(chat.id), () => {
-      replies.stop(chat.id);
-    });
+    return streamReply(
+      c,
+      replies.regenerate(chat.id),
+      () => {
+        replies.stop(chat.id);
+      },
+      () => {
+        illustrator.prune();
+      },
+    );
   });
 
   routes.delete('/:id/messages/last', (c) => {
     const chat = existing(c);
     replies.deleteLastMessage(chat.id);
+    illustrator.prune();
     return c.json(view(chat));
+  });
+
+  // Start illustrating one of the character's messages. The answer is the
+  // chat, showing the illustration under way; it appears there when done.
+  routes.post('/:id/messages/:messageId/illustrate', (c) => {
+    const chat = existing(c);
+    const messageId = idParam(c.req.param('messageId'));
+    if (messageId === undefined) {
+      throw new ApiError(404, 'That message is not in this chat.');
+    }
+    illustrator.illustrate(chat.id, messageId);
+    return c.json(view(chat), 202);
+  });
+
+  routes.get('/:id/illustrations/:illustrationId/image', (c) => {
+    const chat = existing(c);
+    const id = idParam(c.req.param('illustrationId'));
+    const file =
+      id === undefined ? undefined : scenes.illustrationFile(chat.id, id);
+    const picture = file === undefined ? undefined : media.read(file);
+    if (picture === undefined) {
+      throw new ApiError(404, 'That chat has no such picture.');
+    }
+    return servePng(c, picture);
   });
 
   // Stop the reply being written. What has arrived so far is kept.

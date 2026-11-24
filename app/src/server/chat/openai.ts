@@ -8,6 +8,7 @@ import {
   type ChatProvider,
   ProviderError,
   type ReplyRequest,
+  type StructuredRequest,
 } from './provider.ts';
 
 export const OPENAI_BASE_URL = 'https://api.openai.com/v1';
@@ -87,7 +88,92 @@ function networkFailure(error: unknown): ProviderError {
   );
 }
 
+/** A non-streamed response: only the parts the app reads. */
+interface CompletedResponse {
+  status?: string;
+  incomplete_details?: { reason?: string } | null;
+  error?: { message?: string } | null;
+  output?: {
+    type?: string;
+    content?: { type?: string; text?: string; refusal?: string }[];
+  }[];
+}
+
+/** The text of a non-streamed response, or why there is none. */
+function answerText(response: CompletedResponse): string {
+  const content = (response.output ?? [])
+    .filter((item) => item.type === 'message')
+    .flatMap((item) => item.content ?? []);
+  const refusal = content.find((part) => part.type === 'refusal');
+  if (refusal !== undefined) {
+    throw new ProviderError(
+      `The model declined to answer: ${refusal.refusal ?? 'no reason given.'}`,
+    );
+  }
+  if (response.status === 'failed') {
+    throw new ProviderError(
+      `OpenAI could not complete the answer: ${response.error?.message ?? 'no reason given.'}`,
+    );
+  }
+  if (response.status === 'incomplete') {
+    throw new ProviderError(
+      `OpenAI did not finish the answer (${response.incomplete_details?.reason ?? 'no reason given'}).`,
+    );
+  }
+  return content
+    .filter((part) => part.type === 'output_text')
+    .map((part) => part.text ?? '')
+    .join('');
+}
+
 export function openAIProvider(options: OpenAIOptions): ChatProvider {
+  /** The key to send, or the reason there is no usable one. */
+  const apiKey = (): string => {
+    const key = options.apiKey();
+    if (key === undefined || key === '') {
+      throw new ProviderError(
+        'No OpenAI API key is set. Add one in Settings, or set OPENAI_API_KEY before starting chatThree.',
+      );
+    }
+    if (!isWellFormedApiKey(key)) {
+      throw new ProviderError(
+        'The OpenAI API key is not a valid key: it contains a space, a line break or another character a key cannot have. Enter it again in Settings.',
+      );
+    }
+    return key;
+  };
+
+  /** Ask for a response, and return it once OpenAI has accepted the request. */
+  const post = async (
+    body: object,
+    accept: string,
+    signal: AbortSignal | undefined,
+  ): Promise<Response> => {
+    const key = apiKey();
+    let response: Response;
+    try {
+      response = await fetch(`${options.baseUrl}/responses`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${key}`,
+          'Content-Type': 'application/json',
+          Accept: accept,
+        },
+        body: JSON.stringify({
+          ...body,
+          // The app keeps the conversation itself; OpenAI need not store it.
+          store: false,
+        }),
+        ...(signal !== undefined && { signal }),
+      });
+    } catch (error) {
+      if (signal?.aborted === true) throw error;
+      throw networkFailure(error);
+    }
+    if (!response.ok) throw await rejection(response);
+    return response;
+  };
+
   return {
     async *streamReply({
       model,
@@ -95,47 +181,14 @@ export function openAIProvider(options: OpenAIOptions): ChatProvider {
       messages,
       signal,
     }: ReplyRequest) {
-      const apiKey = options.apiKey();
-      if (apiKey === undefined || apiKey === '') {
-        throw new ProviderError(
-          'No OpenAI API key is set. Add one in Settings, or set OPENAI_API_KEY before starting chatThree.',
-        );
-      }
-
-      if (!isWellFormedApiKey(apiKey)) {
-        throw new ProviderError(
-          'The OpenAI API key is not a valid key: it contains a space, a line break or another character a key cannot have. Enter it again in Settings.',
-        );
-      }
-
-      let response: Response;
-      try {
-        response = await fetch(`${options.baseUrl}/responses`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-            Accept: 'text/event-stream',
-          },
-          body: JSON.stringify({
-            model,
-            instructions,
-            input: messages,
-            stream: true,
-            // The app keeps the conversation itself; OpenAI need not store it.
-            store: false,
-          }),
-          signal,
-        });
-      } catch (error) {
-        if (signal.aborted) throw error;
-        throw networkFailure(error);
-      }
-      if (!response.ok) throw await rejection(response);
+      const response = await post(
+        { model, instructions, input: messages, stream: true },
+        'text/event-stream',
+        signal,
+      );
       if (response.body === null) {
         throw new ProviderError('OpenAI sent an empty response.');
       }
-
       try {
         for await (const event of streamEvents(response.body)) {
           switch (event.type) {
@@ -175,6 +228,49 @@ export function openAIProvider(options: OpenAIOptions): ChatProvider {
       throw new ProviderError(
         'The connection to OpenAI ended before the reply was complete. Try again.',
       );
+    },
+
+    async structured({
+      model,
+      instructions,
+      input,
+      schemaName,
+      schema,
+      signal,
+    }: StructuredRequest) {
+      const response = await post(
+        {
+          model,
+          instructions,
+          input,
+          stream: false,
+          text: {
+            format: {
+              type: 'json_schema',
+              name: schemaName,
+              strict: true,
+              schema,
+            },
+          },
+        },
+        'application/json',
+        signal,
+      );
+      let body: CompletedResponse;
+      try {
+        body = (await response.json()) as CompletedResponse;
+      } catch (error) {
+        if (signal?.aborted === true) throw error;
+        throw new ProviderError(
+          'OpenAI sent back a response that is not JSON.',
+        );
+      }
+      const text = answerText(body);
+      try {
+        return JSON.parse(text) as unknown;
+      } catch {
+        throw new ProviderError('OpenAI sent back an answer that is not JSON.');
+      }
     },
   };
 }
