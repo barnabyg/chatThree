@@ -163,6 +163,24 @@ test('a network failure is reported in the chat and the message is kept', async 
   ]);
 });
 
+test('a message the app could not take stays in the message box', async ({
+  page,
+  app,
+}) => {
+  await openEmptyChat(page);
+  await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible();
+  await app.stop();
+
+  await send(page, 'Do not lose this.');
+
+  await expect(page.getByRole('alert')).toContainText(
+    'chatThree is not running',
+  );
+  await expect(page.getByRole('textbox', { name: 'Message' })).toHaveValue(
+    'Do not lose this.',
+  );
+});
+
 test('a refusal is reported in the chat with the reason given', async ({
   page,
   openai,

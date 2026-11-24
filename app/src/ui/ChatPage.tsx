@@ -9,6 +9,9 @@ import {
 import type { Chat, Message, ReplyEvent } from '../shared/api.ts';
 import { api, errorMessage } from './api.ts';
 
+/** The server's limit on one message. */
+const MAX_MESSAGE_LENGTH = 20_000;
+
 function MessageItem({
   author,
   role,
@@ -101,17 +104,22 @@ export function ChatPage({ chatId }: { chatId: string }) {
     );
   };
 
-  /** Show a reply as it arrives. `old` is the reply it replaces, if any. */
+  /**
+   * Show a reply as it arrives. `old` is the reply it replaces, if any.
+   * Resolves to whether the user's own message was saved on the way.
+   */
   const follow = async (
     events: AsyncIterable<ReplyEvent>,
     old: Message | null = null,
-  ): Promise<void> => {
+  ): Promise<boolean> => {
+    let userMessageSaved = false;
     setError(null);
     setArriving('');
     setReplacing(old);
     for await (const event of events) {
       switch (event.type) {
         case 'user-message':
+          userMessageSaved = true;
           addMessage(event.message);
           break;
         case 'delta':
@@ -132,6 +140,7 @@ export function ChatPage({ chatId }: { chatId: string }) {
     setReplacing(null);
     // The conversation has changed, so where it stops being sent may have too.
     api.getChat(chat.id).then(setChat, () => undefined);
+    return userMessageSaved;
   };
 
   const last = chat.messages.at(-1);
@@ -155,7 +164,10 @@ export function ChatPage({ chatId }: { chatId: string }) {
     const content = draft.trim();
     if (content === '' || replying) return;
     setDraft('');
-    void follow(api.sendMessage(chat.id, content));
+    void follow(api.sendMessage(chat.id, content)).then((saved) => {
+      // A message the app did not take goes back in the box, not in the bin.
+      if (!saved) setDraft((now) => (now === '' ? content : now));
+    });
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
@@ -226,6 +238,7 @@ export function ChatPage({ chatId }: { chatId: string }) {
           aria-label="Message"
           placeholder={`Message ${chat.character.name}`}
           rows={2}
+          maxLength={MAX_MESSAGE_LENGTH}
           value={draft}
           onChange={(event) => {
             setDraft(event.target.value);
