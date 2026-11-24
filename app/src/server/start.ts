@@ -7,13 +7,12 @@ import { openAIProvider } from './chat/openai.ts';
 import { ReplyService } from './chat/replies.ts';
 import type { AppConfig } from './config.ts';
 import { EngineSupervisor } from './engine/supervisor.ts';
+import { LOOPBACK } from './loopback.ts';
 import { SettingsStore } from './settings.ts';
 import { CharacterStore } from './store/characters.ts';
 import { ChatStore } from './store/chats.ts';
 import { openDatabase } from './store/database.ts';
 import { ScenarioStore } from './store/scenarios.ts';
-
-export const LOOPBACK = '127.0.0.1';
 
 export interface RunningApp {
   url: string;

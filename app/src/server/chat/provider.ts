@@ -2,8 +2,10 @@
 // OpenAI is the only provider today (openai.ts); another one implements
 // `ChatProvider` and nothing else in the app changes.
 
+import type { Message } from '../../shared/api.ts';
+
 export interface PromptMessage {
-  role: 'user' | 'assistant';
+  role: Message['role'];
   content: string;
 }
 

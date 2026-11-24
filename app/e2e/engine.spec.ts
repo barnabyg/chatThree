@@ -1,13 +1,5 @@
+import { isAlive } from '../test-support/processes.ts';
 import { expect, test } from './fixtures.ts';
-
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 test.describe('an engine that takes a moment to load', () => {
   test.use({ appEnv: { FAKE_ENGINE_LOADING_MS: '1500' } });

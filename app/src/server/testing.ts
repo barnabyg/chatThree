@@ -1,5 +1,6 @@
-// Helpers for tests of the HTTP API. Each call builds an app of its own with
-// an in-memory database, so tests share nothing.
+// Helpers for tests of the HTTP API. Each call builds an app of its own, with
+// an in-memory database and a settings file in a temporary directory of its
+// own, so tests share nothing.
 
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';

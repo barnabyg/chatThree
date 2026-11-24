@@ -7,9 +7,9 @@ import { type AddressInfo, createServer } from 'node:net';
 import { createInterface } from 'node:readline';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { EngineStatus } from '../../shared/api.ts';
+import { LOOPBACK } from '../loopback.ts';
 import { killOrphans, killTree, TREE_SPAWN_OPTIONS } from './processTree.ts';
 
-const LOOPBACK = '127.0.0.1';
 const HEALTH_TIMEOUT_MS = 2_000;
 const OUTPUT_LINES_KEPT = 5;
 const OUTPUT_FLUSH_MS = 250;

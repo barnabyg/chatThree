@@ -2,6 +2,7 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, test } from 'vitest';
+import { isAlive } from '../../../test-support/processes.ts';
 import type { EngineStatus } from '../../shared/api.ts';
 import { EngineSupervisor } from './supervisor.ts';
 
@@ -64,15 +65,6 @@ function reaches(
 async function failure(supervisor: EngineSupervisor): Promise<string> {
   const status = await reaches(supervisor, 'failed');
   return status.state === 'failed' ? status.error : '';
-}
-
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 async function allGone(pids: number[]): Promise<boolean> {
