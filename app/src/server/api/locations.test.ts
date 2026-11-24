@@ -98,6 +98,12 @@ function placeReference(request: PaintRequest | undefined): string {
   return path.basename(request?.references?.[1] ?? '');
 }
 
+/** The files kept for places' pictures. */
+function files(app: TestApp): string[] {
+  const folder = path.join(app.dataDir, 'locations');
+  return existsSync(folder) ? readdirSync(folder) : [];
+}
+
 /** The file a place's picture address serves, by the version in it. */
 function fileOf(imageUrl: string | null | undefined): string {
   return `${new URL(imageUrl ?? '', 'http://x').searchParams.get('v') ?? ''}.png`;
@@ -264,6 +270,24 @@ describe("following the story's places", () => {
 
     await illustrated(app, chat, chat.messages[0]);
     expect(placeReference(painted(app).at(-1))).toBe(fileOf(location.imageUrl));
+  });
+
+  test("a place's picture asked for twice at once is painted twice, in turn, and an illustration meanwhile waits for them", async () => {
+    const { app, chat } = await lighthouseChat();
+    const generate = `/api/chats/${chat.id}/locations/${String(chat.location.id)}/image/generate`;
+    const finish = app.jobs.holdPainting();
+
+    const first = app.call('POST', generate);
+    const second = app.call('POST', generate);
+    await expect.poll(() => app.jobs.requests).toEqual([]);
+    const illustrating = illustrated(app, chat, chat.messages[0]);
+    finish();
+    await Promise.all([first, second, illustrating]);
+
+    const places = painted(app).filter(({ references }) => !references);
+    expect(places).toHaveLength(2);
+    const { location } = await readChat(app, chat.id);
+    expect(files(app)).toEqual([fileOf(location.imageUrl)]);
   });
 
   test("a place's picture can be painted before any illustration", async () => {

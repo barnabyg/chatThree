@@ -211,13 +211,29 @@ export class Illustrator {
     if (location === undefined) {
       throw new IllustrationRequestError('That place is not in this chat.');
     }
-    // Waits for one already being painted, so the newest is kept.
-    await this.#paintingPlaces.get(locationId)?.catch(() => undefined);
-    const painting = this.#paintPlace(location).finally(() => {
-      this.#paintingPlaces.delete(locationId);
-    });
+    // In turn after one already being painted, so the newest is kept.
+    const before = this.#paintingPlaces.get(locationId);
+    await this.#trackPlace(
+      locationId,
+      before === undefined
+        ? this.#paintPlace(location)
+        : before.catch(() => undefined).then(() => this.#paintPlace(location)),
+    );
+  }
+
+  /**
+   * Remember that a place's picture is being painted, until it is done, so
+   * that whatever needs it next waits for it rather than painting another.
+   */
+  #trackPlace(locationId: number, painting: Promise<string>): Promise<string> {
     this.#paintingPlaces.set(locationId, painting);
-    await painting;
+    const forget = (): void => {
+      if (this.#paintingPlaces.get(locationId) === painting) {
+        this.#paintingPlaces.delete(locationId);
+      }
+    };
+    painting.then(forget, forget);
+    return painting;
   }
 
   /** The path of the chat's character's reference picture, or why there is none. */
@@ -458,13 +474,10 @@ export class Illustrator {
     const saved = this.#scenes.location(chatId, location.id)?.imageFile;
     if (saved !== undefined) return saved;
     this.#set(chatId, { messageId, state: 'painting-location' });
-    const painting =
+    return (
       this.#paintingPlaces.get(location.id) ??
-      this.#paintPlace(location).finally(() => {
-        this.#paintingPlaces.delete(location.id);
-      });
-    this.#paintingPlaces.set(location.id, painting);
-    return painting;
+      this.#trackPlace(location.id, this.#paintPlace(location))
+    );
   }
 
   /** Paint the place's reference picture, in place of any it has. */
