@@ -13,9 +13,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings 0",
-    "typecheck": "tsc -p tsconfig.json && tsc -p src/ui/tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p src/ui/tsconfig.json && tsc -p e2e/tsconfig.json",
     "test": "vitest run",
-    "test:e2e": "vite build && playwright test"
+    "test:e2e": "vite build && playwright test --config e2e/playwright.config.ts"
   },
   "dependencies": {
     "@hono/node-server": "2.1.11",

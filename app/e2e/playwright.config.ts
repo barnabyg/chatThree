@@ -1,7 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
-  testDir: 'e2e',
+  testDir: '.',
+  outputDir: '../test-results',
   // Every test starts its own app on its own port and data directory
   // (see e2e/fixtures.ts), so tests can run in parallel.
   fullyParallel: true,

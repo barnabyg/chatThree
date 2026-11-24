@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    // Playwright's own declarations describe the pages it drives, so they
+    // need the browser's types. The server's project deliberately has none.
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"]
+  },
+  "include": [".", "../test-support"]
+}
