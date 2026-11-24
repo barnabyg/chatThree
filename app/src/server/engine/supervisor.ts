@@ -28,6 +28,8 @@ export interface EngineOptions {
 /** What the HTTP API needs from the supervisor. */
 export interface EngineControl {
   status(): EngineStatus;
+  /** Where the engine takes jobs, or `undefined` while it is not ready. */
+  url(): string | undefined;
   /** Call `listener` on every status change. Returns the unsubscribe function. */
   subscribe(listener: (status: EngineStatus) => void): () => void;
   restart(): Promise<void>;
@@ -35,6 +37,8 @@ export interface EngineControl {
 
 interface Run {
   child: ChildProcess;
+  /** The port this run was told to listen on. */
+  port: number;
   startedAt: Date;
   /** Set once the app itself is ending this run, so its exit is expected. */
   stopping: boolean;
@@ -103,6 +107,12 @@ export class EngineSupervisor implements EngineControl {
 
   status(): EngineStatus {
     return this.#status;
+  }
+
+  url(): string | undefined {
+    return this.#status.state === 'ready' && this.#run !== undefined
+      ? `http://${LOOPBACK}:${String(this.#run.port)}`
+      : undefined;
   }
 
   subscribe(listener: (status: EngineStatus) => void): () => void {
@@ -175,6 +185,7 @@ export class EngineSupervisor implements EngineControl {
 
     const run: Run = {
       child,
+      port,
       startedAt,
       stopping: false,
       recentOutput,
@@ -194,12 +205,12 @@ export class EngineSupervisor implements EngineControl {
       }),
     };
     this.#run = run;
-    void this.#pollUntilSettled(run, port);
+    void this.#pollUntilSettled(run);
   }
 
-  async #pollUntilSettled(run: Run, port: number): Promise<void> {
+  async #pollUntilSettled(run: Run): Promise<void> {
     while (this.#run === run) {
-      const health = await readHealth(port);
+      const health = await readHealth(run.port);
       if (this.#run !== run) return;
       if (health !== undefined && health.state !== 'loading') {
         this.#setStatus(health);

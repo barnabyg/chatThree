@@ -10,6 +10,7 @@ import type {
   ScenarioInput,
   Settings,
   SettingsUpdate,
+  SpeechRequest,
 } from '../shared/api.ts';
 
 const NOT_RUNNING =
@@ -40,10 +41,12 @@ async function send(
   method: string,
   url: string,
   body?: unknown,
+  signal?: AbortSignal,
 ): Promise<Response> {
   try {
     return await fetch(url, {
       method,
+      ...(signal !== undefined && { signal }),
       ...(body !== undefined && {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -52,6 +55,27 @@ async function send(
   } catch {
     throw new Error(NOT_RUNNING);
   }
+}
+
+/** Send a file as the body of a request. */
+async function sendFile<T>(
+  method: string,
+  url: string,
+  file: Uint8Array<ArrayBuffer> | Blob,
+): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
+    });
+  } catch {
+    throw new Error(NOT_RUNNING);
+  }
+  if (!response.ok) throw new Error(await failure(response));
+  dataChanged();
+  return (await response.json()) as T;
 }
 
 async function failure(response: Response): Promise<string> {
@@ -75,6 +99,16 @@ async function request<T>(
   return response.status === 204
     ? (undefined as T)
     : ((await response.json()) as T);
+}
+
+/** Have one sentence spoken. Resolves to the clip. Changes nothing on the server. */
+async function speak(
+  request: SpeechRequest,
+  signal: AbortSignal,
+): Promise<Blob> {
+  const response = await send('POST', '/api/speech', request, signal);
+  if (!response.ok) throw new Error(await failure(response));
+  return response.blob();
 }
 
 /**
@@ -159,6 +193,28 @@ export const api = {
     request<Character>('PUT', `/api/characters/${id}`, character),
   deleteCharacter: (id: string) =>
     request<undefined>('DELETE', `/api/characters/${id}`),
+  /** Give a character a voice, from a WAV clip. */
+  setVoice: (id: string, clip: Uint8Array<ArrayBuffer>) =>
+    sendFile<Character>('PUT', `/api/characters/${id}/voice`, clip),
+  removeVoice: (id: string) =>
+    request<Character>('DELETE', `/api/characters/${id}/voice`),
+  /** Have the engine make a character's reference picture from `appearance`. */
+  generatePicture: (id: string, appearance: string) =>
+    request<Character>('POST', `/api/characters/${id}/image/generate`, {
+      appearance,
+    }),
+  /** Use an image file of the user's own as a character's reference picture. */
+  setPicture: (id: string, picture: Blob) =>
+    sendFile<Character>('PUT', `/api/characters/${id}/image`, picture),
+  /**
+   * Have a character's voice made ready ahead of its first sentence. Nothing
+   * waits on it and nothing is shown if it fails: speaking still works.
+   */
+  warmVoice: (id: string): void => {
+    void send('POST', `/api/characters/${id}/voice/warm`).catch(
+      () => undefined,
+    );
+  },
   listScenarios: () => request<Scenario[]>('GET', '/api/scenarios'),
   getScenario: (id: string) => request<Scenario>('GET', `/api/scenarios/${id}`),
   createScenario: (scenario: ScenarioInput) =>
@@ -170,4 +226,5 @@ export const api = {
   getSettings: () => request<Settings>('GET', '/api/settings'),
   updateSettings: (update: SettingsUpdate) =>
     request<Settings>('PUT', '/api/settings', update),
+  speak,
 };

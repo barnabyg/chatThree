@@ -6,8 +6,9 @@ import {
   useRef,
   useState,
 } from 'react';
-import type { Chat, Message, ReplyEvent } from '../shared/api.ts';
+import type { Chat, Message, ReplyEvent, Settings } from '../shared/api.ts';
 import { api, errorMessage } from './api.ts';
+import { useSpeech } from './speech/useSpeech.ts';
 
 /** The server's limit on one message. */
 const MAX_MESSAGE_LENGTH = 20_000;
@@ -40,6 +41,9 @@ export function ChatPage({ chatId }: { chatId: string }) {
   const [error, setError] = useState<string | null>(null);
   /** The reply being regenerated: hidden while its replacement arrives. */
   const [replacing, setReplacing] = useState<Message | null>(null);
+  /** Unknown until loaded; until then nothing is spoken. */
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const speech = useSpeech();
   const end = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -56,6 +60,28 @@ export function ChatPage({ chatId }: { chatId: string }) {
       current = false;
     };
   }, [chatId]);
+
+  useEffect(() => {
+    let current = true;
+    api.getSettings().then(
+      (loaded) => {
+        if (current) setSettings(loaded);
+      },
+      // Without settings the chat still works; it is only not spoken.
+      () => undefined,
+    );
+    return () => {
+      current = false;
+    };
+  }, []);
+
+  // The character's voice is made ready when the chat opens, so that the
+  // first sentence of the first reply does not wait for it.
+  const characterId = chat?.character.id;
+  const speaks = settings?.speechMuted === false;
+  useEffect(() => {
+    if (characterId !== undefined && speaks) api.warmVoice(characterId);
+  }, [characterId, speaks]);
 
   // A reply still being written by an earlier page (one that was reloaded
   // mid-reply) is saved when it ends: wait for it, then show it.
@@ -116,6 +142,17 @@ export function ChatPage({ chatId }: { chatId: string }) {
     setError(null);
     setArriving('');
     setReplacing(old);
+    // A new reply is spoken in place of whatever was still being said.
+    speech.stop();
+    const spoken =
+      settings?.speechMuted === false
+        ? speech.begin({
+            scope: settings.speechScope,
+            characterId: chat.character.id,
+            previous: chat.messages.findLast(({ role }) => role === 'assistant')
+              ?.content,
+          })
+        : null;
     for await (const event of events) {
       switch (event.type) {
         case 'user-message':
@@ -124,15 +161,19 @@ export function ChatPage({ chatId }: { chatId: string }) {
           break;
         case 'delta':
           setArriving((text) => (text ?? '') + event.text);
+          spoken?.push(event.text);
           break;
         case 'done':
           if (event.message !== null) {
             if (old !== null) removeMessage(old);
             addMessage(event.message);
           }
+          spoken?.end();
           break;
         case 'error':
           setError(event.message);
+          // The reply was not kept, so it is not spoken either.
+          speech.stop();
           break;
       }
     }
@@ -170,6 +211,26 @@ export function ChatPage({ chatId }: { chatId: string }) {
     });
   };
 
+  const stopReply = (): void => {
+    speech.stop();
+    void api.stopReply(chat.id);
+  };
+
+  const setSpeaking = (speak: boolean): void => {
+    if (!speak) speech.stop();
+    const withMuted = (speechMuted: boolean): void => {
+      setSettings((before) => before && { ...before, speechMuted });
+    };
+    // Shown at once; put back if it could not be saved.
+    withMuted(!speak);
+    api
+      .updateSettings({ speechMuted: !speak })
+      .then(setSettings, (reason: unknown) => {
+        withMuted(speak);
+        setError(errorMessage(reason));
+      });
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
@@ -183,9 +244,23 @@ export function ChatPage({ chatId }: { chatId: string }) {
 
   return (
     <div className="chat">
-      <header className="page-header">
-        <h1>{chat.character.name}</h1>
-        <p>{chat.scenario.title}</p>
+      <header className="page-header with-action">
+        <div>
+          <h1>{chat.character.name}</h1>
+          <p>{chat.scenario.title}</p>
+        </div>
+        {settings !== null && (
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={!settings.speechMuted}
+              onChange={(event) => {
+                setSpeaking(event.target.checked);
+              }}
+            />
+            Speak replies
+          </label>
+        )}
       </header>
 
       <div className="conversation-scroll">
@@ -218,6 +293,11 @@ export function ChatPage({ chatId }: { chatId: string }) {
             {error}
           </p>
         )}
+        {speech.problem !== null && (
+          <p className="speech-problem" role="status">
+            {speech.problem}
+          </p>
+        )}
         {!replying && last !== undefined && (
           <div className="conversation-actions">
             {canRegenerate && (
@@ -246,17 +326,29 @@ export function ChatPage({ chatId }: { chatId: string }) {
           onKeyDown={onKeyDown}
         />
         {arriving !== null ? (
-          <button type="button" onClick={() => void api.stopReply(chat.id)}>
+          <button type="button" onClick={stopReply}>
             Stop
           </button>
         ) : (
-          <button
-            type="submit"
-            className="primary"
-            disabled={draft.trim() === '' || replying}
-          >
-            Send
-          </button>
+          <>
+            {speech.speaking && (
+              <button
+                type="button"
+                onClick={() => {
+                  speech.stop();
+                }}
+              >
+                Stop speaking
+              </button>
+            )}
+            <button
+              type="submit"
+              className="primary"
+              disabled={draft.trim() === '' || replying}
+            >
+              Send
+            </button>
+          </>
         )}
       </form>
     </div>

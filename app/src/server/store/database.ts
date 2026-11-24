@@ -138,6 +138,17 @@ const MIGRATIONS: readonly ((db: Db) => void)[] = [
       CREATE INDEX chats_by_scenario ON chats (scenario_id);
     `);
   },
+
+  // 4: a voice clip per character. The column holds the name of a file in
+  // the media store (store/media.ts), and is empty for the built-in voice.
+  (db) => {
+    db.exec('ALTER TABLE characters ADD COLUMN voice_file TEXT');
+  },
+
+  // 5: a reference picture per character, kept the same way as the voice clip.
+  (db) => {
+    db.exec('ALTER TABLE characters ADD COLUMN image_file TEXT');
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

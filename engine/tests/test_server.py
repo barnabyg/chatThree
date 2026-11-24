@@ -22,6 +22,13 @@ WAIT = 5.0
 class FakeSpeech:
     def __init__(self) -> None:
         self.calls: list[tuple[str, Path | None]] = []
+        self.prepared: list[Path] = []
+
+    def has_voice(self, voice: Path) -> bool:
+        return voice in self.prepared
+
+    def prepare_voice(self, voice: Path) -> None:
+        self.prepared.append(voice)
 
     def synthesise(self, text: str, voice: Path | None = None) -> Speech:
         self.calls.append((text, voice))
@@ -51,6 +58,13 @@ class FakeImage:
         return Image.new("RGB", size, "teal")
 
 
+def voice_clip(folder: Path, seconds: float = 6.0) -> Path:
+    """Write a silent recording of the given length and return its path."""
+    path = folder / f"voice-{seconds}.wav"
+    soundfile.write(path, np.zeros(int(SAMPLE_RATE * seconds), dtype=np.float32), SAMPLE_RATE)
+    return path
+
+
 def wait_for_status(client: TestClient, wanted: str) -> None:
     deadline = time.monotonic() + WAIT
     while client.get("/health").json()["status"] != wanted:
@@ -63,8 +77,12 @@ def fakes() -> tuple[FakeSpeech, FakeImage]:
 
 
 @pytest.fixture
-def client(fakes: tuple[FakeSpeech, FakeImage]) -> Generator[TestClient]:
-    engine = Engine(speech=fakes[0], image=fakes[1])
+def engine(fakes: tuple[FakeSpeech, FakeImage]) -> Engine:
+    return Engine(speech=fakes[0], image=fakes[1])
+
+
+@pytest.fixture
+def client(engine: Engine) -> Generator[TestClient]:
     with TestClient(create_app(lambda: engine)) as test_client:
         wait_for_status(test_client, "ready")
         yield test_client
@@ -95,8 +113,7 @@ def test_health_reports_a_failed_load() -> None:
 
 
 def test_speech_returns_a_playable_wav(client: TestClient, fakes: tuple[FakeSpeech, FakeImage], tmp_path: Path) -> None:
-    voice = tmp_path / "voice.wav"
-    voice.write_bytes(b"reference")
+    voice = voice_clip(tmp_path)
 
     response = client.post("/speech", json={"text": "Sit down.", "voice": str(voice)})
 
@@ -113,6 +130,102 @@ def test_speech_rejects_a_missing_voice_clip(client: TestClient, tmp_path: Path)
 
     assert response.status_code == 400
     assert "voice clip not found" in response.json()["detail"]
+
+
+def test_speech_rejects_a_voice_clip_too_short_to_clone_from(client: TestClient, tmp_path: Path) -> None:
+    response = client.post("/speech", json={"text": "Sit down.", "voice": str(voice_clip(tmp_path, seconds=2.0))})
+
+    assert response.status_code == 400
+    assert "longer than 5 seconds" in response.json()["detail"]
+
+
+def test_voice_returns_once_the_voice_is_prepared(
+    client: TestClient, fakes: tuple[FakeSpeech, FakeImage], tmp_path: Path
+) -> None:
+    voice = voice_clip(tmp_path)
+
+    response = client.post("/voice", json={"voice": str(voice)})
+
+    assert response.status_code == 204
+    assert fakes[0].prepared == [voice]
+
+
+def test_voice_takes_its_turn_on_the_gpu_as_a_speech_job(
+    client: TestClient, engine: Engine, fakes: tuple[FakeSpeech, FakeImage], tmp_path: Path
+) -> None:
+    voice = voice_clip(tmp_path)
+    statuses: list[int] = []
+
+    def prepare() -> None:
+        statuses.append(client.post("/voice", json={"voice": str(voice)}).status_code)
+
+    request = threading.Thread(target=prepare)
+    with engine.gate.image():
+        request.start()
+        # The request queues as speech behind the image job that holds the GPU.
+        deadline = time.monotonic() + WAIT
+        while engine.gate.speech_waiting == 0:
+            assert time.monotonic() < deadline
+        assert fakes[0].prepared == []
+        # The image job's next step lets it in, as it would a sentence to speak.
+        engine.gate.checkpoint()
+        assert fakes[0].prepared == [voice]
+    request.join(WAIT)
+    assert statuses == [204]
+
+
+def test_voice_already_prepared_returns_without_waiting_for_the_gpu(
+    client: TestClient, engine: Engine, fakes: tuple[FakeSpeech, FakeImage], tmp_path: Path
+) -> None:
+    voice = voice_clip(tmp_path)
+    assert client.post("/voice", json={"voice": str(voice)}).status_code == 204
+
+    with engine.gate.image():
+        response = client.post("/voice", json={"voice": str(voice)})
+
+    assert response.status_code == 204
+    assert fakes[0].prepared == [voice]
+
+
+def test_voice_rejects_a_missing_clip(client: TestClient, tmp_path: Path) -> None:
+    response = client.post("/voice", json={"voice": str(tmp_path / "absent.wav")})
+
+    assert response.status_code == 400
+    assert "voice clip not found" in response.json()["detail"]
+
+
+def test_voice_rejects_a_clip_too_short_to_clone_from(
+    client: TestClient, fakes: tuple[FakeSpeech, FakeImage], tmp_path: Path
+) -> None:
+    response = client.post("/voice", json={"voice": str(voice_clip(tmp_path, seconds=2.0))})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == (
+        "The voice clip is 2.0 seconds long. It must be longer than 5 seconds to clone a voice from."
+    )
+    assert fakes[0].prepared == []
+
+
+def test_voice_rejects_a_file_that_is_not_a_recording(client: TestClient, tmp_path: Path) -> None:
+    clip = tmp_path / "notes.wav"
+    clip.write_bytes(b"not audio")
+
+    response = client.post("/voice", json={"voice": str(clip)})
+
+    assert response.status_code == 400
+    assert "not a recording the engine can read" in response.json()["detail"]
+
+
+def test_voice_is_unavailable_until_the_models_are_in() -> None:
+    release = threading.Event()
+
+    def slow_loader() -> Engine:
+        assert release.wait(WAIT)
+        return Engine(speech=FakeSpeech(), image=FakeImage())
+
+    with TestClient(create_app(slow_loader)) as client:
+        assert client.post("/voice", json={"voice": "voice.wav"}).status_code == 503
+        release.set()
 
 
 def test_image_returns_a_png_and_passes_references_through(

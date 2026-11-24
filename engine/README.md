@@ -34,11 +34,22 @@ real voice; without it a synthetic stand-in voice is used.
 |---|---|---|
 | `GET /health` | | `{"status": "loading" \| "ready" \| "failed", "error": ...}` |
 | `POST /speech` | `{"text", "voice"?}` | `audio/wav`, with an `X-Audio-Seconds` header |
+| `POST /voice` | `{"voice"}` | `204` once that voice is prepared |
 | `POST /image` | `{"prompt", "references"?, "width"?, "height"?, "seed"?}` | `image/png` |
 
 `voice` and `references` are file paths on this machine, which is why the server
 only listens on the loopback address. Jobs sent before the models are in get a
 503.
+
+The first sentence spoken in a voice has to clone it first, which takes about
+2.5 seconds. `POST /voice` does that ahead of time: the app sends it when a chat
+opens. It takes its turn on the GPU as a speech job, and returns straight away
+for a voice that is already prepared. A voice is remembered by its clip's path,
+so a clip that changes needs a new path.
+
+A voice clip must hold more than 5 seconds of speech. `POST /voice` and
+`POST /speech` answer 400, with the reason in `detail`, for a clip that is
+missing, is not readable audio, or is too short.
 
 ## Results
 

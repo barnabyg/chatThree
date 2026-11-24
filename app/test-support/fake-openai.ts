@@ -14,8 +14,17 @@ import { setTimeout as delay } from 'node:timers/promises';
 export const FAKE_API_KEY = 'sk-test-0000';
 
 export type Behaviour =
-  /** Stream `chunks` as the reply, pausing `chunkDelayMs` before each. */
-  | { kind: 'reply'; chunks: string[]; chunkDelayMs?: number }
+  /**
+   * Stream `chunks` as the reply, pausing `chunkDelayMs` before each. With
+   * `holdAfter`, that many chunks are sent and the rest wait for `release()`,
+   * so a test can look at a reply that is part-way through.
+   */
+  | {
+      kind: 'reply';
+      chunks: string[];
+      chunkDelayMs?: number;
+      holdAfter?: number;
+    }
   /** The model declines to answer. */
   | { kind: 'refusal'; text: string }
   /** The request is rejected before any streaming starts. */
@@ -45,6 +54,8 @@ export interface FakeOpenAI {
    * The last one repeats for every request after that.
    */
   respondWith(...behaviours: [Behaviour, ...Behaviour[]]): void;
+  /** Let replies held by `holdAfter` carry on to their end. */
+  release(): void;
   close(): Promise<void>;
 }
 
@@ -75,6 +86,7 @@ function sendError(
 async function answer(
   behaviour: Behaviour,
   response: ServerResponse,
+  released: Promise<void>,
 ): Promise<void> {
   if (behaviour.kind === 'http-error') {
     sendError(response, behaviour.status, behaviour.message);
@@ -84,7 +96,8 @@ async function answer(
   sendEvent(response, { type: 'response.created' });
   switch (behaviour.kind) {
     case 'reply':
-      for (const chunk of behaviour.chunks) {
+      for (const [index, chunk] of behaviour.chunks.entries()) {
+        if (index === behaviour.holdAfter) await released;
         if (behaviour.chunkDelayMs !== undefined) {
           await delay(behaviour.chunkDelayMs);
         }
@@ -117,6 +130,10 @@ async function answer(
 export async function startFakeOpenAI(): Promise<FakeOpenAI> {
   const requests: RecordedRequest[] = [];
   let behaviours: Behaviour[] = [DEFAULT_REPLY];
+  let release = (): void => undefined;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
 
   const server = createServer((request, response) => {
     void (async () => {
@@ -138,7 +155,7 @@ export async function startFakeOpenAI(): Promise<FakeOpenAI> {
       });
       const behaviour =
         behaviours.length > 1 ? behaviours.shift() : behaviours[0];
-      await answer(behaviour ?? DEFAULT_REPLY, response);
+      await answer(behaviour ?? DEFAULT_REPLY, response, released);
     })();
   });
   await new Promise<void>((resolve) => {
@@ -151,6 +168,9 @@ export async function startFakeOpenAI(): Promise<FakeOpenAI> {
     requests,
     respondWith(...next) {
       behaviours = [...next];
+    },
+    release() {
+      release();
     },
     close() {
       return new Promise((resolve) => {

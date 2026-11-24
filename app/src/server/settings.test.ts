@@ -18,9 +18,24 @@ test('with nothing saved, the model is the default and the key comes from the en
   expect(settings.view()).toEqual({
     model: DEFAULT_MODEL,
     contextTokenBudget: DEFAULT_CONTEXT_TOKEN_BUDGET,
+    speechMuted: false,
+    speechScope: 'dialogue',
     apiKey: 'environment',
   });
   expect(settings.apiKey()).toBe('sk-from-env');
+});
+
+test('muting speech and what is spoken are saved, and read back by a later run', () => {
+  const file = settingsFile();
+  new SettingsStore(file, undefined).update({
+    speechMuted: true,
+    speechScope: 'everything',
+  });
+
+  expect(new SettingsStore(file, undefined).view()).toMatchObject({
+    speechMuted: true,
+    speechScope: 'everything',
+  });
 });
 
 test('with no key anywhere, the key is reported missing', () => {

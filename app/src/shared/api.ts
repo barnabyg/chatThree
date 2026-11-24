@@ -30,7 +30,23 @@ export interface Character extends CharacterInput {
   id: string;
   /** How many chats are with this character. Deleting it deletes them too. */
   chatCount: number;
+  /**
+   * Whether the character has a voice clip. Its replies are spoken in the
+   * voice cloned from that clip, or in the engine's built-in voice without.
+   */
+  hasVoice: boolean;
+  /**
+   * Where the character's reference picture is served from, or `null` if it
+   * has none. The address changes whenever the picture does.
+   */
+  imageUrl: string | null;
 }
+
+/**
+ * A voice clip must be longer than this many seconds to clone a voice from
+ * (MIN_VOICE_SECONDS in the engine's audio.py).
+ */
+export const MIN_VOICE_SECONDS = 5;
 
 /** What the user writes about a scenario. Only the title is required. */
 export interface ScenarioInput {
@@ -88,10 +104,32 @@ export type ReplyEvent =
   /** No reply could be produced. The user's message is still saved. */
   | { type: 'error'; message: string };
 
+/**
+ * The most text the engine speaks in one request (MAX_SPEECH_CHARACTERS in
+ * the engine's server.py). Longer text is split before it is sent.
+ */
+export const MAX_SPEECH_CHARACTERS = 600;
+
+/**
+ * How much of a reply is spoken: only what the character says, or the
+ * narration as well. See ui/speech/sentences.ts for how speech is told apart.
+ */
+export type SpeechScope = 'dialogue' | 'everything';
+
+/** One piece of text to speak. The answer is the clip, as `audio/wav`. */
+export interface SpeechRequest {
+  text: string;
+  /** Speak in this character's voice. Without it, the built-in voice. */
+  characterId?: string;
+}
+
 export interface Settings {
   model: string;
   /** How many tokens of conversation are sent to the model each turn, at most. */
   contextTokenBudget: number;
+  /** When true, replies are not spoken aloud. */
+  speechMuted: boolean;
+  speechScope: SpeechScope;
   /**
    * Where the OpenAI API key in use comes from. The key itself never leaves
    * the server.
@@ -102,6 +140,8 @@ export interface Settings {
 export interface SettingsUpdate {
   model?: string;
   contextTokenBudget?: number;
+  speechMuted?: boolean;
+  speechScope?: SpeechScope;
   /** A new key to save, or `null` to forget the saved one. */
   apiKey?: string | null;
 }

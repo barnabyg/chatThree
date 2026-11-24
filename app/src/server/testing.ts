@@ -6,6 +6,7 @@ import path from 'node:path';
 import type { Hono } from 'hono';
 import { temporaryDirectory } from '../../test-support/temporary.ts';
 import type {
+  Character,
   Chat,
   EngineStatus,
   ReplyEvent,
@@ -13,12 +14,15 @@ import type {
 } from '../shared/api.ts';
 import { createApp } from './app.ts';
 import type { ChatProvider, ReplyRequest } from './chat/provider.ts';
+import type { EngineJobs, PaintRequest } from './engine/jobs.ts';
 import { ReplyService } from './chat/replies.ts';
 import type { EngineControl } from './engine/supervisor.ts';
+import { VoiceWarmer } from './engine/warmer.ts';
 import { SettingsStore } from './settings.ts';
 import { CharacterStore } from './store/characters.ts';
 import { ChatStore } from './store/chats.ts';
 import { openDatabase } from './store/database.ts';
+import { MediaStore } from './store/media.ts';
 import { ScenarioStore } from './store/scenarios.ts';
 
 /** Headers of a request from the app's own UI. */
@@ -35,6 +39,7 @@ export function stubEngine(initial: EngineStatus): StubEngine {
   };
   return {
     status: () => current,
+    url: () => undefined,
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -44,6 +49,81 @@ export function stubEngine(initial: EngineStatus): StubEngine {
       return Promise.resolve();
     },
     set,
+  };
+}
+
+/** One job the fake engine was asked to do. */
+export type JobRequest =
+  | { job: 'speak'; text: string; voice?: string }
+  | { job: 'prepare-voice'; voice: string }
+  | ({ job: 'paint' } & PaintRequest);
+
+export type FakeJobs = EngineJobs & {
+  /** Every job asked for, oldest first. */
+  requests: JobRequest[];
+  /** What every spoken sentence comes back as. */
+  clip: Uint8Array<ArrayBuffer>;
+  /** Make every job from now on fail with `error`, or work again with `undefined`. */
+  failWith(error: Error | undefined): void;
+  /**
+   * Make pictures take until the returned function is called, as a real one
+   * takes seconds.
+   */
+  holdPainting(): () => void;
+};
+
+/** What the fake engine paints for `seed`: a PNG file's first bytes, then the seed. */
+export function fakePicture(seed: number): Uint8Array<ArrayBuffer> {
+  const seedBytes = new Uint8Array(new Uint32Array([seed]).buffer);
+  return new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, ...seedBytes]);
+}
+
+/** An engine that does every job at once, and records what it was asked. */
+export function fakeJobs(): FakeJobs {
+  const requests: JobRequest[] = [];
+  const clip = new Uint8Array([82, 73, 70, 70, 1, 2, 3]);
+  let failure: Error | undefined;
+  let painting = Promise.resolve();
+  const record = (request: JobRequest): void => {
+    if (failure !== undefined) throw failure;
+    requests.push(request);
+  };
+  return {
+    requests,
+    clip,
+    failWith(error) {
+      failure = error;
+    },
+    holdPainting() {
+      let finish = (): void => undefined;
+      painting = new Promise((resolve) => {
+        finish = resolve;
+      });
+      return () => {
+        finish();
+      };
+    },
+    speak(text, options = {}) {
+      return Promise.resolve().then(() => {
+        record({
+          job: 'speak',
+          text,
+          ...(options.voice !== undefined && { voice: options.voice }),
+        });
+        return clip;
+      });
+    },
+    prepareVoice(voice) {
+      return Promise.resolve().then(() => {
+        record({ job: 'prepare-voice', voice });
+      });
+    },
+    paint(request) {
+      return painting.then(() => {
+        record({ job: 'paint', ...request });
+        return fakePicture(request.seed);
+      });
+    },
   };
 }
 
@@ -98,12 +178,21 @@ export function scriptedProvider(): ScriptedProvider {
 export interface TestApp {
   app: Hono;
   provider: ScriptedProvider;
+  jobs: FakeJobs;
   chats: ChatStore;
   characters: CharacterStore;
   scenarios: ScenarioStore;
   settings: SettingsStore;
+  /** Where the app keeps its files. */
+  dataDir: string;
   /** Send a JSON request as the app's own UI would. */
   call(method: string, url: string, body?: unknown): Promise<Response>;
+  /** Send a file as the body of a request, as the app's own UI would. */
+  upload(
+    method: string,
+    url: string,
+    file: Uint8Array<ArrayBuffer>,
+  ): Promise<Response>;
   /**
    * Start a chat through the API. Unless told otherwise it is with the
    * built-in character, in a scenario that has no opening message, so the
@@ -141,9 +230,15 @@ export function testApp(
     options.environmentApiKey,
   );
   const provider = scriptedProvider();
+  const jobs = fakeJobs();
+  const engine = options.engine ?? stubEngine({ state: 'ready' });
+  const dataDir = path.join(directory, 'data');
   const app = createApp({
     uiDir: options.uiDir ?? path.join(directory, 'no-ui'),
-    engine: options.engine ?? stubEngine({ state: 'ready' }),
+    engine,
+    jobs,
+    warmer: new VoiceWarmer(engine, jobs),
+    media: new MediaStore(dataDir),
     chats,
     characters,
     scenarios,
@@ -162,11 +257,19 @@ export function testApp(
   return {
     app,
     provider,
+    jobs,
     chats,
     characters,
     scenarios,
     settings,
+    dataDir,
     call,
+    upload: async (method, url, file) =>
+      app.request(url, {
+        method,
+        headers: { ...LOCAL, 'Content-Type': 'application/octet-stream' },
+        body: file,
+      }),
     async startChat(pairing = {}) {
       const response = await call('POST', '/api/chats', {
         characterId: pairing.characterId ?? characters.list()[0]?.id,
@@ -178,6 +281,14 @@ export function testApp(
       return (await response.json()) as Chat;
     },
   };
+}
+
+/** The built-in character, as the API gives it now. */
+export async function builtInCharacter(app: TestApp): Promise<Character> {
+  const response = await app.call('GET', '/api/characters');
+  const [character] = (await response.json()) as Character[];
+  if (character === undefined) throw new Error('expected a character');
+  return character;
 }
 
 /** Read a streamed reply to its end. */

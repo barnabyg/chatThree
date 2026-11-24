@@ -1,6 +1,8 @@
 import { type SyntheticEvent, useEffect, useState } from 'react';
 import type { CharacterInput } from '../shared/api.ts';
 import { api, errorMessage } from './api.ts';
+import { CharacterPicture } from './CharacterPicture.tsx';
+import { CharacterVoice } from './CharacterVoice.tsx';
 import { navigate } from './router.ts';
 import { TextField } from './TextField.tsx';
 
@@ -50,13 +52,24 @@ export function CharacterEditor({ id }: { id?: string }) {
     id === undefined ? BLANK : null,
   );
   const [error, setError] = useState<string | null>(null);
+  const [hasVoice, setHasVoice] = useState(false);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (id === undefined) return;
     let current = true;
     api.getCharacter(id).then(
-      ({ name, persona, speakingStyle, exampleDialogue, appearance }) => {
+      ({
+        name,
+        persona,
+        speakingStyle,
+        exampleDialogue,
+        appearance,
+        ...saved
+      }) => {
         if (current) {
+          setHasVoice(saved.hasVoice);
+          setImageUrl(saved.imageUrl);
           setCharacter({
             name,
             persona,
@@ -127,6 +140,28 @@ export function CharacterEditor({ id }: { id?: string }) {
             }}
           />
         ))}
+        {id === undefined ? (
+          <p className="hint">
+            Save the character, then edit it, to give it a picture and a voice
+            of its own.
+          </p>
+        ) : (
+          <>
+            <CharacterPicture
+              characterId={id}
+              name={character.name}
+              appearance={character.appearance}
+              imageUrl={imageUrl}
+              onChange={setImageUrl}
+            />
+            <CharacterVoice
+              characterId={id}
+              name={character.name}
+              hasVoice={hasVoice}
+              onChange={setHasVoice}
+            />
+          </>
+        )}
         <div className="form-actions">
           <button type="submit" className="primary">
             Save character

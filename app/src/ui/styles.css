@@ -224,6 +224,21 @@ textarea {
   resize: vertical;
 }
 
+input[type='checkbox'] {
+  width: auto;
+}
+
+/* A checkbox with its label beside it. */
+label.toggle,
+.form label.toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
 .form {
   display: flex;
   flex-direction: column;
@@ -260,6 +275,29 @@ fieldset {
 legend {
   padding: 0 0.3rem;
   font-weight: 600;
+}
+
+/* A character's voice or picture: saved apart from the rest of the form. */
+fieldset.media {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+fieldset.media label {
+  margin-top: 0.25rem;
+}
+
+fieldset.media .form-actions {
+  margin-top: 0.25rem;
+}
+
+.reference-picture {
+  align-self: flex-start;
+  max-width: 100%;
+  max-height: 20rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
 }
 
 .choice-excerpt {
@@ -315,7 +353,17 @@ legend {
 }
 
 .card-text {
+  flex: 1;
   min-width: 0;
+}
+
+.card-picture {
+  flex-shrink: 0;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 0.4rem;
+  object-fit: cover;
+  object-position: top;
 }
 
 .card h2 {
@@ -462,6 +510,14 @@ legend {
   white-space: pre-wrap;
 }
 
+.speech-problem {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--warn);
+  border-radius: 0.5rem;
+  color: var(--warn);
+}
+
 .conversation-actions {
   display: flex;
   gap: 0.5rem;
@@ -484,6 +540,10 @@ legend {
 .composer textarea {
   flex: 1;
   resize: none;
+}
+
+.composer button {
+  white-space: nowrap;
 }
 
 /* Engine status. */

@@ -154,6 +154,59 @@ test('a database from a newer version of the app is refused, not damaged', () =>
   expect(() => openDatabase(file)).toThrow(/newer version of chatThree/);
 });
 
+test('a character saved before voice clips and pictures existed is still there, with neither', () => {
+  // The characters table exactly as schema version 3 wrote it.
+  const file = databaseFile();
+  const old = new Database(file);
+  old.exec(`
+    CREATE TABLE characters (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      persona TEXT NOT NULL DEFAULT '',
+      speaking_style TEXT NOT NULL DEFAULT '',
+      example_dialogue TEXT NOT NULL DEFAULT '',
+      appearance TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE scenarios (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      premise TEXT NOT NULL DEFAULT '',
+      user_name TEXT NOT NULL DEFAULT '',
+      user_description TEXT NOT NULL DEFAULT '',
+      opening_message TEXT NOT NULL DEFAULT '',
+      location_name TEXT NOT NULL DEFAULT '',
+      location_description TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE chats (
+      id TEXT PRIMARY KEY,
+      character_id TEXT NOT NULL REFERENCES characters (id) ON DELETE CASCADE,
+      scenario_id TEXT NOT NULL REFERENCES scenarios (id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    INSERT INTO characters (id, name, persona, created_at, updated_at) VALUES
+      ('tomas', 'Tomas Reed', 'A ferryman.', '2026-03-01T09:00:00.000Z', '2026-03-01T09:00:00.000Z');
+    PRAGMA user_version = 3;
+  `);
+  old.close();
+
+  const characters = new CharacterStore(openFile(file));
+
+  expect(characters.list()).toEqual([
+    expect.objectContaining({
+      id: 'tomas',
+      name: 'Tomas Reed',
+      persona: 'A ferryman.',
+      hasVoice: false,
+      imageUrl: null,
+    }),
+  ]);
+});
+
 test('a chat saved before scenarios existed keeps its own character and conversation, in the built-in scenario', () => {
   // The database exactly as schema version 2 wrote it.
   const file = databaseFile();

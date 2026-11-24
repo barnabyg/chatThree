@@ -10,7 +10,36 @@ test('settings start with the default model and say where the key comes from', a
   expect(await response.json()).toEqual({
     model: DEFAULT_MODEL,
     contextTokenBudget: DEFAULT_CONTEXT_TOKEN_BUDGET,
+    speechMuted: false,
+    speechScope: 'dialogue',
     apiKey: 'environment',
+  });
+});
+
+test('speech can be muted, and set to speak the whole reply', async () => {
+  const app = testApp();
+
+  const response = await app.call('PUT', '/api/settings', {
+    speechMuted: true,
+    speechScope: 'everything',
+  });
+
+  expect(await response.json()).toMatchObject({
+    speechMuted: true,
+    speechScope: 'everything',
+  });
+});
+
+test('a scope for speech that does not exist is refused with a reason', async () => {
+  const app = testApp();
+
+  const response = await app.call('PUT', '/api/settings', {
+    speechScope: 'whispers',
+  });
+
+  expect(response.status).toBe(400);
+  expect(await response.json()).toEqual({
+    error: 'What is spoken must be "dialogue" or "everything".',
   });
 });
 

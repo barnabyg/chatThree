@@ -20,11 +20,32 @@ const FAKE_ENGINE_COMMAND = JSON.stringify([
   path.join(APP_ROOT, 'test-support', 'fake-engine.ts'),
 ]);
 
+/** One job the fake engine received. */
+export interface EngineJob {
+  /** The engine endpoint, such as `/speech`. */
+  path: string;
+  body: Record<string, unknown>;
+}
+
 export interface RunningApp {
   url: string;
   stop(): Promise<void>;
   /** PIDs of the engine processes the app has started, oldest first. */
   enginePids(): Promise<number[]>;
+  /** The jobs the engine has been sent, oldest first. */
+  engineJobs(): Promise<EngineJob[]>;
+  /** The text of every sentence the engine has been asked to speak, in order. */
+  spoken(): Promise<string[]>;
+}
+
+/** The lines of a file some other process appends to, or none if it is not there yet. */
+async function lines(file: string): Promise<string[]> {
+  try {
+    return (await readFile(file, 'utf8')).split('\n').filter(Boolean);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
+  }
 }
 
 function listeningUrl(child: ChildProcess): Promise<string> {
@@ -74,6 +95,7 @@ export async function startApp(
 ): Promise<RunningApp> {
   await mkdir(directory, { recursive: true });
   const pidFile = path.join(directory, 'engine-pids.txt');
+  const jobFile = path.join(directory, 'engine-jobs.jsonl');
   const dataDir = path.join(directory, 'data');
   const child = spawn(
     process.execPath,
@@ -85,6 +107,7 @@ export async function startApp(
         CHATTHREE_ENGINE_COMMAND: FAKE_ENGINE_COMMAND,
         CHATTHREE_ENGINE_DIR: APP_ROOT,
         FAKE_ENGINE_PID_FILE: pidFile,
+        FAKE_ENGINE_LOG_FILE: jobFile,
         // Chats and settings go to a directory of the test's own.
         CHATTHREE_DATA_DIR: dataDir,
         ...env,
@@ -94,11 +117,18 @@ export async function startApp(
   );
   try {
     const url = await listeningUrl(child);
+    const engineJobs = async (): Promise<EngineJob[]> =>
+      (await lines(jobFile)).map((line) => JSON.parse(line) as EngineJob);
     return {
       url,
       stop: () => stop(child),
       enginePids: async () =>
         (await readFile(pidFile, 'utf8')).trim().split(/\s+/).map(Number),
+      engineJobs,
+      spoken: async () =>
+        (await engineJobs())
+          .filter((job) => job.path === '/speech')
+          .map((job) => String(job.body.text)),
     };
   } catch (error) {
     child.kill();

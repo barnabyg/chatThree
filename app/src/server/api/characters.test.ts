@@ -36,9 +36,10 @@ test('the built-in character is there to begin with, as an ordinary character', 
   expect(builtIn?.persona).not.toBe('');
 
   const edited = await app.call('PUT', `/api/characters/${builtIn?.id ?? ''}`, {
-    ...builtIn,
-    chatCount: undefined,
-    id: undefined,
+    persona: builtIn?.persona,
+    speakingStyle: builtIn?.speakingStyle,
+    exampleDialogue: builtIn?.exampleDialogue,
+    appearance: builtIn?.appearance,
     name: 'Mara the Keeper',
   });
   expect(edited.status).toBe(200);
@@ -59,6 +60,8 @@ describe('creating a character', () => {
       ...TOMAS,
       id: created.id,
       chatCount: 0,
+      hasVoice: false,
+      imageUrl: null,
     });
   });
 

@@ -3,15 +3,19 @@
 // the chats never carries the API key with it.
 
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import type { Settings, SettingsUpdate } from '../shared/api.ts';
+import type { Settings, SettingsUpdate, SpeechScope } from '../shared/api.ts';
 
 export const DEFAULT_MODEL = 'gpt-5.5';
 /** Roughly 60,000 characters of conversation per turn. */
 export const DEFAULT_CONTEXT_TOKEN_BUDGET = 16_000;
+/** Narration is skipped unless the user asks for it. */
+export const DEFAULT_SPEECH_SCOPE: SpeechScope = 'dialogue';
 
 interface Saved {
   model?: string;
   contextTokenBudget?: number;
+  speechMuted?: boolean;
+  speechScope?: SpeechScope;
   openaiApiKey?: string;
 }
 
@@ -23,10 +27,20 @@ function load(file: string): Saved {
       unknown
     > | null;
     if (typeof saved !== 'object' || saved === null) throw new Error();
-    const { model, contextTokenBudget, openaiApiKey } = saved;
+    const {
+      model,
+      contextTokenBudget,
+      speechMuted,
+      speechScope,
+      openaiApiKey,
+    } = saved;
     return {
       ...(typeof model === 'string' && { model }),
       ...(typeof contextTokenBudget === 'number' && { contextTokenBudget }),
+      ...(typeof speechMuted === 'boolean' && { speechMuted }),
+      ...((speechScope === 'dialogue' || speechScope === 'everything') && {
+        speechScope,
+      }),
       ...(typeof openaiApiKey === 'string' && { openaiApiKey }),
     };
   } catch {
@@ -69,6 +83,8 @@ export class SettingsStore {
     return {
       model: this.model(),
       contextTokenBudget: this.contextTokenBudget(),
+      speechMuted: this.#saved.speechMuted ?? false,
+      speechScope: this.#saved.speechScope ?? DEFAULT_SPEECH_SCOPE,
       apiKey:
         this.#saved.openaiApiKey !== undefined
           ? 'saved'
@@ -84,6 +100,8 @@ export class SettingsStore {
     if (update.contextTokenBudget !== undefined) {
       next.contextTokenBudget = update.contextTokenBudget;
     }
+    if (update.speechMuted !== undefined) next.speechMuted = update.speechMuted;
+    if (update.speechScope !== undefined) next.speechScope = update.speechScope;
     if (update.apiKey === null) delete next.openaiApiKey;
     else if (update.apiKey !== undefined) next.openaiApiKey = update.apiKey;
 

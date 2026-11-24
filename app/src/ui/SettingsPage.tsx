@@ -1,5 +1,5 @@
 import { type SyntheticEvent, useEffect, useState } from 'react';
-import type { Settings, SettingsUpdate } from '../shared/api.ts';
+import type { Settings, SettingsUpdate, SpeechScope } from '../shared/api.ts';
 import { api } from './api.ts';
 
 const KEY_SOURCE: Record<Settings['apiKey'], string> = {
@@ -13,6 +13,8 @@ export function SettingsPage() {
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState('');
   const [budget, setBudget] = useState('');
+  const [speak, setSpeak] = useState(true);
+  const [speechScope, setSpeechScope] = useState<SpeechScope>('dialogue');
   const [notice, setNotice] = useState<{
     kind: 'status' | 'alert';
     text: string;
@@ -22,6 +24,8 @@ export function SettingsPage() {
     setSettings(loaded);
     setModel(loaded.model);
     setBudget(String(loaded.contextTokenBudget));
+    setSpeak(!loaded.speechMuted);
+    setSpeechScope(loaded.speechScope);
     setApiKey('');
   };
 
@@ -64,6 +68,8 @@ export function SettingsPage() {
       {
         model,
         contextTokenBudget: Number(budget),
+        speechMuted: !speak,
+        speechScope,
         ...(apiKey.trim() !== '' && { apiKey: apiKey.trim() }),
       },
       'Settings saved.',
@@ -129,6 +135,39 @@ export function SettingsPage() {
           How much of a conversation is sent to the model each turn, counted
           back from the newest message. Older messages stay in the chat but are
           no longer sent. The count is an estimate of four characters per token.
+        </p>
+
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={speak}
+            onChange={(event) => {
+              setSpeak(event.target.checked);
+            }}
+          />
+          Speak replies aloud
+        </label>
+        <p className="hint">
+          Replies are spoken by the engine as they arrive, a sentence at a time.
+          This can also be switched in a chat.
+        </p>
+
+        <label>
+          What is spoken
+          <select
+            value={speechScope}
+            onChange={(event) => {
+              setSpeechScope(event.target.value as SpeechScope);
+            }}
+          >
+            <option value="dialogue">Only what the character says</option>
+            <option value="everything">The whole reply</option>
+          </select>
+        </label>
+        <p className="hint">
+          What the character says is the text in quotation marks. In a reply
+          that has none, it is everything outside *asterisks*. Formatting marks
+          are never spoken.
         </p>
 
         <div className="form-actions">

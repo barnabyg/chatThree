@@ -6,12 +6,15 @@ import { createApp } from './app.ts';
 import { openAIProvider } from './chat/openai.ts';
 import { ReplyService } from './chat/replies.ts';
 import type { AppConfig } from './config.ts';
+import { engineJobs } from './engine/jobs.ts';
 import { EngineSupervisor } from './engine/supervisor.ts';
+import { VoiceWarmer } from './engine/warmer.ts';
 import { LOOPBACK } from './loopback.ts';
 import { SettingsStore } from './settings.ts';
 import { CharacterStore } from './store/characters.ts';
 import { ChatStore } from './store/chats.ts';
 import { openDatabase } from './store/database.ts';
+import { MediaStore } from './store/media.ts';
 import { ScenarioStore } from './store/scenarios.ts';
 
 export interface RunningApp {
@@ -46,9 +49,13 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
     // The engine never calls OpenAI, so it is not given the key.
     env: { OPENAI_API_KEY: undefined },
   });
+  const jobs = engineJobs(engine);
   const app = createApp({
     uiDir: config.uiDir,
     engine,
+    jobs,
+    warmer: new VoiceWarmer(engine, jobs),
+    media: new MediaStore(config.dataDir),
     chats,
     characters,
     scenarios,

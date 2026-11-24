@@ -25,6 +25,15 @@ const update = z.strictObject({
       `The conversation budget can be at most ${String(MAX_TOKEN_BUDGET)} tokens.`,
     )
     .optional(),
+  speechMuted: z
+    .boolean('Whether replies are spoken must be true or false.')
+    .optional(),
+  speechScope: z
+    .enum(
+      ['dialogue', 'everything'],
+      'What is spoken must be "dialogue" or "everything".',
+    )
+    .optional(),
   apiKey: z
     .string()
     .trim()
@@ -45,11 +54,14 @@ export function settingsRoutes(settings: SettingsStore): Hono {
   routes.get('/', (c) => c.json(settings.view()));
 
   routes.put('/', async (c) => {
-    const { model, contextTokenBudget, apiKey } = await readBody(c, update);
+    const { model, contextTokenBudget, speechMuted, speechScope, apiKey } =
+      await readBody(c, update);
     return c.json(
       settings.update({
         ...(model !== undefined && { model }),
         ...(contextTokenBudget !== undefined && { contextTokenBudget }),
+        ...(speechMuted !== undefined && { speechMuted }),
+        ...(speechScope !== undefined && { speechScope }),
         ...(apiKey !== undefined && { apiKey }),
       }),
     );
