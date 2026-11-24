@@ -1,6 +1,7 @@
 // Runs the engine as a child process for as long as the app runs.
 
 import { type ChildProcess, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { existsSync } from 'node:fs';
 import { type AddressInfo, createServer } from 'node:net';
 import { createInterface } from 'node:readline';
@@ -11,6 +12,7 @@ import { killOrphans, killTree, TREE_SPAWN_OPTIONS } from './processTree.ts';
 const LOOPBACK = '127.0.0.1';
 const HEALTH_TIMEOUT_MS = 2_000;
 const OUTPUT_LINES_KEPT = 5;
+const OUTPUT_FLUSH_MS = 250;
 
 export interface EngineOptions {
   /** The engine's command line. The app adds `--port <n>`. */
@@ -222,6 +224,11 @@ export class EngineSupervisor implements EngineControl {
     signal: NodeJS.Signals | null,
   ): Promise<void> {
     if (run.stopping) return;
+    // The last lines the engine printed, usually the reason it died, can
+    // still be on their way. Its output closes once every process holding
+    // it has gone, which a process the launcher left behind may never do,
+    // so the wait is short.
+    await Promise.race([once(run.child, 'close'), delay(OUTPUT_FLUSH_MS)]);
     const how =
       code === null ? `signal ${String(signal)}` : `exit code ${String(code)}`;
     const output =
