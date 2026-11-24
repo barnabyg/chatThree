@@ -19,6 +19,8 @@ export const DEFAULT_CONTEXT_TOKEN_BUDGET = 16_000;
 export const DEFAULT_ILLUSTRATION_MODE: IllustrationMode = 'key-moments';
 /** Replies that pass after a picture before a key moment is illustrated again. */
 export const DEFAULT_ILLUSTRATION_COOLDOWN = 3;
+export const MIN_ILLUSTRATION_COOLDOWN = 1;
+export const MAX_ILLUSTRATION_COOLDOWN = 100;
 const ILLUSTRATION_MODES: readonly unknown[] = [
   'off',
   'scene-changes',
@@ -63,7 +65,12 @@ function load(file: string): Saved {
       ...(ILLUSTRATION_MODES.includes(illustrationMode) && {
         illustrationMode: illustrationMode as IllustrationMode,
       }),
-      ...(typeof illustrationCooldown === 'number' && { illustrationCooldown }),
+      // A hand-edited cooldown outside what Settings allows is ignored.
+      ...(Number.isInteger(illustrationCooldown) &&
+        (illustrationCooldown as number) >= MIN_ILLUSTRATION_COOLDOWN &&
+        (illustrationCooldown as number) <= MAX_ILLUSTRATION_COOLDOWN && {
+          illustrationCooldown: illustrationCooldown as number,
+        }),
       ...(typeof contextTokenBudget === 'number' && { contextTokenBudget }),
       ...(typeof speechMuted === 'boolean' && { speechMuted }),
       ...((speechScope === 'dialogue' || speechScope === 'everything') && {

@@ -128,3 +128,13 @@ test('the illustration mode and cooldown are saved, and read back by a later run
   expect(restarted.illustrationMode()).toBe('off');
   expect(restarted.illustrationCooldown()).toBe(7);
 });
+
+test.each([0, -2, 2.5, 101, '3'])(
+  'a hand-edited cooldown of %j is ignored for the default',
+  async (cooldown) => {
+    const file = settingsFile();
+    await writeFile(file, JSON.stringify({ illustrationCooldown: cooldown }));
+
+    expect(new SettingsStore(file, undefined).illustrationCooldown()).toBe(3);
+  },
+);

@@ -1,12 +1,15 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { isWellFormedApiKey } from '../apiKey.ts';
-import type { SettingsStore } from '../settings.ts';
+import {
+  MAX_ILLUSTRATION_COOLDOWN,
+  MIN_ILLUSTRATION_COOLDOWN,
+  type SettingsStore,
+} from '../settings.ts';
 import { readBody } from './errors.ts';
 
 const MIN_TOKEN_BUDGET = 100;
 const MAX_TOKEN_BUDGET = 1_000_000;
-const MAX_COOLDOWN = 100;
 
 const update = z.strictObject({
   model: z
@@ -29,10 +32,13 @@ const update = z.strictObject({
     .optional(),
   illustrationCooldown: z
     .int('The cooldown must be a whole number of replies.')
-    .min(1, 'The cooldown must be at least 1 reply.')
+    .min(
+      MIN_ILLUSTRATION_COOLDOWN,
+      `The cooldown must be at least ${String(MIN_ILLUSTRATION_COOLDOWN)} reply.`,
+    )
     .max(
-      MAX_COOLDOWN,
-      `The cooldown can be at most ${String(MAX_COOLDOWN)} replies.`,
+      MAX_ILLUSTRATION_COOLDOWN,
+      `The cooldown can be at most ${String(MAX_ILLUSTRATION_COOLDOWN)} replies.`,
     )
     .optional(),
   contextTokenBudget: z
