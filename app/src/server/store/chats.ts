@@ -25,6 +25,8 @@ interface ChatRow {
   characterName: string;
   scenarioId: string;
   scenarioTitle: string;
+  playerId: string | null;
+  playerName: string | null;
 }
 
 const SELECT = `
@@ -34,16 +36,23 @@ const SELECT = `
     characters.id AS characterId,
     characters.name AS characterName,
     scenarios.id AS scenarioId,
-    scenarios.title AS scenarioTitle
+    scenarios.title AS scenarioTitle,
+    players.id AS playerId,
+    players.name AS playerName
   FROM chats
   JOIN characters ON characters.id = chats.character_id
-  JOIN scenarios ON scenarios.id = chats.scenario_id`;
+  JOIN scenarios ON scenarios.id = chats.scenario_id
+  LEFT JOIN players ON players.id = chats.player_id`;
 
 function toSummary(row: ChatRow): ChatSummary {
   return {
     id: row.id,
     character: { id: row.characterId, name: row.characterName },
     scenario: { id: row.scenarioId, title: row.scenarioTitle },
+    player:
+      row.playerId === null
+        ? null
+        : { id: row.playerId, name: row.playerName ?? '' },
     lastActivityAt: row.lastActivityAt,
   };
 }
@@ -57,22 +66,24 @@ export class ChatStore {
   }
 
   /**
-   * Start a chat that pairs a character with a scenario; both must exist.
-   * `openingMessage`, unless blank, becomes the character's first message.
+   * Start a chat that pairs a character with a scenario, played as
+   * `playerId` or as no one; each given must exist. `openingMessage`, unless
+   * blank, becomes the character's first message.
    */
   create(
     characterId: string,
     scenarioId: string,
     openingMessage = '',
+    playerId: string | null = null,
   ): ChatSummary {
     const id = randomUUID();
     const now = new Date().toISOString();
     return this.#db.transaction(() => {
       this.#db
         .prepare(
-          'INSERT INTO chats (id, character_id, scenario_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+          'INSERT INTO chats (id, character_id, scenario_id, player_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
         )
-        .run(id, characterId, scenarioId, now, now);
+        .run(id, characterId, scenarioId, playerId, now, now);
       if (openingMessage.trim() !== '') {
         this.addMessage(id, 'assistant', openingMessage);
       }

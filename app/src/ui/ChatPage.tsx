@@ -305,6 +305,7 @@ export function ChatPage({ chatId }: { chatId: string }) {
         <div>
           <h1>{chat.character.name}</h1>
           <p>{chat.scenario.title}</p>
+          {chat.player !== null && <p>Playing as {chat.player.name}</p>}
           <p className="chat-location" data-testid="current-location">
             At {chat.location.name}
           </p>

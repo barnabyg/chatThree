@@ -5,7 +5,6 @@ import { create, messages, send } from './helpers.ts';
 const FERRY = {
   title: 'The Night Ferry',
   premise: 'The last ferry of the night is leaving, and it is not empty.',
-  userPersona: { name: 'Wren', description: 'A courier with a sealed letter.' },
   openingMessage: 'You are late. Get aboard.',
   startingLocation: {
     name: 'The river quay',
@@ -28,7 +27,7 @@ async function builtInCharacterId(page: Page): Promise<string> {
   return characters[0]?.id ?? '';
 }
 
-test('the first run offers the built-in character and scenario, and the chat opens with the opening message', async ({
+test('the first run offers the built-in character, scenario and player, and the chat opens with the opening message', async ({
   page,
 }) => {
   await page.goto('/');
@@ -38,9 +37,14 @@ test('the first run offers the built-in character and scenario, and the chat ope
   await expect(page.getByLabel('Scenario')).toContainText(
     'The Storm at Gull Point',
   );
+  await expect(page.getByLabel('Player')).toHaveValue(/.+/);
+  await expect(page.getByLabel('Player')).toContainText('The Traveller');
   await page.getByRole('button', { name: 'Start chat' }).click();
 
   await expect(page.getByRole('heading', { name: 'Mara Quill' })).toBeVisible();
+  await expect(page.getByRole('main')).toContainText(
+    'Playing as The Traveller',
+  );
   await expect(messages(page)).toHaveText([
     /Mara Quill\s*\*The door swings inward/,
   ]);
@@ -55,10 +59,6 @@ test('a scenario can be created, and a chat started from a pairing opens with it
   await page.getByRole('link', { name: 'New scenario' }).click();
   await page.getByLabel('Title').fill(FERRY.title);
   await page.getByLabel('Premise').fill(FERRY.premise);
-  await page.getByLabel("Your character's name").fill(FERRY.userPersona.name);
-  await page
-    .getByLabel('About your character')
-    .fill(FERRY.userPersona.description);
   await page.getByLabel('Opening message').fill(FERRY.openingMessage);
   await page.getByLabel('Location name').fill(FERRY.startingLocation.name);
   await page
@@ -82,7 +82,7 @@ test('a scenario can be created, and a chat started from a pairing opens with it
     /Mara Quill\s*You are late\. Get aboard\./,
   ]);
 
-  // The prompt carries the premise and the user's part; the opening message
+  // The prompt carries the premise and the place; the opening message
   // starts the conversation.
   await send(page, 'Wait for me!');
   // The reply itself, not the placeholder shown before the request is sent.
@@ -91,8 +91,6 @@ test('a scenario can be created, and a chat started from a pairing opens with it
   );
   const request = openai.requests[0]?.body;
   expect(request?.instructions).toContain(FERRY.premise);
-  expect(request?.instructions).toContain('Wren');
-  expect(request?.instructions).toContain(FERRY.userPersona.description);
   expect(request?.instructions).toContain(FERRY.startingLocation.name);
   expect(request?.input).toEqual([
     { role: 'assistant', content: FERRY.openingMessage },

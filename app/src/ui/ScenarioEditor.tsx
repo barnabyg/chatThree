@@ -7,7 +7,6 @@ import { TextField } from './TextField.tsx';
 const BLANK: ScenarioInput = {
   title: '',
   premise: '',
-  userPersona: { name: '', description: '' },
   openingMessage: '',
   startingLocation: { name: '', description: '' },
 };
@@ -23,12 +22,11 @@ export function ScenarioEditor({ id }: { id?: string }) {
     if (id === undefined) return;
     let current = true;
     api.getScenario(id).then(
-      ({ title, premise, userPersona, openingMessage, startingLocation }) => {
+      ({ title, premise, openingMessage, startingLocation }) => {
         if (current) {
           setScenario({
             title,
             premise,
-            userPersona,
             openingMessage,
             startingLocation,
           });
@@ -92,33 +90,6 @@ export function ScenarioEditor({ id }: { id?: string }) {
             setScenario({ ...scenario, premise });
           }}
         />
-
-        <fieldset>
-          <legend>Your part</legend>
-          <TextField
-            label="Your character's name"
-            maxLength={100}
-            value={scenario.userPersona.name}
-            onChange={(name) => {
-              setScenario({
-                ...scenario,
-                userPersona: { ...scenario.userPersona, name },
-              });
-            }}
-          />
-          <TextField
-            label="About your character"
-            hint="A short description of who you play in this story."
-            rows={3}
-            value={scenario.userPersona.description}
-            onChange={(description) => {
-              setScenario({
-                ...scenario,
-                userPersona: { ...scenario.userPersona, description },
-              });
-            }}
-          />
-        </fieldset>
 
         <TextField
           label="Opening message"

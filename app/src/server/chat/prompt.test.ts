@@ -11,12 +11,12 @@ const character = {
 const scenario = {
   title: 'The Storm',
   premise: 'A stranger knocks.',
-  userPersona: { name: 'Wren', description: 'A courier with a secret.' },
   startingLocation: {
     name: 'The lighthouse kitchen',
     description: 'Warm, low-beamed, smelling of tar.',
   },
 };
+const player = { name: 'Wren', background: 'A courier with a secret.' };
 /** Far more than any conversation in these tests. */
 const BUDGET = 10_000;
 
@@ -30,7 +30,7 @@ function conversation(...turns: [Message['role'], string][]): Message[] {
 }
 
 test('the instructions put the character first, then the scenario', () => {
-  const { instructions } = buildPrompt(character, scenario, [], BUDGET);
+  const { instructions } = buildPrompt(character, scenario, player, [], BUDGET);
 
   const persona = instructions.indexOf('Keeper of the lighthouse.');
   const premise = instructions.indexOf('A stranger knocks.');
@@ -43,7 +43,7 @@ test('the instructions put the character first, then the scenario', () => {
 });
 
 test("the character's persona, speaking style and example dialogue come before the scenario, in that order", () => {
-  const { instructions } = buildPrompt(character, scenario, [], BUDGET);
+  const { instructions } = buildPrompt(character, scenario, player, [], BUDGET);
 
   const positions = [
     'Keeper of the lighthouse.',
@@ -59,6 +59,7 @@ test('a part of the character left blank has no heading in the instructions', ()
   const { instructions } = buildPrompt(
     { ...character, speakingStyle: '  ' },
     scenario,
+    player,
     [],
     BUDGET,
   );
@@ -68,8 +69,8 @@ test('a part of the character left blank has no heading in the instructions', ()
   expect(instructions).not.toContain('## Speaking style');
 });
 
-test("the scenario's premise, the user's part and the starting location follow the character", () => {
-  const { instructions } = buildPrompt(character, scenario, [], BUDGET);
+test("the scenario's premise, the player's part and the starting location follow the character", () => {
+  const { instructions } = buildPrompt(character, scenario, player, [], BUDGET);
 
   const positions = [
     '# Character: Mara',
@@ -89,9 +90,9 @@ test('a part of the scenario left blank has no heading in the instructions', () 
     character,
     {
       ...scenario,
-      userPersona: { name: '', description: ' ' },
       startingLocation: { name: 'The quay', description: '' },
     },
+    { name: '', background: ' ' },
     [],
     BUDGET,
   );
@@ -104,12 +105,14 @@ test('the instructions are the same on every turn of a chat', () => {
   const first = buildPrompt(
     character,
     scenario,
+    player,
     conversation(['user', 'Hello?']),
     BUDGET,
   );
   const later = buildPrompt(
     character,
     scenario,
+    player,
     conversation(
       ['user', 'Hello?'],
       ['assistant', 'Who goes there?'],
@@ -125,6 +128,7 @@ test('the conversation follows, oldest first, with only roles and text', () => {
   const { messages } = buildPrompt(
     character,
     scenario,
+    player,
     conversation(['user', 'Hello?'], ['assistant', 'Who goes there?']),
     BUDGET,
   );
@@ -143,9 +147,22 @@ test('a conversation over the token budget loses its oldest messages, and nothin
     ['user', 'three'.padEnd(36, '.')],
   );
 
-  const whole = buildPrompt(character, scenario, long, BUDGET);
-  const trimmed = buildPrompt(character, scenario, long, 26);
+  const whole = buildPrompt(character, scenario, player, long, BUDGET);
+  const trimmed = buildPrompt(character, scenario, player, long, 26);
 
   expect(trimmed.messages).toEqual(whole.messages.slice(1));
   expect(trimmed.instructions).toBe(whole.instructions);
+});
+
+test('a chat with no player has no part for the user in the instructions', () => {
+  const { instructions } = buildPrompt(
+    character,
+    scenario,
+    undefined,
+    [],
+    BUDGET,
+  );
+
+  expect(instructions).not.toContain('## The part the user plays');
+  expect(instructions).toContain('# Scenario: The Storm');
 });

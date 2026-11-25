@@ -1,6 +1,7 @@
 // How a chat becomes a request to the provider.
 //
-// The instructions are the character, then the scenario, and depend on
+// The instructions are the character, then the scenario with the user's
+// part in it (the chat's player), and depend on
 // nothing else: the same chat sends the same text on every turn. Providers
 // cache a prompt by its leading text, so a fixed prefix is what makes every
 // turn after the first cheaper and faster. A long conversation is cut to a
@@ -9,6 +10,7 @@
 import type {
   CharacterInput,
   Message,
+  PlayerInput,
   ScenarioInput,
 } from '../../shared/api.ts';
 import type { PromptMessage } from './provider.ts';
@@ -21,8 +23,11 @@ export type PromptCharacter = Pick<
 
 export type PromptScenario = Pick<
   ScenarioInput,
-  'title' | 'premise' | 'userPersona' | 'startingLocation'
+  'title' | 'premise' | 'startingLocation'
 >;
+
+/** Who the user plays, or `undefined` for a chat with no player. */
+export type PromptPlayer = PlayerInput | undefined;
 
 export interface Prompt {
   instructions: string;
@@ -43,6 +48,7 @@ function section(heading: string, ...parts: string[]): string[] {
 export function buildInstructions(
   character: PromptCharacter,
   scenario: PromptScenario,
+  player: PromptPlayer,
 ): string {
   return [
     `# Character: ${character.name}`,
@@ -54,8 +60,8 @@ export function buildInstructions(
     ...section('## Premise', scenario.premise),
     ...section(
       '## The part the user plays',
-      scenario.userPersona.name,
-      scenario.userPersona.description,
+      player?.name ?? '',
+      player?.background ?? '',
     ),
     ...section(
       '## Where the story begins',
@@ -70,11 +76,12 @@ export function buildInstructions(
 export function buildPrompt(
   character: PromptCharacter,
   scenario: PromptScenario,
+  player: PromptPlayer,
   conversation: readonly Message[],
   tokenBudget: number,
 ): Prompt {
   return {
-    instructions: buildInstructions(character, scenario),
+    instructions: buildInstructions(character, scenario, player),
     messages: conversation
       .slice(countNotSent(conversation, tokenBudget))
       .map(({ role, content }) => ({ role, content })),

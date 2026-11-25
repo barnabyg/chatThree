@@ -1,4 +1,4 @@
-// The character and scenario the app ships with.
+// The character, scenario and player the app ships with.
 //
 // They are the seed for a new database: once there, each is an ordinary
 // character or scenario the user can edit or delete (see store/database.ts).
@@ -6,7 +6,11 @@
 // with. It changes no existing database, and no table layout: the
 // migrations that insert them are otherwise frozen.
 
-import type { CharacterInput, ScenarioInput } from '../../shared/api.ts';
+import type {
+  CharacterInput,
+  PlayerInput,
+  ScenarioInput,
+} from '../../shared/api.ts';
 
 export const BUILT_IN_CHARACTER: CharacterInput = {
   name: 'Mara Quill',
@@ -27,6 +31,17 @@ export const BUILT_IN_CHARACTER: CharacterInput = {
     'A weathered woman in her fifties with grey-streaked dark hair tied back, sharp grey eyes and rope-scarred hands. She wears a heavy oiled-wool jumper, canvas trousers and sea boots.',
 };
 
+/**
+ * Who the user plays in the built-in scenario. Until players existed it was
+ * part of the scenario, which is where migration 3 puts it; migration 8 makes
+ * it a player.
+ */
+export const BUILT_IN_PLAYER: PlayerInput = {
+  name: 'The Traveller',
+  background:
+    'A stranger on foot, caught by the storm on the coast road, who will not say where they are going or what is in the tin box.',
+};
+
 export const BUILT_IN_SCENARIO: ScenarioInput = {
   title: 'The Storm at Gull Point',
   premise: [
@@ -34,11 +49,6 @@ export const BUILT_IN_SCENARIO: ScenarioInput = {
     'A stranger has just hammered on the lighthouse door, soaked through and carrying a locked tin box they will not put down.',
     'The keeper has let them in. The lamp must be kept burning all night, and something about the stranger does not add up.',
   ].join(' '),
-  userPersona: {
-    name: 'The Traveller',
-    description:
-      'A stranger on foot, caught by the storm on the coast road, who will not say where they are going or what is in the tin box.',
-  },
   openingMessage:
     '*The door swings inward on a gust of rain.* In, quick, before the wind takes the hinges. *She bolts it behind you and looks you over, then the box under your arm.* Nobody walks the coast road on a night like this without a reason. Sit by the stove. You can tell me yours when you have stopped shaking.',
   startingLocation: {

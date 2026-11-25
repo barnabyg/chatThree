@@ -39,12 +39,6 @@ const scenarioInput = z.strictObject({
       `A title can be at most ${String(MAX_NAME_LENGTH)} characters.`,
     ),
   premise: text('The premise'),
-  userPersona: z
-    .strictObject({
-      name: name("Your character's name"),
-      description: text("Your character's description"),
-    })
-    .default({ name: '', description: '' }),
   openingMessage: text('The opening message'),
   startingLocation: z
     .strictObject({
