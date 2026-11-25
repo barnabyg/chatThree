@@ -138,3 +138,76 @@ test.describe('with an engine that is not ready', () => {
     );
   });
 });
+
+test.describe('a new character', () => {
+  test('can be given an uploaded picture, saved with the character', async ({
+    page,
+  }, testInfo) => {
+    const own = solidPng(24, 32, [40, 160, 90]);
+    const file = testInfo.outputPath('portrait.png');
+    await writeFile(file, own);
+    await page.goto('/#/characters/new');
+    await page.getByLabel('Name').fill('Tomas Reed');
+    await expect(picture(page)).toContainText('No picture yet.');
+    // Generating needs a saved character; uploading does not.
+    await expect(
+      picture(page).getByRole('button', { name: /Generate/ }),
+    ).toHaveCount(0);
+
+    // A file that is not a picture is refused before anything is saved.
+    const notes = testInfo.outputPath('notes.png');
+    await writeFile(notes, 'These are notes, not a picture.');
+    await picture(page).getByLabel('Upload a picture').setInputFiles(notes);
+    await expect(picture(page).getByRole('alert')).toHaveText(
+      'A picture must be a PNG, JPEG or WebP image.',
+    );
+
+    await picture(page).getByLabel('Upload a picture').setInputFiles(file);
+    await expect(picture(page).getByRole('alert')).toBeHidden();
+    const held = picture(page).getByRole('img', {
+      name: 'Reference picture of Tomas Reed',
+    });
+    await expect
+      .poll(() => held.evaluate((img: HTMLImageElement) => img.naturalWidth))
+      .toBe(24);
+    // Nothing is saved until the character is.
+    expect(
+      await page.request.get('/api/characters').then((r) => r.json()),
+    ).toHaveLength(1);
+
+    await page.getByRole('button', { name: 'Save character' }).click();
+    await expect(
+      page
+        .getByRole('list', { name: 'Characters' })
+        .getByRole('img', { name: 'Picture of Tomas Reed' }),
+    ).toBeVisible();
+    await page.getByRole('link', { name: 'Edit Tomas Reed' }).click();
+    const image = picture(page).getByRole('img', {
+      name: 'Reference picture of Tomas Reed',
+    });
+    const src = (await image.getAttribute('src')) ?? '';
+    expect((await (await page.request.get(src)).body()).equals(own)).toBe(true);
+  });
+
+  test('can have its picture removed before it is saved', async ({
+    page,
+  }, testInfo) => {
+    const file = testInfo.outputPath('portrait.png');
+    await writeFile(file, solidPng(8, 8, [10, 120, 200]));
+    await page.goto('/#/characters/new');
+    await page.getByLabel('Name').fill('Tomas Reed');
+    await picture(page).getByLabel('Upload a picture').setInputFiles(file);
+    await expect(
+      picture(page).getByRole('img', {
+        name: 'Reference picture of Tomas Reed',
+      }),
+    ).toBeVisible();
+
+    await picture(page).getByRole('button', { name: 'Remove picture' }).click();
+    await expect(picture(page)).toContainText('No picture yet.');
+    await page.getByRole('button', { name: 'Save character' }).click();
+    await page.getByRole('link', { name: 'Edit Tomas Reed' }).click();
+
+    await expect(picture(page)).toContainText('No picture yet.');
+  });
+});

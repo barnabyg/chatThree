@@ -108,6 +108,9 @@ The picture is saved as soon as it is made or chosen, is shown in the editor
 and beside the character in the list, and is kept in the app's data folder.
 If the engine is not ready, generating says so; uploading and the rest of
 the editor do not need the engine.
+A new character can be given an uploaded picture before it is first saved;
+the picture is held until **Save character** and saved with it. Generating
+needs a saved character.
 If a picture is uploaded while another is being generated, the uploaded one
 is kept.
 
