@@ -14,8 +14,12 @@ test('a reply prompt written in Settings can be chosen for a chat, whose instruc
 }) => {
   await page.goto('/');
   await page.getByRole('link', { name: 'Settings' }).click();
+  await page.getByRole('link', { name: 'Reply prompts' }).click();
   await expect(replyPrompts(page)).toHaveText([/Default/]);
   await page.getByRole('link', { name: 'New reply prompt' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'New reply prompt' }),
+  ).toBeVisible();
   // A new one starts from the default.
   await expect(page.getByLabel('Prompt')).toHaveValue(/^Reply only as/);
   await page.getByLabel('Name').fill('Narrator');
@@ -45,6 +49,7 @@ test('a reply prompt written in Settings can be chosen for a chat, whose instruc
 
   // The chat is counted against its reply prompt.
   await page.getByRole('link', { name: 'Settings' }).click();
+  await page.getByRole('link', { name: 'Reply prompts' }).click();
   await expect(
     replyPrompts(page).filter({ hasText: 'Narrator' }),
   ).toContainText('1 chat');
@@ -64,6 +69,7 @@ test('deleting a reply prompt asks first, and keeps its chats on the default', a
   await expect(page.getByRole('main')).toContainText('Reply prompt: Terse');
 
   await page.getByRole('link', { name: 'Settings' }).click();
+  await page.getByRole('link', { name: 'Reply prompts' }).click();
   await page.getByRole('button', { name: 'Delete Terse' }).click();
   await expect(page.getByRole('dialog')).toContainText(
     'The 1 chat using it will use the default',

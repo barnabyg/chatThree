@@ -9,7 +9,7 @@ import { PlayerEditor } from './PlayerEditor.tsx';
 import { ReplyPromptEditor } from './ReplyPromptEditor.tsx';
 import { useRoute } from './router.ts';
 import { ScenarioEditor } from './ScenarioEditor.tsx';
-import { SettingsPage } from './SettingsPage.tsx';
+import { SettingsPage, settingsTab } from './SettingsPage.tsx';
 
 /** A route such as `/chats/new?character=abc`, taken apart. */
 interface Route {
@@ -63,10 +63,10 @@ function Page({ section, id, query }: Route) {
         <PlayerEditor key={id} id={id} />
       );
     case 'settings':
-      return <SettingsPage />;
+      return <SettingsPage tab={settingsTab(id)} />;
     case 'reply-prompts':
-      // Reply prompts are listed in Settings.
-      if (id === undefined) return <SettingsPage />;
+      // Reply prompts are listed in a tab of Settings.
+      if (id === undefined) return <SettingsPage tab="reply-prompts" />;
       return id === 'new' ? (
         <ReplyPromptEditor key="new" />
       ) : (

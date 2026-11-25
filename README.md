@@ -72,8 +72,8 @@ last activity.
   as the part the user plays. A scenario made before players existed had
   this part in it; it became a player, and that scenario's chats are played
   as it.
-- **Reply prompts** (in **Settings**): the "How to reply" section at the end
-  of the prompt, with a name. **Default** is built in and cannot be changed:
+- **Reply prompts** (in **Settings > Reply prompts**): the "How to reply"
+  section at the end of the prompt, with a name. **Default** is built in and cannot be changed:
   it tells the character to reply only as themself and never act for the
   user. Your own start as a copy of it. `{character}` in a reply prompt
   becomes the character's name, and `{user}` the player's, or "the user" in
@@ -134,7 +134,7 @@ a picture of that moment under the message. It takes two steps:
 - A second, small request to OpenAI (the *scene call*) reads the latest
   messages, up to the one illustrated, and describes the moment as a
   picture: what the character is doing, their expression, the framing and
-  the light. Its model is **Settings > Scene model**, `gpt-5-mini` unless
+  the light. Its model is **Settings > Images > Scene model**, `gpt-5-mini` unless
   changed.
 - The engine paints the scene from that description and two reference
   pictures: the character's, and one of the place the scene is in.
@@ -149,7 +149,7 @@ chat there; an earlier message is pictured where it took place, without
 moving the chat. A place's reference picture is painted the first time an
 illustration there needs it, and reused after that.
 
-**Settings > Picture style** decides how scenes and places look:
+**Settings > Images > Picture style** decides how scenes and places look:
 **Realistic** (the default) asks for photographs, **Illustration** for
 painted illustrations. Pictures already painted keep their style. A place's
 picture is a reference for every scene there, so after changing the style,
@@ -174,14 +174,14 @@ so and links to the character.
 
 Pictures also arrive without being asked. After each reply the scene call
 runs by itself: it follows the story to where the reply takes place, and
-says whether the moment is worth a picture. **Settings > Illustrate replies
+says whether the moment is worth a picture. **Settings > Images > Illustrate replies
 by themselves** decides what happens then:
 
 | Mode | A reply is illustrated when |
 |---|---|
 | Off | Never. The scene call still runs, so the chat still follows the story |
 | Scene changes only | The story moves somewhere else |
-| Key moments (the default) | The story moves somewhere else, or the scene call says the moment is worth it and at least the cooldown's number of replies (**Settings > Cooldown**, 3 unless changed) have passed since the last picture |
+| Key moments (the default) | The story moves somewhere else, or the scene call says the moment is worth it and at least the cooldown's number of replies (**Settings > Images > Cooldown**, 3 unless changed) have passed since the last picture |
 | Every reply | Always |
 
 **Illustrate** works in every mode, and restarts the cooldown. A character
@@ -200,10 +200,10 @@ as it streams in, has each one spoken, and plays the clips in order: the first
 sentence is heard while the rest is still being written.
 
 - **Speak replies** in a chat's header turns speech off and on. The choice is
-  saved, and is also in **Settings**.
+  saved, and is also in **Settings > Speech**.
 - **Stop** ends the reply and what is being said. Once the reply has all
   arrived, **Stop speaking** ends only the speech.
-- **Settings > What is spoken** chooses between only what the character says
+- **Settings > Speech > What is spoken** chooses between only what the character says
   (the default) and the whole reply. Characters are written in two ways, and
   the app goes by which one a reply uses:
   - `She nods. "Come in," she says.` Speech is in double quotation marks,
@@ -301,7 +301,7 @@ Needs the real engine, so a GPU, and speakers or headphones.
    to end at once and not to resume.
 6. Untick **Speak replies** and send a message. Expect silence. Reload the
    page: the box is still unticked.
-7. Tick **Speak replies** again. In **Settings**, set **What is spoken** to
+7. Tick **Speak replies** again. In **Settings > Speech**, set **What is spoken** to
    **The whole reply** and save. Back in the chat, send a message. Expect the
    actions to be read out as well, and the word "asterisk" never to be said.
 
@@ -379,7 +379,7 @@ Needs the real engine, so a GPU, and an OpenAI API key.
 8. Choose a picture. Expect it at full size over the page; **Close** or
    Escape ends that.
 9. Reload the page. Expect both pictures still there.
-10. In **Settings**, set **Scene model** to `no-such-model` and save.
+10. In **Settings > Images**, set **Scene model** to `no-such-model` and save.
     Choose **Illustrate** again. Expect an error from OpenAI under the
     message with **Try again**. Put the scene model back, choose **Try
     again**, and expect a picture.
@@ -414,7 +414,7 @@ Needs the real engine, an OpenAI API key, and Mara Quill's reference
 picture (see the checks above).
 
 1. Start the app: `cd C:\docs\git\chatThree; pwsh ./start.ps1`
-2. In **Settings**, expect **Illustrate replies by themselves** to be **Key
+2. In **Settings > Images**, expect **Illustrate replies by themselves** to be **Key
    moments** and **Cooldown** to be 3.
 3. Choose **New chat**, then **Start chat**. Send
    `Show me the lamp. Let's climb up to the lamp room.` Expect, a few
@@ -423,13 +423,13 @@ picture (see the checks above).
 4. Send two or three ordinary messages (`It is very bright.`,
    `How long have you kept this light?`). Expect most of them to get no
    picture: at most one every three replies, unless the story moves.
-5. In **Settings**, choose **Off** and save, then reload the page. Expect
+5. In **Settings > Images**, choose **Off** and save, then reload the page. Expect
    **Off** still chosen. Back in the chat, send
    `Let's go back down to the kitchen.` Expect no picture, and the header
    to say **At The lighthouse kitchen** again. Choose **Illustrate** under the reply: expect a picture.
 6. Choose **Every reply** and save. Send two messages. Expect a picture
    under each reply.
-7. Choose **Key moments** again. In Settings, set **Scene model** to
+7. Choose **Key moments** again. In **Settings > Images**, set **Scene model** to
    `no-such-model` and save. Send a message. Expect the reply as usual, no
    picture, and in the terminal running the app a line saying the scene
    call after a reply failed. Put the scene model back.

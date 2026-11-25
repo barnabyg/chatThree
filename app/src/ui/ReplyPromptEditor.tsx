@@ -52,7 +52,7 @@ export function ReplyPromptEditor({ id }: { id?: string }) {
         : api.updateReplyPrompt(id, replyPrompt);
     saved.then(
       () => {
-        navigate('/settings');
+        navigate('/settings/reply-prompts');
       },
       (reason: unknown) => {
         setError(errorMessage(reason));
@@ -93,7 +93,7 @@ export function ReplyPromptEditor({ id }: { id?: string }) {
           <button type="submit" className="primary">
             Save reply prompt
           </button>
-          <a className="button" href="#/settings">
+          <a className="button" href="#/settings/reply-prompts">
             Cancel
           </a>
         </div>
