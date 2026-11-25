@@ -107,6 +107,9 @@ describe('illustrating a message', () => {
     expect(place?.prompt).toContain('A round glass room');
     expect(place?.references).toBeUndefined();
     expect(scene?.prompt).toContain('Mara trims the wick of the great lamp.');
+    // Realistic is the default style.
+    expect(place?.prompt).toContain('photorealistic');
+    expect(scene?.prompt).toContain('photorealistic');
     expect(scene?.width).toBeGreaterThan(scene?.height ?? Infinity);
     const character = await builtInCharacter(app);
     expect(scene?.references).toEqual([
@@ -136,6 +139,20 @@ describe('illustrating a message', () => {
     expect(request?.input).toContain('Where is the lamp?');
     expect(request?.input).toContain('"Up the stairs," she says.');
     expect(request?.instructions).toContain('The lamp room');
+  });
+
+  test('in the Illustration style, the place and the scene are asked for as paintings', async () => {
+    const { app, chat } = await illustratable();
+    app.settings.update({ imageStyle: 'illustration' });
+
+    await illustrate(app, chat, chat.messages[0]?.id);
+    await settled(app, chat);
+
+    const [place, scene] = painted(app);
+    expect(place?.prompt).toContain('Painterly illustration');
+    expect(scene?.prompt).toContain('Painterly illustration');
+    expect(place?.prompt).not.toContain('photorealistic');
+    expect(scene?.prompt).not.toContain('photorealistic');
   });
 
   test("the location's reference picture is made once, then reused", async () => {

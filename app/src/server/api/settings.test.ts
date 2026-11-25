@@ -18,6 +18,7 @@ test('settings start with the default model and say where the key comes from', a
     sceneReasoningEffort: null,
     illustrationMode: 'key-moments',
     illustrationCooldown: 3,
+    imageStyle: 'realistic',
     contextTokenBudget: DEFAULT_CONTEXT_TOKEN_BUDGET,
     speechMuted: false,
     speechScope: 'dialogue',
@@ -222,4 +223,20 @@ test('replies and scene descriptions are asked for at their chosen thinking leve
   await expect
     .poll(() => app.provider.structuredRequests[0]?.reasoningEffort)
     .toBe('minimal');
+});
+
+test('the image style can be changed, to a known style only', async () => {
+  const app = testApp();
+
+  const response = await app.call('PUT', '/api/settings', {
+    imageStyle: 'illustration',
+  });
+  const bad = await app.call('PUT', '/api/settings', { imageStyle: 'cartoon' });
+
+  expect(await response.json()).toMatchObject({ imageStyle: 'illustration' });
+  expect(bad.status).toBe(400);
+  expect(await bad.json()).toEqual({
+    error: 'The image style must be "realistic" or "illustration".',
+  });
+  expect(app.settings.imageStyle()).toBe('illustration');
 });

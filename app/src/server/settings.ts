@@ -5,7 +5,9 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import {
   ILLUSTRATION_MODES,
+  IMAGE_STYLES,
   type IllustrationMode,
+  type ImageStyle,
   REASONING_EFFORTS,
   type ReasoningEffort,
   type Settings,
@@ -24,6 +26,8 @@ export const DEFAULT_ILLUSTRATION_MODE: IllustrationMode = 'key-moments';
 export const DEFAULT_ILLUSTRATION_COOLDOWN = 3;
 export const MIN_ILLUSTRATION_COOLDOWN = 1;
 export const MAX_ILLUSTRATION_COOLDOWN = 100;
+/** Scenes and places look like photographs unless the user asks for paint. */
+export const DEFAULT_IMAGE_STYLE: ImageStyle = 'realistic';
 /** Narration is skipped unless the user asks for it. */
 export const DEFAULT_SPEECH_SCOPE: SpeechScope = 'dialogue';
 
@@ -34,6 +38,7 @@ interface Saved {
   sceneReasoningEffort?: ReasoningEffort;
   illustrationMode?: IllustrationMode;
   illustrationCooldown?: number;
+  imageStyle?: ImageStyle;
   contextTokenBudget?: number;
   speechMuted?: boolean;
   speechScope?: SpeechScope;
@@ -59,6 +64,7 @@ function load(file: string): Saved {
       sceneReasoningEffort,
       illustrationMode,
       illustrationCooldown,
+      imageStyle,
       contextTokenBudget,
       speechMuted,
       speechScope,
@@ -80,6 +86,9 @@ function load(file: string): Saved {
         (illustrationCooldown as number) <= MAX_ILLUSTRATION_COOLDOWN && {
           illustrationCooldown: illustrationCooldown as number,
         }),
+      ...((IMAGE_STYLES as readonly unknown[]).includes(imageStyle) && {
+        imageStyle: imageStyle as ImageStyle,
+      }),
       ...(typeof contextTokenBudget === 'number' && { contextTokenBudget }),
       ...(typeof speechMuted === 'boolean' && { speechMuted }),
       ...((speechScope === 'dialogue' || speechScope === 'everything') && {
@@ -137,6 +146,11 @@ export class SettingsStore {
     return this.#saved.illustrationCooldown ?? DEFAULT_ILLUSTRATION_COOLDOWN;
   }
 
+  /** How scenes and places are painted. */
+  imageStyle(): ImageStyle {
+    return this.#saved.imageStyle ?? DEFAULT_IMAGE_STYLE;
+  }
+
   /** How many tokens of conversation to send each turn, at most. */
   contextTokenBudget(): number {
     return this.#saved.contextTokenBudget ?? DEFAULT_CONTEXT_TOKEN_BUDGET;
@@ -156,6 +170,7 @@ export class SettingsStore {
       sceneReasoningEffort: this.sceneReasoningEffort() ?? null,
       illustrationMode: this.illustrationMode(),
       illustrationCooldown: this.illustrationCooldown(),
+      imageStyle: this.imageStyle(),
       contextTokenBudget: this.contextTokenBudget(),
       speechMuted: this.#saved.speechMuted ?? false,
       speechScope: this.#saved.speechScope ?? DEFAULT_SPEECH_SCOPE,
@@ -186,6 +201,7 @@ export class SettingsStore {
     if (update.illustrationCooldown !== undefined) {
       next.illustrationCooldown = update.illustrationCooldown;
     }
+    if (update.imageStyle !== undefined) next.imageStyle = update.imageStyle;
     if (update.contextTokenBudget !== undefined) {
       next.contextTokenBudget = update.contextTokenBudget;
     }

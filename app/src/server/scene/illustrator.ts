@@ -445,7 +445,12 @@ export class Illustrator {
       const placeFile = await this.#placePicture(chatId, messageId, location);
       this.#set(chatId, { messageId, state: 'painting' });
       const scene = await this.#jobs.paint({
-        prompt: scenePrompt(characterName, location, picture),
+        prompt: scenePrompt(
+          characterName,
+          location,
+          picture,
+          this.#settings.imageStyle(),
+        ),
         ...SCENE_SIZE,
         seed: randomInt(MAX_SEED),
         references: [this.#needPicture(chatId), this.#media.path(placeFile)],
@@ -479,7 +484,7 @@ export class Illustrator {
   /** Paint the place's reference picture, in place of any it has. */
   async #paintPlace(location: StoredLocation): Promise<string> {
     const picture = await this.#jobs.paint({
-      prompt: placePrompt(location),
+      prompt: placePrompt(location, this.#settings.imageStyle()),
       ...SCENE_SIZE,
       seed: randomInt(MAX_SEED),
     });

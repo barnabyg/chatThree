@@ -137,6 +137,13 @@ chat there; an earlier message is pictured where it took place, without
 moving the chat. A place's reference picture is painted the first time an
 illustration there needs it, and reused after that.
 
+**Settings > Picture style** decides how scenes and places look:
+**Realistic** (the default) asks for photographs, **Illustration** for
+painted illustrations. Pictures already painted keep their style. A place's
+picture is a reference for every scene there, so after changing the style,
+use **Generate another** on a place to bring its scenes fully into the new
+style.
+
 The chat's header shows where the story is now. **Locations** lists every
 place the chat has been, with its reference picture; **Generate another**
 paints a place's picture again, and later illustrations there use the new

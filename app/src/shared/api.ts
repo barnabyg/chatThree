@@ -192,6 +192,10 @@ export const ILLUSTRATION_MODES = [
 ] as const;
 export type IllustrationMode = (typeof ILLUSTRATION_MODES)[number];
 
+/** How pictures of scenes and places look: like photographs, or painted. */
+export const IMAGE_STYLES = ['realistic', 'illustration'] as const;
+export type ImageStyle = (typeof IMAGE_STYLES)[number];
+
 /**
  * How hard a model thinks before it answers, least first. Each model supports
  * only some of these; `GET /api/models/:model/reasoning` says which.
@@ -231,6 +235,8 @@ export interface Settings {
    * moment worth one is illustrated again.
    */
   illustrationCooldown: number;
+  /** How scenes and places are painted. */
+  imageStyle: ImageStyle;
   /** How many tokens of conversation are sent to the model each turn, at most. */
   contextTokenBudget: number;
   /** When true, replies are not spoken aloud. */
@@ -251,6 +257,7 @@ export interface SettingsUpdate {
   sceneReasoningEffort?: ReasoningEffort | null;
   illustrationMode?: IllustrationMode;
   illustrationCooldown?: number;
+  imageStyle?: ImageStyle;
   contextTokenBudget?: number;
   speechMuted?: boolean;
   speechScope?: SpeechScope;

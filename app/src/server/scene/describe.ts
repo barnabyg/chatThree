@@ -4,7 +4,12 @@
 // here, so that what the engine is asked for stays in one shape.
 
 import { z } from 'zod';
-import type { Character, Message, Scenario } from '../../shared/api.ts';
+import type {
+  Character,
+  ImageStyle,
+  Message,
+  Scenario,
+} from '../../shared/api.ts';
 import type { StructuredRequest } from '../chat/provider.ts';
 import type { PlaceReport } from './state.ts';
 
@@ -177,12 +182,35 @@ export function readScene(answer: unknown): Scene {
   };
 }
 
+/** The words that set the look of a picture, per image style. */
+const STYLE_WORDS: Record<
+  ImageStyle,
+  { place: string; placeLook: string; scene: string; sceneLook: string }
+> = {
+  realistic: {
+    place: 'A photorealistic establishing shot of a place',
+    placeLook: 'Realistic photograph, natural lighting, rich detail.',
+    scene: 'A photorealistic still of a moment, like a frame from a film.',
+    sceneLook: 'Realistic photograph, not a drawing or painting.',
+  },
+  illustration: {
+    place: 'An establishing view of a place in an illustrated story',
+    placeLook: 'Painterly illustration, rich detail.',
+    scene: 'An illustration from a story.',
+    sceneLook: 'Painterly illustration.',
+  },
+};
+
 /** What the engine is asked to paint for a place's reference picture. */
-export function placePrompt({ name, description }: Place): string {
+export function placePrompt(
+  { name, description }: Place,
+  style: ImageStyle,
+): string {
+  const words = STYLE_WORDS[style];
   return [
-    `An establishing view of a place in an illustrated story: ${name}.`,
+    `${words.place}: ${name}.`,
     description,
-    'Wide shot, with no people in it. Painterly illustration, rich detail. No text.',
+    `Wide shot, with no people in it. ${words.placeLook} No text.`,
   ].join(' ');
 }
 
@@ -194,15 +222,17 @@ export function scenePrompt(
   characterName: string,
   place: Place,
   picture: ScenePicture,
+  style: ImageStyle,
 ): string {
+  const words = STYLE_WORDS[style];
   return [
-    `An illustration from a story. The first reference image shows ${characterName}; the second shows the place, ${place.name}.`,
-    `Paint ${characterName}, looking exactly as in the first image, in the place from the second image.`,
+    `${words.scene} The first reference image shows ${characterName}; the second shows the place, ${place.name}.`,
+    `Show ${characterName}, looking exactly as in the first image, in the place from the second image.`,
     picture.action,
     picture.expression === '' ? '' : `Expression: ${picture.expression}.`,
     picture.framing === '' ? '' : `Framing: ${picture.framing}.`,
     picture.lighting === '' ? '' : `Lighting: ${picture.lighting}.`,
-    'Painterly illustration. No text.',
+    `${words.sceneLook} No text.`,
   ]
     .filter((part) => part !== '')
     .join(' ');

@@ -1,6 +1,10 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { ILLUSTRATION_MODES, REASONING_EFFORTS } from '../../shared/api.ts';
+import {
+  ILLUSTRATION_MODES,
+  IMAGE_STYLES,
+  REASONING_EFFORTS,
+} from '../../shared/api.ts';
 import { isWellFormedApiKey } from '../apiKey.ts';
 import {
   MAX_ILLUSTRATION_COOLDOWN,
@@ -52,6 +56,12 @@ const update = z.strictObject({
       `The cooldown can be at most ${String(MAX_ILLUSTRATION_COOLDOWN)} replies.`,
     )
     .optional(),
+  imageStyle: z
+    .enum(
+      IMAGE_STYLES,
+      'The image style must be "realistic" or "illustration".',
+    )
+    .optional(),
   contextTokenBudget: z
     .int('The conversation budget must be a whole number of tokens.')
     .min(
@@ -99,6 +109,7 @@ export function settingsRoutes(settings: SettingsStore): Hono {
       sceneReasoningEffort,
       illustrationMode,
       illustrationCooldown,
+      imageStyle,
       contextTokenBudget,
       speechMuted,
       speechScope,
@@ -112,6 +123,7 @@ export function settingsRoutes(settings: SettingsStore): Hono {
         ...(sceneReasoningEffort !== undefined && { sceneReasoningEffort }),
         ...(illustrationMode !== undefined && { illustrationMode }),
         ...(illustrationCooldown !== undefined && { illustrationCooldown }),
+        ...(imageStyle !== undefined && { imageStyle }),
         ...(contextTokenBudget !== undefined && { contextTokenBudget }),
         ...(speechMuted !== undefined && { speechMuted }),
         ...(speechScope !== undefined && { speechScope }),

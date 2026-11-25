@@ -1,6 +1,7 @@
 import { type SyntheticEvent, useEffect, useState } from 'react';
 import type {
   IllustrationMode,
+  ImageStyle,
   ReasoningEffort,
   Settings,
   SettingsUpdate,
@@ -28,6 +29,7 @@ export function SettingsPage() {
   const [illustrationMode, setIllustrationMode] =
     useState<IllustrationMode>('key-moments');
   const [cooldown, setCooldown] = useState('');
+  const [imageStyle, setImageStyle] = useState<ImageStyle>('realistic');
   const [budget, setBudget] = useState('');
   const [speak, setSpeak] = useState(true);
   const [speechScope, setSpeechScope] = useState<SpeechScope>('dialogue');
@@ -44,6 +46,7 @@ export function SettingsPage() {
     setSceneEffort(loaded.sceneReasoningEffort);
     setIllustrationMode(loaded.illustrationMode);
     setCooldown(String(loaded.illustrationCooldown));
+    setImageStyle(loaded.imageStyle);
     setBudget(String(loaded.contextTokenBudget));
     setSpeak(!loaded.speechMuted);
     setSpeechScope(loaded.speechScope);
@@ -101,6 +104,7 @@ export function SettingsPage() {
         sceneReasoningEffort: sceneEffort,
         illustrationMode,
         illustrationCooldown: Number(cooldown),
+        imageStyle,
         contextTokenBudget: Number(budget),
         speechMuted: !speak,
         speechScope,
@@ -201,6 +205,25 @@ export function SettingsPage() {
         <p className="hint">
           In Key moments, how many replies must pass after a picture before
           another moment worth one is painted. A move is painted at once.
+        </p>
+
+        <label>
+          Picture style
+          <select
+            value={imageStyle}
+            onChange={(event) => {
+              setImageStyle(event.target.value as ImageStyle);
+            }}
+          >
+            <option value="realistic">Realistic</option>
+            <option value="illustration">Illustration</option>
+          </select>
+        </label>
+        <p className="hint">
+          How illustrations and places are painted: like photographs, or as
+          painted illustrations. Pictures already painted keep their style; a
+          place painted in the other style still pulls its scenes towards it
+          until you generate it again.
         </p>
 
         <label>
