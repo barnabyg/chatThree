@@ -1,8 +1,9 @@
 // How a chat becomes a request to the provider.
 //
 // The instructions are the character, then the scenario with the user's
-// part in it (the chat's player), and depend on
-// nothing else: the same chat sends the same text on every turn. Providers
+// part in it (the chat's player), then how to reply (the chat's reply
+// prompt), and depend on nothing else: the same chat sends the same text on
+// every turn. Providers
 // cache a prompt by its leading text, so a fixed prefix is what makes every
 // turn after the first cheaper and faster. A long conversation is cut to a
 // token budget from its oldest end (trim.ts); the prefix is never cut.
@@ -13,6 +14,10 @@ import type {
   PlayerInput,
   ScenarioInput,
 } from '../../shared/api.ts';
+import {
+  DEFAULT_REPLY_PROMPT,
+  fillReplyPrompt,
+} from '../../shared/replyPrompt.ts';
 import type { PromptMessage } from './provider.ts';
 import { countNotSent } from './trim.ts';
 
@@ -29,6 +34,9 @@ export type PromptScenario = Pick<
 /** Who the user plays, or `undefined` for a chat with no player. */
 export type PromptPlayer = PlayerInput | undefined;
 
+/** How the character is told to reply, before its placeholders are filled. */
+export type PromptReply = string;
+
 export interface Prompt {
   instructions: string;
   /** The newest part of the conversation that fits the token budget. */
@@ -44,11 +52,12 @@ function section(heading: string, ...parts: string[]): string[] {
   return text === '' ? [] : [`${heading}\n${text}`];
 }
 
-/** The fixed prefix: the character first, then the scenario. */
+/** The fixed prefix: the character first, then the scenario, then how to reply. */
 export function buildInstructions(
   character: PromptCharacter,
   scenario: PromptScenario,
   player: PromptPlayer,
+  replyPrompt: PromptReply = DEFAULT_REPLY_PROMPT,
 ): string {
   return [
     `# Character: ${character.name}`,
@@ -69,7 +78,7 @@ export function buildInstructions(
       scenario.startingLocation.description,
     ),
     '# How to reply',
-    `Reply only as ${character.name}, in character, with what ${character.name} says and does next. Never speak or act for the user, and never step outside the story.`,
+    fillReplyPrompt(replyPrompt, character.name, player?.name).trim(),
   ].join('\n\n');
 }
 
@@ -77,11 +86,12 @@ export function buildPrompt(
   character: PromptCharacter,
   scenario: PromptScenario,
   player: PromptPlayer,
+  replyPrompt: PromptReply,
   conversation: readonly Message[],
   tokenBudget: number,
 ): Prompt {
   return {
-    instructions: buildInstructions(character, scenario, player),
+    instructions: buildInstructions(character, scenario, player, replyPrompt),
     messages: conversation
       .slice(countNotSent(conversation, tokenBudget))
       .map(({ role, content }) => ({ role, content })),

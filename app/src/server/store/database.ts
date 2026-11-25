@@ -252,6 +252,24 @@ const MIGRATIONS: readonly ((db: Db) => void)[] = [
       assign.run(id, scenario.id);
     }
   },
+
+  // 9: reply prompts, the user's own "How to reply" sections. A chat with
+  // none, as every existing chat is, uses the default; deleting a reply
+  // prompt puts its chats back on the default.
+  (db) => {
+    db.exec(`
+      CREATE TABLE reply_prompts (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      ALTER TABLE chats ADD COLUMN reply_prompt_id TEXT
+        REFERENCES reply_prompts (id) ON DELETE SET NULL;
+      CREATE INDEX chats_by_reply_prompt ON chats (reply_prompt_id);
+    `);
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

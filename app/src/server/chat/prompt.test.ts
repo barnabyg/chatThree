@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import type { Message } from '../../shared/api.ts';
+import { DEFAULT_REPLY_PROMPT } from '../../shared/replyPrompt.ts';
 import { buildPrompt } from './prompt.ts';
 
 const character = {
@@ -30,7 +31,14 @@ function conversation(...turns: [Message['role'], string][]): Message[] {
 }
 
 test('the instructions put the character first, then the scenario', () => {
-  const { instructions } = buildPrompt(character, scenario, player, [], BUDGET);
+  const { instructions } = buildPrompt(
+    character,
+    scenario,
+    player,
+    DEFAULT_REPLY_PROMPT,
+    [],
+    BUDGET,
+  );
 
   const persona = instructions.indexOf('Keeper of the lighthouse.');
   const premise = instructions.indexOf('A stranger knocks.');
@@ -43,7 +51,14 @@ test('the instructions put the character first, then the scenario', () => {
 });
 
 test("the character's persona, speaking style and example dialogue come before the scenario, in that order", () => {
-  const { instructions } = buildPrompt(character, scenario, player, [], BUDGET);
+  const { instructions } = buildPrompt(
+    character,
+    scenario,
+    player,
+    DEFAULT_REPLY_PROMPT,
+    [],
+    BUDGET,
+  );
 
   const positions = [
     'Keeper of the lighthouse.',
@@ -60,6 +75,7 @@ test('a part of the character left blank has no heading in the instructions', ()
     { ...character, speakingStyle: '  ' },
     scenario,
     player,
+    DEFAULT_REPLY_PROMPT,
     [],
     BUDGET,
   );
@@ -70,7 +86,14 @@ test('a part of the character left blank has no heading in the instructions', ()
 });
 
 test("the scenario's premise, the player's part and the starting location follow the character", () => {
-  const { instructions } = buildPrompt(character, scenario, player, [], BUDGET);
+  const { instructions } = buildPrompt(
+    character,
+    scenario,
+    player,
+    DEFAULT_REPLY_PROMPT,
+    [],
+    BUDGET,
+  );
 
   const positions = [
     '# Character: Mara',
@@ -93,6 +116,7 @@ test('a part of the scenario left blank has no heading in the instructions', () 
       startingLocation: { name: 'The quay', description: '' },
     },
     { name: '', background: ' ' },
+    DEFAULT_REPLY_PROMPT,
     [],
     BUDGET,
   );
@@ -106,6 +130,7 @@ test('the instructions are the same on every turn of a chat', () => {
     character,
     scenario,
     player,
+    DEFAULT_REPLY_PROMPT,
     conversation(['user', 'Hello?']),
     BUDGET,
   );
@@ -113,6 +138,7 @@ test('the instructions are the same on every turn of a chat', () => {
     character,
     scenario,
     player,
+    DEFAULT_REPLY_PROMPT,
     conversation(
       ['user', 'Hello?'],
       ['assistant', 'Who goes there?'],
@@ -129,6 +155,7 @@ test('the conversation follows, oldest first, with only roles and text', () => {
     character,
     scenario,
     player,
+    DEFAULT_REPLY_PROMPT,
     conversation(['user', 'Hello?'], ['assistant', 'Who goes there?']),
     BUDGET,
   );
@@ -147,8 +174,22 @@ test('a conversation over the token budget loses its oldest messages, and nothin
     ['user', 'three'.padEnd(36, '.')],
   );
 
-  const whole = buildPrompt(character, scenario, player, long, BUDGET);
-  const trimmed = buildPrompt(character, scenario, player, long, 26);
+  const whole = buildPrompt(
+    character,
+    scenario,
+    player,
+    DEFAULT_REPLY_PROMPT,
+    long,
+    BUDGET,
+  );
+  const trimmed = buildPrompt(
+    character,
+    scenario,
+    player,
+    DEFAULT_REPLY_PROMPT,
+    long,
+    26,
+  );
 
   expect(trimmed.messages).toEqual(whole.messages.slice(1));
   expect(trimmed.instructions).toBe(whole.instructions);
@@ -159,10 +200,57 @@ test('a chat with no player has no part for the user in the instructions', () =>
     character,
     scenario,
     undefined,
+    DEFAULT_REPLY_PROMPT,
     [],
     BUDGET,
   );
 
   expect(instructions).not.toContain('## The part the user plays');
   expect(instructions).toContain('# Scenario: The Storm');
+});
+
+test('the default reply prompt tells the character to reply only as themself', () => {
+  const { instructions } = buildPrompt(
+    character,
+    scenario,
+    player,
+    DEFAULT_REPLY_PROMPT,
+    [],
+    BUDGET,
+  );
+
+  expect(
+    instructions.endsWith(
+      '# How to reply\n\nReply only as Mara, in character, with what Mara says and does next. Never speak or act for the user, and never step outside the story.',
+    ),
+  ).toBe(true);
+});
+
+test("a chat's own reply prompt takes the default's place, with the character and player named in it", () => {
+  const { instructions } = buildPrompt(
+    character,
+    scenario,
+    player,
+    'Write as {character}, in the third person, and let {user} decide what {user} does.',
+    [],
+    BUDGET,
+  );
+
+  expect(instructions).toContain(
+    '# How to reply\n\nWrite as Mara, in the third person, and let Wren decide what Wren does.',
+  );
+  expect(instructions).not.toContain('Reply only as');
+});
+
+test('a reply prompt names the user as "the user" in a chat with no player', () => {
+  const { instructions } = buildPrompt(
+    character,
+    scenario,
+    undefined,
+    'Let {user} speak for themself.',
+    [],
+    BUDGET,
+  );
+
+  expect(instructions).toContain('Let the user speak for themself.');
 });

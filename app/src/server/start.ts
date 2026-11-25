@@ -17,6 +17,7 @@ import { ChatStore } from './store/chats.ts';
 import { openDatabase } from './store/database.ts';
 import { MediaStore } from './store/media.ts';
 import { PlayerStore } from './store/players.ts';
+import { ReplyPromptStore } from './store/replyPrompts.ts';
 import { ScenarioStore } from './store/scenarios.ts';
 import { SceneStore } from './store/scenes.ts';
 import { Illustrator } from './scene/illustrator.ts';
@@ -35,6 +36,7 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
   const characters = new CharacterStore(database);
   const scenarios = new ScenarioStore(database);
   const players = new PlayerStore(database);
+  const replyPrompts = new ReplyPromptStore(database);
   const settings = new SettingsStore(
     path.join(config.dataDir, 'settings.json'),
     config.openai.apiKey,
@@ -53,6 +55,7 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
     characters,
     scenarios,
     players,
+    replyPrompts,
     settings,
     provider,
   );
@@ -88,6 +91,7 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
     characters,
     scenarios,
     players,
+    replyPrompts,
     scenes,
     settings,
     models,

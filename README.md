@@ -55,8 +55,8 @@ loaded (no key, no network), the model is typed instead.
 
 The app starts with one character, Mara Quill, one scenario, The Storm at
 Gull Point, and one player, The Traveller. A chat pairs a character with a
-scenario, played as one of your players or as no one: **New chat** asks for
-all three, and the sidebar lists every chat with its character, scenario and
+scenario, played as one of your players or as no one, with a reply prompt:
+**New chat** asks for all four, and the sidebar lists every chat with its character, scenario and
 last activity.
 
 - **Characters**: a name, a persona, a speaking style, example dialogue and
@@ -72,6 +72,13 @@ last activity.
   as the part the user plays. A scenario made before players existed had
   this part in it; it became a player, and that scenario's chats are played
   as it.
+- **Reply prompts** (in **Settings**): the "How to reply" section at the end
+  of the prompt, with a name. **Default** is built in and cannot be changed:
+  it tells the character to reply only as themself and never act for the
+  user. Your own start as a copy of it. `{character}` in a reply prompt
+  becomes the character's name, and `{user}` the player's, or "the user" in
+  a chat with no player. A chat keeps the reply prompt it was started with,
+  and follows edits to it; deleting one puts its chats back on Default.
 
 The built-ins can be edited or deleted like any other. Deleting a character,
 scenario or player deletes the chats that use it, after asking.
