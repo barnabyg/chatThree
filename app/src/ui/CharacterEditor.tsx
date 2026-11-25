@@ -1,7 +1,7 @@
 import { type SyntheticEvent, useEffect, useState } from 'react';
 import type { CharacterInput } from '../shared/api.ts';
 import { api, errorMessage } from './api.ts';
-import { CharacterPicture } from './CharacterPicture.tsx';
+import { CharacterPicture, type PendingPicture } from './CharacterPicture.tsx';
 import { CharacterVoice, type PendingClip } from './CharacterVoice.tsx';
 import { navigate } from './router.ts';
 import { TextField } from './TextField.tsx';
@@ -56,9 +56,13 @@ export function CharacterEditor({ id }: { id?: string }) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   /** A new character's voice clip, held until the character is saved. */
   const [pendingClip, setPendingClip] = useState<PendingClip | null>(null);
+  /** A new character's picture, held until the character is saved. */
+  const [pendingPicture, setPendingPicture] = useState<PendingPicture | null>(
+    null,
+  );
   /**
-   * A new character that was saved but whose voice clip was not: saving
-   * again updates it rather than making a second.
+   * A new character that was saved but whose voice clip or picture was not:
+   * saving again updates it rather than making a second.
    */
   const [createdId, setCreatedId] = useState<string | undefined>(undefined);
 
@@ -113,17 +117,28 @@ export function CharacterEditor({ id }: { id?: string }) {
         : api.updateCharacter(savedId, character);
     saved
       .then(async ({ id: characterId }) => {
-        if (id !== undefined || pendingClip === null) return;
+        if (id !== undefined) return;
         setCreatedId(characterId);
-        try {
-          await api.setVoice(characterId, pendingClip);
-        } catch (reason) {
-          throw new Error(
-            `The character was saved, but its voice clip was not: ${errorMessage(reason)}`,
-            { cause: reason },
-          );
+        const unsaved: string[] = [];
+        if (pendingClip !== null) {
+          try {
+            await api.setVoice(characterId, pendingClip);
+            setPendingClip(null);
+          } catch (reason) {
+            unsaved.push(`its voice clip was not: ${errorMessage(reason)}`);
+          }
         }
-        setPendingClip(null);
+        if (pendingPicture !== null) {
+          try {
+            await api.setPicture(characterId, pendingPicture.file);
+            setPendingPicture(null);
+          } catch (reason) {
+            unsaved.push(`its picture was not: ${errorMessage(reason)}`);
+          }
+        }
+        if (unsaved.length > 0) {
+          throw new Error(`The character was saved, but ${unsaved.join('; ')}`);
+        }
       })
       .then(
         () => {
@@ -164,9 +179,14 @@ export function CharacterEditor({ id }: { id?: string }) {
         ))}
         {id === undefined ? (
           <>
-            <p className="hint">
-              Save the character, then edit it, to give it a picture.
-            </p>
+            <CharacterPicture
+              name={character.name}
+              appearance={character.appearance}
+              imageUrl={null}
+              onChange={setImageUrl}
+              pending={pendingPicture}
+              onPending={setPendingPicture}
+            />
             <CharacterVoice
               name={character.name}
               hasVoice={false}

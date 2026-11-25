@@ -4,6 +4,12 @@ import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { z } from 'zod';
 import type { Character } from '../../shared/api.ts';
+import {
+  MAX_PICTURE_BYTES,
+  NOT_A_PICTURE,
+  PICTURE_TOO_LARGE,
+  pictureKind,
+} from '../../shared/picture.ts';
 import { voiceClipProblem } from '../../shared/voiceClip.ts';
 import type { ReplyService } from '../chat/replies.ts';
 import type { EngineJobs } from '../engine/jobs.ts';
@@ -19,7 +25,6 @@ const MAX_TEXT_LENGTH = 20_000;
 /** Room for several minutes of recording; the UI sends half a minute. */
 const MAX_VOICE_CLIP_BYTES = 25 * 1024 * 1024;
 
-const MAX_PICTURE_BYTES = 15 * 1024 * 1024;
 /** Upright, to show a whole figure. Each side is a multiple of 16, as the engine needs. */
 const REFERENCE_SIZE = { width: 768, height: 1024 };
 /** Seeds are drawn from below this: plenty of pictures, and a whole number any engine takes. */
@@ -39,19 +44,6 @@ const PICTURE_TYPES: Record<string, string> = {
   jpg: 'image/jpeg',
   webp: 'image/webp',
 };
-
-/** The kind of picture these bytes are, as a file extension, if it is one the app keeps. */
-function pictureKind(bytes: Uint8Array): string | undefined {
-  /** Whether the file begins with these bytes. `undefined` matches any byte. */
-  const starts = (...head: (number | undefined)[]): boolean =>
-    head.every((byte, index) => byte === undefined || bytes[index] === byte);
-  const ascii = (offset: number, word: string): boolean =>
-    starts(...Array<undefined>(offset), ...Buffer.from(word, 'ascii'));
-  if (starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return 'png';
-  if (starts(0xff, 0xd8, 0xff)) return 'jpg';
-  if (ascii(0, 'RIFF') && ascii(8, 'WEBP')) return 'webp';
-  return undefined;
-}
 
 /** Check that a voice can be cloned from an uploaded clip, or refuse it. */
 function checkVoiceClip(clip: Uint8Array): void {
@@ -216,7 +208,7 @@ export function characterRoutes(
     bodyLimit({
       maxSize: MAX_PICTURE_BYTES,
       onError: () => {
-        throw new ApiError(413, 'That picture is too large to use.');
+        throw new ApiError(413, PICTURE_TOO_LARGE);
       },
     }),
     async (c) => {
@@ -227,7 +219,7 @@ export function characterRoutes(
       const { id } = existing(c);
       const kind = pictureKind(picture);
       if (kind === undefined) {
-        throw new ApiError(400, 'A picture must be a PNG, JPEG or WebP image.');
+        throw new ApiError(400, NOT_A_PICTURE);
       }
       return c.json(setPicture(id, media.save('images', kind, picture)));
     },
