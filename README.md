@@ -208,6 +208,8 @@ sentence is heard while the rest is still being written.
   at its end if it has neither.
 - Formatting marks such as asterisks are never spoken, and a sentence longer
   than the engine takes in one request (600 characters) is split first.
+- The speaker icon beside the character's name on any of its messages speaks
+  that message again, even with **Speak replies** off.
 
 To give a character a voice, choose a recording under **Voice** when you
 create or edit the character: one person speaking clearly, for more than 5

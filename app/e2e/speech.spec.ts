@@ -231,3 +231,31 @@ test.describe('with a sentence the engine cannot speak', () => {
     expect(await app.spoken()).toEqual(['Mind the reef.']);
   });
 });
+
+test('a character message can be replayed, even with speech muted', async ({
+  page,
+  openai,
+  app,
+}) => {
+  openai.respondWith({
+    kind: 'reply',
+    chunks: ['"The ferry leaves at dawn." She folds the map.'],
+  });
+  await openEmptyChat(page);
+  await engineReady(page);
+  await send(page, 'When do we sail?');
+  await expect.poll(() => app.spoken()).toEqual(['The ferry leaves at dawn.']);
+
+  // The user's own messages have nothing to replay.
+  const replay = conversation(page).getByRole('button', {
+    name: 'Replay message',
+  });
+  await expect(replay).toHaveCount(1);
+
+  await page.getByRole('checkbox', { name: 'Speak replies' }).uncheck();
+  await replay.click();
+
+  await expect
+    .poll(() => app.spoken())
+    .toEqual(['The ferry leaves at dawn.', 'The ferry leaves at dawn.']);
+});
