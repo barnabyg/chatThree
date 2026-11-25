@@ -269,6 +269,7 @@ test('a chat saved before scenarios existed keeps its own character and conversa
       },
       // The built-in scenario's part became a player.
       player: { id: expect.any(String) as string, name: 'The Traveller' },
+      replyPrompt: null,
       lastActivityAt: '2026-02-01T10:05:00.000Z',
     },
   ]);
@@ -317,6 +318,7 @@ test('a chat saved before characters existed is still readable, with the built-i
         title: 'The Storm at Gull Point',
       },
       player: { id: expect.any(String) as string, name: 'The Traveller' },
+      replyPrompt: null,
       lastActivityAt: '2026-01-01T10:05:00.000Z',
     },
   ]);

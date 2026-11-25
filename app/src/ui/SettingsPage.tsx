@@ -9,6 +9,7 @@ import type {
 } from '../shared/api.ts';
 import { api, errorMessage } from './api.ts';
 import { ModelField } from './ModelField.tsx';
+import { ReplyPrompts } from './ReplyPrompts.tsx';
 
 const KEY_SOURCE: Record<Settings['apiKey'], string> = {
   saved: 'Using the key saved here.',
@@ -302,6 +303,7 @@ export function SettingsPage() {
           </p>
         )}
       </form>
+      <ReplyPrompts />
     </div>
   );
 }

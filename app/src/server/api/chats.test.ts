@@ -116,6 +116,7 @@ describe('starting a chat', () => {
         character: { id: older.character.id, name: older.character.name },
         scenario: older.scenario,
         player: null,
+        replyPrompt: null,
         lastActivityAt: (await readChat(app, older.id)).messages.at(-1)
           ?.createdAt,
       },
@@ -124,6 +125,7 @@ describe('starting a chat', () => {
         character: { id: newer.character.id, name: newer.character.name },
         scenario: newer.scenario,
         player: null,
+        replyPrompt: null,
         lastActivityAt: expect.any(String) as string,
       },
     ]);

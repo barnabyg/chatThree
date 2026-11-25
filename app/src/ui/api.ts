@@ -10,6 +10,8 @@ import type {
   Player,
   PlayerInput,
   ReplyEvent,
+  ReplyPrompt,
+  ReplyPromptInput,
   Scenario,
   ScenarioInput,
   Settings,
@@ -177,13 +179,22 @@ async function* replyEvents(
 
 export const api = {
   listChats: () => request<ChatSummary[]>('GET', '/api/chats'),
-  /** Start a chat, played as `playerId` or, with `null`, as no one. */
+  /**
+   * Start a chat, played as `playerId` or, with `null`, as no one, and told
+   * how to reply by `replyPromptId` or, with `null`, by the default.
+   */
   createChat: (
     characterId: string,
     scenarioId: string,
     playerId: string | null,
+    replyPromptId: string | null,
   ) =>
-    request<Chat>('POST', '/api/chats', { characterId, scenarioId, playerId }),
+    request<Chat>('POST', '/api/chats', {
+      characterId,
+      scenarioId,
+      playerId,
+      replyPromptId,
+    }),
   deleteChat: (id: string) => request<undefined>('DELETE', `/api/chats/${id}`),
   getChat: (id: string) => request<Chat>('GET', `/api/chats/${id}`),
   sendMessage: (chatId: string, content: string) =>
@@ -252,6 +263,15 @@ export const api = {
     request<Player>('PUT', `/api/players/${id}`, player),
   deletePlayer: (id: string) =>
     request<undefined>('DELETE', `/api/players/${id}`),
+  listReplyPrompts: () => request<ReplyPrompt[]>('GET', '/api/reply-prompts'),
+  getReplyPrompt: (id: string) =>
+    request<ReplyPrompt>('GET', `/api/reply-prompts/${id}`),
+  createReplyPrompt: (replyPrompt: ReplyPromptInput) =>
+    request<ReplyPrompt>('POST', '/api/reply-prompts', replyPrompt),
+  updateReplyPrompt: (id: string, replyPrompt: ReplyPromptInput) =>
+    request<ReplyPrompt>('PUT', `/api/reply-prompts/${id}`, replyPrompt),
+  deleteReplyPrompt: (id: string) =>
+    request<undefined>('DELETE', `/api/reply-prompts/${id}`),
   getSettings: () => request<Settings>('GET', '/api/settings'),
   updateSettings: (update: SettingsUpdate) =>
     request<Settings>('PUT', '/api/settings', update),

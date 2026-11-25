@@ -346,6 +346,9 @@ export function ChatPage({ chatId }: { chatId: string }) {
           <h1>{chat.character.name}</h1>
           <p>{chat.scenario.title}</p>
           {chat.player !== null && <p>Playing as {chat.player.name}</p>}
+          {chat.replyPrompt !== null && (
+            <p>Reply prompt: {chat.replyPrompt.name}</p>
+          )}
           <p className="chat-location" data-testid="current-location">
             At {chat.location.name}
           </p>

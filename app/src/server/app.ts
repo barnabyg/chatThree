@@ -4,6 +4,7 @@ import { chatRoutes } from './api/chats.ts';
 import { engineRoutes } from './api/engine.ts';
 import { modelRoutes } from './api/models.ts';
 import { playerRoutes } from './api/players.ts';
+import { replyPromptRoutes } from './api/replyPrompts.ts';
 import { scenarioRoutes } from './api/scenarios.ts';
 import { ApiError } from './api/errors.ts';
 import { settingsRoutes } from './api/settings.ts';
@@ -29,6 +30,7 @@ import type { CharacterStore } from './store/characters.ts';
 import type { ChatStore } from './store/chats.ts';
 import type { MediaStore } from './store/media.ts';
 import type { PlayerStore } from './store/players.ts';
+import type { ReplyPromptStore } from './store/replyPrompts.ts';
 import type { ScenarioStore } from './store/scenarios.ts';
 import type { SceneStore } from './store/scenes.ts';
 
@@ -44,6 +46,8 @@ export interface AppDependencies {
   characters: CharacterStore;
   scenarios: ScenarioStore;
   players: PlayerStore;
+  /** The user's own "How to reply" sections. */
+  replyPrompts: ReplyPromptStore;
   /** Chats' places and illustrations. */
   scenes: SceneStore;
   settings: SettingsStore;
@@ -65,6 +69,7 @@ export function createApp(dependencies: AppDependencies): Hono {
     characters,
     scenarios,
     players,
+    replyPrompts,
     scenes,
     settings,
     models,
@@ -83,6 +88,7 @@ export function createApp(dependencies: AppDependencies): Hono {
       characters,
       scenarios,
       players,
+      replyPrompts,
       scenes,
       replies,
       illustrator,
@@ -96,6 +102,7 @@ export function createApp(dependencies: AppDependencies): Hono {
   );
   app.route('/api/scenarios', scenarioRoutes(scenarios, replies, illustrator));
   app.route('/api/players', playerRoutes(players, replies, illustrator));
+  app.route('/api/reply-prompts', replyPromptRoutes(replyPrompts));
   app.route('/api/settings', settingsRoutes(settings));
   app.route('/api/models', modelRoutes(models));
   app.route('/api/speech', speechRoutes(jobs, characters, media));

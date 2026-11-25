@@ -78,6 +78,21 @@ export interface Player extends PlayerInput {
   chatCount: number;
 }
 
+/**
+ * What a chat's character is told about how to reply: the instructions'
+ * last section. See replyPrompt.ts for the placeholders and the default.
+ */
+export interface ReplyPromptInput {
+  name: string;
+  prompt: string;
+}
+
+export interface ReplyPrompt extends ReplyPromptInput {
+  id: string;
+  /** How many chats use it. Deleting it puts them back on the default. */
+  chatCount: number;
+}
+
 /** A place a chat's story has been. */
 export interface Location {
   id: number;
@@ -127,6 +142,8 @@ export interface Chat {
   scenario: { id: string; title: string };
   /** Who the user plays, or `null` when the chat has no player. */
   player: { id: string; name: string } | null;
+  /** How the character is told to reply, or `null` for the default. */
+  replyPrompt: { id: string; name: string } | null;
   /** The whole conversation, oldest first. */
   messages: Message[];
   /** Where the story is now. */
@@ -157,6 +174,8 @@ export interface ChatSummary {
   scenario: { id: string; title: string };
   /** Who the user plays, or `null` when the chat has no player. */
   player: { id: string; name: string } | null;
+  /** How the character is told to reply, or `null` for the default. */
+  replyPrompt: { id: string; name: string } | null;
   /** When a message was last added. */
   lastActivityAt: string;
 }

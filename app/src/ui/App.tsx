@@ -6,6 +6,7 @@ import { Home } from './Home.tsx';
 import { CHARACTERS, LibraryPage, PLAYERS, SCENARIOS } from './LibraryPage.tsx';
 import { NewChatPage } from './NewChatPage.tsx';
 import { PlayerEditor } from './PlayerEditor.tsx';
+import { ReplyPromptEditor } from './ReplyPromptEditor.tsx';
 import { useRoute } from './router.ts';
 import { ScenarioEditor } from './ScenarioEditor.tsx';
 import { SettingsPage } from './SettingsPage.tsx';
@@ -63,6 +64,14 @@ function Page({ section, id, query }: Route) {
       );
     case 'settings':
       return <SettingsPage />;
+    case 'reply-prompts':
+      // Reply prompts are listed in Settings.
+      if (id === undefined) return <SettingsPage />;
+      return id === 'new' ? (
+        <ReplyPromptEditor key="new" />
+      ) : (
+        <ReplyPromptEditor key={id} id={id} />
+      );
     default:
       return <Home />;
   }
@@ -106,7 +115,10 @@ export function App() {
           <NavLink to="/players" current={section === 'players'}>
             Players
           </NavLink>
-          <NavLink to="/settings" current={section === 'settings'}>
+          <NavLink
+            to="/settings"
+            current={section === 'settings' || section === 'reply-prompts'}
+          >
             Settings
           </NavLink>
         </nav>

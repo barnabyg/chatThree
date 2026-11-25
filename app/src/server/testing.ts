@@ -33,6 +33,7 @@ import { ChatStore } from './store/chats.ts';
 import { openDatabase } from './store/database.ts';
 import { MediaStore } from './store/media.ts';
 import { PlayerStore } from './store/players.ts';
+import { ReplyPromptStore } from './store/replyPrompts.ts';
 import { ScenarioStore } from './store/scenarios.ts';
 
 /** Headers of a request from the app's own UI. */
@@ -248,6 +249,7 @@ export interface TestApp {
   characters: CharacterStore;
   scenarios: ScenarioStore;
   players: PlayerStore;
+  replyPrompts: ReplyPromptStore;
   scenes: SceneStore;
   settings: SettingsStore;
   models: ModelCatalog;
@@ -270,6 +272,7 @@ export interface TestApp {
     characterId?: string;
     scenarioId?: string;
     playerId?: string | null;
+    replyPromptId?: string | null;
   }): Promise<Chat>;
 }
 
@@ -294,6 +297,7 @@ export function testApp(
   const characters = new CharacterStore(database);
   const scenarios = new ScenarioStore(database);
   const players = new PlayerStore(database);
+  const replyPrompts = new ReplyPromptStore(database);
   const settings = new SettingsStore(
     path.join(directory, 'settings.json'),
     options.environmentApiKey,
@@ -323,6 +327,7 @@ export function testApp(
     characters,
     scenarios,
     players,
+    replyPrompts,
     settings,
     provider,
   );
@@ -339,6 +344,7 @@ export function testApp(
     characters,
     scenarios,
     players,
+    replyPrompts,
     scenes,
     settings,
     models,
@@ -362,6 +368,7 @@ export function testApp(
     characters,
     scenarios,
     players,
+    replyPrompts,
     scenes,
     settings,
     models,
@@ -378,6 +385,7 @@ export function testApp(
         characterId: pairing.characterId ?? characters.list()[0]?.id,
         scenarioId: pairing.scenarioId ?? scenarios.create(BLANK_SCENARIO).id,
         playerId: pairing.playerId ?? null,
+        replyPromptId: pairing.replyPromptId ?? null,
       });
       if (response.status !== 201) {
         throw new Error(`Starting a chat failed: ${await response.text()}`);

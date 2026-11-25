@@ -10,10 +10,12 @@ import type {
   ReplyEvent,
   Scenario,
 } from '../../shared/api.ts';
+import { DEFAULT_REPLY_PROMPT } from '../../shared/replyPrompt.ts';
 import type { SettingsStore } from '../settings.ts';
 import type { ChatStore } from '../store/chats.ts';
 import type { CharacterStore } from '../store/characters.ts';
 import type { PlayerStore } from '../store/players.ts';
+import type { ReplyPromptStore } from '../store/replyPrompts.ts';
 import type { ScenarioStore } from '../store/scenarios.ts';
 import { buildPrompt } from './prompt.ts';
 import { type ChatProvider, ProviderError, withEffort } from './provider.ts';
@@ -42,6 +44,7 @@ export class ReplyService {
   readonly #characters: CharacterStore;
   readonly #scenarios: ScenarioStore;
   readonly #players: PlayerStore;
+  readonly #replyPrompts: ReplyPromptStore;
   readonly #settings: SettingsStore;
   readonly #provider: ChatProvider;
   /** One entry per chat that has a reply in progress. */
@@ -55,6 +58,7 @@ export class ReplyService {
     characters: CharacterStore,
     scenarios: ScenarioStore,
     players: PlayerStore,
+    replyPrompts: ReplyPromptStore,
     settings: SettingsStore,
     provider: ChatProvider,
   ) {
@@ -62,6 +66,7 @@ export class ReplyService {
     this.#characters = characters;
     this.#scenarios = scenarios;
     this.#players = players;
+    this.#replyPrompts = replyPrompts;
     this.#settings = settings;
     this.#provider = provider;
   }
@@ -144,8 +149,8 @@ export class ReplyService {
     }
   }
 
-  /** The character, scenario and player of `chatId`, as they are now. */
-  #pairing(chatId: string): [Character, Scenario, Player | undefined] {
+  /** The character, scenario, player and reply prompt of `chatId`, as they are now. */
+  #pairing(chatId: string): [Character, Scenario, Player | undefined, string] {
     const chat = this.#chats.find(chatId);
     const character =
       chat === undefined ? undefined : this.#characters.find(chat.character.id);
@@ -158,7 +163,11 @@ export class ReplyService {
       chat === undefined || chat.player === null
         ? undefined
         : this.#players.find(chat.player.id);
-    return [character, scenario, player];
+    const replyPrompt =
+      chat === undefined || chat.replyPrompt === null
+        ? undefined
+        : this.#replyPrompts.find(chat.replyPrompt.id)?.prompt;
+    return [character, scenario, player, replyPrompt ?? DEFAULT_REPLY_PROMPT];
   }
 
   /** Mark `chatId` as replying, or throw `ChatBusyError` if it already is. */

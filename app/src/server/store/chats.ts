@@ -27,6 +27,8 @@ interface ChatRow {
   scenarioTitle: string;
   playerId: string | null;
   playerName: string | null;
+  replyPromptId: string | null;
+  replyPromptName: string | null;
 }
 
 const SELECT = `
@@ -38,11 +40,14 @@ const SELECT = `
     scenarios.id AS scenarioId,
     scenarios.title AS scenarioTitle,
     players.id AS playerId,
-    players.name AS playerName
+    players.name AS playerName,
+    reply_prompts.id AS replyPromptId,
+    reply_prompts.name AS replyPromptName
   FROM chats
   JOIN characters ON characters.id = chats.character_id
   JOIN scenarios ON scenarios.id = chats.scenario_id
-  LEFT JOIN players ON players.id = chats.player_id`;
+  LEFT JOIN players ON players.id = chats.player_id
+  LEFT JOIN reply_prompts ON reply_prompts.id = chats.reply_prompt_id`;
 
 function toSummary(row: ChatRow): ChatSummary {
   return {
@@ -53,6 +58,10 @@ function toSummary(row: ChatRow): ChatSummary {
       row.playerId === null
         ? null
         : { id: row.playerId, name: row.playerName ?? '' },
+    replyPrompt:
+      row.replyPromptId === null
+        ? null
+        : { id: row.replyPromptId, name: row.replyPromptName ?? '' },
     lastActivityAt: row.lastActivityAt,
   };
 }
@@ -67,23 +76,25 @@ export class ChatStore {
 
   /**
    * Start a chat that pairs a character with a scenario, played as
-   * `playerId` or as no one; each given must exist. `openingMessage`, unless
-   * blank, becomes the character's first message.
+   * `playerId` or as no one, replying as `replyPromptId` says or as the
+   * default does; each given must exist. `openingMessage`, unless blank,
+   * becomes the character's first message.
    */
   create(
     characterId: string,
     scenarioId: string,
     openingMessage = '',
     playerId: string | null = null,
+    replyPromptId: string | null = null,
   ): ChatSummary {
     const id = randomUUID();
     const now = new Date().toISOString();
     return this.#db.transaction(() => {
       this.#db
         .prepare(
-          'INSERT INTO chats (id, character_id, scenario_id, player_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+          'INSERT INTO chats (id, character_id, scenario_id, player_id, reply_prompt_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
         )
-        .run(id, characterId, scenarioId, playerId, now, now);
+        .run(id, characterId, scenarioId, playerId, replyPromptId, now, now);
       if (openingMessage.trim() !== '') {
         this.addMessage(id, 'assistant', openingMessage);
       }

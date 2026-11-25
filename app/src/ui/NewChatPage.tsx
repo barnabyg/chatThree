@@ -1,10 +1,18 @@
 import { type SyntheticEvent, useEffect, useId, useState } from 'react';
-import type { Character, Player, Scenario } from '../shared/api.ts';
+import type {
+  Character,
+  Player,
+  ReplyPrompt,
+  Scenario,
+} from '../shared/api.ts';
+import { DEFAULT_REPLY_PROMPT } from '../shared/replyPrompt.ts';
 import { api, errorMessage } from './api.ts';
 import { navigate } from './router.ts';
 
 /** The player choice that plays as no one. */
 const NO_PLAYER = '';
+/** The reply prompt choice that uses the default. */
+const DEFAULT_PROMPT = '';
 
 /**
  * Start a chat by pairing a character with a scenario, played as one of the
@@ -20,10 +28,12 @@ export function NewChatPage({
     characters: Character[];
     scenarios: Scenario[];
     players: Player[];
+    replyPrompts: ReplyPrompt[];
   } | null>(null);
   const [characterId, setCharacterId] = useState(preselected.characterId);
   const [scenarioId, setScenarioId] = useState(preselected.scenarioId);
   const [playerId, setPlayerId] = useState(preselected.playerId);
+  const [replyPromptId, setReplyPromptId] = useState(DEFAULT_PROMPT);
   const [error, setError] = useState<string | null>(null);
   const id = useId();
 
@@ -33,9 +43,12 @@ export function NewChatPage({
       api.listCharacters(),
       api.listScenarios(),
       api.listPlayers(),
+      api.listReplyPrompts(),
     ]).then(
-      ([characters, scenarios, players]) => {
-        if (current) setChoices({ characters, scenarios, players });
+      ([characters, scenarios, players, replyPrompts]) => {
+        if (current) {
+          setChoices({ characters, scenarios, players, replyPrompts });
+        }
       },
       (reason: unknown) => {
         if (current) setError(errorMessage(reason));
@@ -54,7 +67,7 @@ export function NewChatPage({
     );
   }
 
-  const { characters, scenarios, players } = choices;
+  const { characters, scenarios, players, replyPrompts } = choices;
   // A preselected ID that no longer exists falls back to the first choice.
   const character =
     characters.find((one) => one.id === characterId) ?? characters[0];
@@ -65,19 +78,27 @@ export function NewChatPage({
     playerId === NO_PLAYER
       ? undefined
       : (players.find((one) => one.id === playerId) ?? players[0]);
+  const replyPrompt = replyPrompts.find((one) => one.id === replyPromptId);
 
   const start = (event: SyntheticEvent): void => {
     event.preventDefault();
     if (character === undefined || scenario === undefined) return;
     setError(null);
-    api.createChat(character.id, scenario.id, player?.id ?? null).then(
-      (chat) => {
-        navigate(`/chats/${chat.id}`);
-      },
-      (reason: unknown) => {
-        setError(errorMessage(reason));
-      },
-    );
+    api
+      .createChat(
+        character.id,
+        scenario.id,
+        player?.id ?? null,
+        replyPrompt?.id ?? null,
+      )
+      .then(
+        (chat) => {
+          navigate(`/chats/${chat.id}`);
+        },
+        (reason: unknown) => {
+          setError(errorMessage(reason));
+        },
+      );
   };
 
   return (
@@ -167,6 +188,33 @@ export function NewChatPage({
                 player.background
               )}
             </p>
+          </div>
+
+          <div className="field">
+            <label htmlFor={`${id}-reply-prompt`}>Reply prompt</label>
+            <select
+              id={`${id}-reply-prompt`}
+              value={replyPrompt?.id ?? DEFAULT_PROMPT}
+              onChange={(event) => {
+                setReplyPromptId(event.target.value);
+              }}
+            >
+              <option value={DEFAULT_PROMPT}>Default</option>
+              {replyPrompts.map((one) => (
+                <option key={one.id} value={one.id}>
+                  {one.name}
+                </option>
+              ))}
+            </select>
+            <p className="hint choice-excerpt">
+              {replyPrompt?.prompt ?? DEFAULT_REPLY_PROMPT}
+            </p>
+            {replyPrompts.length === 0 && (
+              <p className="hint">
+                <a href="#/reply-prompts/new">Write a reply prompt</a> of your
+                own in Settings.
+              </p>
+            )}
           </div>
 
           <div className="form-actions">
