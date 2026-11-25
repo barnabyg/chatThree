@@ -23,6 +23,7 @@ test('with nothing saved, the model is the default and the key comes from the en
     sceneReasoningEffort: null,
     illustrationMode: 'key-moments',
     illustrationCooldown: 3,
+    imageStyle: 'realistic',
     contextTokenBudget: DEFAULT_CONTEXT_TOKEN_BUDGET,
     speechMuted: false,
     speechScope: 'dialogue',
@@ -140,3 +141,13 @@ test.each([0, -2, 2.5, 101, '3'])(
     expect(new SettingsStore(file, undefined).illustrationCooldown()).toBe(3);
   },
 );
+
+test('the image style is saved and read back, and a hand-edited unknown one is ignored', async () => {
+  const file = settingsFile();
+  new SettingsStore(file, undefined).update({ imageStyle: 'illustration' });
+
+  expect(new SettingsStore(file, undefined).imageStyle()).toBe('illustration');
+
+  await writeFile(file, JSON.stringify({ imageStyle: 'cartoon' }));
+  expect(new SettingsStore(file, undefined).imageStyle()).toBe('realistic');
+});
