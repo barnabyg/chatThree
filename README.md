@@ -17,6 +17,10 @@ Prerequisites: [Node.js](https://nodejs.org) 24.12 or newer,
 cd C:\docs\git\chatThree; pwsh ./start.ps1
 ```
 
+On Windows you can instead double-click `run.bat` in the repository folder. It
+runs `start.ps1` with the same options, and keeps its window open if starting
+fails so you can read the error.
+
 That installs the app's dependencies (first run, and whenever they change),
 builds the UI, starts the server on <http://127.0.0.1:3210> and opens it in
 your browser. Press Ctrl+C to stop.
