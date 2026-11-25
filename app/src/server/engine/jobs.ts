@@ -68,7 +68,29 @@ async function refusal(response: Response): Promise<string> {
   return `The engine refused the request (${String(response.status)}).`;
 }
 
-export function engineJobs(engine: Pick<EngineControl, 'url'>): EngineJobs {
+export interface EngineJobsOptions {
+  /** Where each image prompt is written. Defaults to the console. */
+  log?: (line: string) => void;
+}
+
+/** How a paint request is written to the log, so a picture can be explained. */
+function describePaint({
+  prompt,
+  width,
+  height,
+  seed,
+  references = [],
+}: PaintRequest): string {
+  const refs =
+    references.length === 0 ? 'no references' : references.join(', ');
+  return `[image] ${String(width)}x${String(height)}, seed ${String(seed)}, ${refs}\n${prompt}`;
+}
+
+export function engineJobs(
+  engine: Pick<EngineControl, 'url'>,
+  options: EngineJobsOptions = {},
+): EngineJobs {
+  const log = options.log ?? console.log;
   /** Send one job and return the engine's successful answer. */
   const post = async (
     path: string,
@@ -120,6 +142,7 @@ export function engineJobs(engine: Pick<EngineControl, 'url'>): EngineJobs {
       await post('/voice', { voice }, VOICE_TIMEOUT_MS);
     },
     async paint(request) {
+      log(describePaint(request));
       const response = await post('/image', request, IMAGE_TIMEOUT_MS);
       return new Uint8Array(await response.arrayBuffer());
     },
