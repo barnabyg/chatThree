@@ -2,7 +2,7 @@ import { type SyntheticEvent, useEffect, useState } from 'react';
 import type { CharacterInput } from '../shared/api.ts';
 import { api, errorMessage } from './api.ts';
 import { CharacterPicture } from './CharacterPicture.tsx';
-import { CharacterVoice } from './CharacterVoice.tsx';
+import { CharacterVoice, type PendingClip } from './CharacterVoice.tsx';
 import { navigate } from './router.ts';
 import { TextField } from './TextField.tsx';
 
@@ -54,6 +54,13 @@ export function CharacterEditor({ id }: { id?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [hasVoice, setHasVoice] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  /** A new character's voice clip, held until the character is saved. */
+  const [pendingClip, setPendingClip] = useState<PendingClip | null>(null);
+  /**
+   * A new character that was saved but whose voice clip was not: saving
+   * again updates it rather than making a second.
+   */
+  const [createdId, setCreatedId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (id === undefined) return;
@@ -99,18 +106,33 @@ export function CharacterEditor({ id }: { id?: string }) {
   const save = (event: SyntheticEvent): void => {
     event.preventDefault();
     setError(null);
+    const savedId = id ?? createdId;
     const saved =
-      id === undefined
+      savedId === undefined
         ? api.createCharacter(character)
-        : api.updateCharacter(id, character);
-    saved.then(
-      () => {
-        navigate('/characters');
-      },
-      (reason: unknown) => {
-        setError(errorMessage(reason));
-      },
-    );
+        : api.updateCharacter(savedId, character);
+    saved
+      .then(async ({ id: characterId }) => {
+        if (id !== undefined || pendingClip === null) return;
+        setCreatedId(characterId);
+        try {
+          await api.setVoice(characterId, pendingClip);
+        } catch (reason) {
+          throw new Error(
+            `The character was saved, but its voice clip was not: ${errorMessage(reason)}`,
+            { cause: reason },
+          );
+        }
+        setPendingClip(null);
+      })
+      .then(
+        () => {
+          navigate('/characters');
+        },
+        (reason: unknown) => {
+          setError(errorMessage(reason));
+        },
+      );
   };
 
   return (
@@ -141,10 +163,18 @@ export function CharacterEditor({ id }: { id?: string }) {
           />
         ))}
         {id === undefined ? (
-          <p className="hint">
-            Save the character, then edit it, to give it a picture and a voice
-            of its own.
-          </p>
+          <>
+            <p className="hint">
+              Save the character, then edit it, to give it a picture.
+            </p>
+            <CharacterVoice
+              name={character.name}
+              hasVoice={false}
+              onChange={setHasVoice}
+              pending={pendingClip}
+              onPending={setPendingClip}
+            />
+          </>
         ) : (
           <>
             <CharacterPicture

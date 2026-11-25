@@ -199,14 +199,17 @@ sentence is heard while the rest is still being written.
 - Formatting marks such as asterisks are never spoken, and a sentence longer
   than the engine takes in one request (600 characters) is split first.
 
-To give a character a voice, edit the character and choose a recording under
-**Voice**: one person speaking clearly, for more than 5 seconds. The engine
+To give a character a voice, choose a recording under **Voice** when you
+create or edit the character: one person speaking clearly, for more than 5
+seconds. The engine
 clones the voice from it. The browser reads the recording (WAV, MP3, M4A and
 whatever else it can play), keeps the first 30 seconds as a mono WAV file,
 and the app stores that in its data folder. A recording of 5 seconds or less
-is refused. The clip is saved as soon as it is chosen; choosing another
-replaces it, **Remove voice clip** goes back to the built-in voice, and
-**Preview voice** speaks a sample line. Opening a chat has the engine prepare
+is refused. For a character being edited, the clip is saved as soon as it is
+chosen; choosing another replaces it, **Remove voice clip** goes back to the
+built-in voice, and **Preview voice** speaks a sample line. For a new
+character, the clip is saved with the character, and the cloned voice can be
+previewed once it is saved. Opening a chat has the engine prepare
 the character's voice, so the first sentence is not held up by the cloning,
 which takes about 2.5 seconds.
 
@@ -302,6 +305,10 @@ and little background noise.
    longer than 5 seconds; the earlier clip is still in use.
 8. Choose **Remove voice clip**, then **Preview voice**. Expect the built-in
    voice again, and `%LOCALAPPDATA%\chatThree\voices` to be empty.
+9. Choose **Characters**, then **New character**. Name it `Tomas`, choose your
+   recording under **Voice clip** and choose **Save character**. Choose
+   **Edit** on Tomas, then **Preview voice**. Expect the sample line in the
+   cloned voice.
 
 ## Manual check: a reference picture
 
