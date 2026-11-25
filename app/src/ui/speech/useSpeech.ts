@@ -30,6 +30,8 @@ export interface Speech {
   problem: string | null;
   /** Start speaking a new reply, in place of whatever was being spoken. */
   begin: (reply: ReplyToSpeak) => ReplySpeech;
+  /** Speak a whole message again, in place of whatever was being spoken. */
+  replay: (reply: ReplyToSpeak, text: string) => void;
   /** Halt playback and drop what has not been played. */
   stop: () => void;
 }
@@ -87,5 +89,17 @@ export function useSpeech(): Speech {
   // Leaving the page ends what it was saying.
   useEffect(() => control.stop, [control]);
 
-  return { speaking, problem, begin: control.begin, stop: control.stop };
+  const replay = (reply: ReplyToSpeak, text: string): void => {
+    const spoken = control.begin(reply);
+    spoken.push(text);
+    spoken.end();
+  };
+
+  return {
+    speaking,
+    problem,
+    begin: control.begin,
+    replay,
+    stop: control.stop,
+  };
 }

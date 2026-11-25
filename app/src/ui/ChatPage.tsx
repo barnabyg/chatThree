@@ -37,18 +37,43 @@ function MessageItem({
   role,
   content,
   writing = false,
+  onReplay,
   children,
 }: {
   author: string;
   role: Message['role'];
   content: string;
   writing?: boolean;
+  /** Speak the message again. Without it, there is no replay button. */
+  onReplay?: () => void;
   /** Shown under the message's text. */
   children?: ReactNode;
 }) {
   return (
     <li className={`message message-${role}`} aria-busy={writing}>
-      <p className="message-author">{author}</p>
+      <div className="message-header">
+        <p className="message-author">{author}</p>
+        {onReplay !== undefined && (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Replay message"
+            title="Replay message"
+            onClick={onReplay}
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M2 6h3l4-3.5v11L5 10H2z" />
+              <path
+                d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.5a6 6 0 0 1 0 9"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        )}
+      </div>
       <p className="message-content">{content}</p>
       {children}
     </li>
@@ -268,6 +293,21 @@ export function ChatPage({ chatId }: { chatId: string }) {
     );
   };
 
+  /** Speak `message` again, even when replies are not spoken by themselves. */
+  const replay = (message: Message): void => {
+    const index = chat.messages.indexOf(message);
+    speech.replay(
+      {
+        scope: settings?.speechScope ?? 'dialogue',
+        characterId: chat.character.id,
+        previous: chat.messages
+          .slice(0, index)
+          .findLast(({ role }) => role === 'assistant')?.content,
+      },
+      message.content,
+    );
+  };
+
   const stopReply = (): void => {
     speech.stop();
     void api.stopReply(chat.id);
@@ -346,6 +386,13 @@ export function ChatPage({ chatId }: { chatId: string }) {
                 author={message.role === 'user' ? 'You' : chat.character.name}
                 role={message.role}
                 content={message.content}
+                onReplay={
+                  message.role === 'assistant'
+                    ? () => {
+                        replay(message);
+                      }
+                    : undefined
+                }
               >
                 {message.role === 'assistant' && (
                   <MessageIllustrations
