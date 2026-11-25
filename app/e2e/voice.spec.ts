@@ -167,3 +167,68 @@ test('a file that is not a recording is refused', async ({
     'Mara the Keeper',
   );
 });
+
+test('a new character can be given a voice clip, saved with the character', async ({
+  page,
+  app,
+}, testInfo) => {
+  await page.goto('/#/characters/new');
+  await engineReady(page);
+  await page.getByLabel('Name').fill('Tomas Reed');
+  await expect(voice(page)).toContainText('spoken in the built-in voice');
+  // Before a clip is chosen, the built-in voice can be heard.
+  expect(await previewedVoice(page, app)).toBeUndefined();
+
+  // A clip too short is refused before anything is saved.
+  await voice(page)
+    .getByLabel('Voice clip')
+    .setInputFiles(await recordingFile(testInfo, 'short.wav', 3));
+  await expect(voice(page).getByRole('alert')).toHaveText(
+    'That recording is 3.0 seconds long. A voice clip must be longer than 5 seconds.',
+  );
+
+  await voice(page)
+    .getByLabel('Voice clip')
+    .setInputFiles(await recordingFile(testInfo, 'tomas.wav', 7));
+  await expect(voice(page)).toContainText(
+    'will be spoken in the voice cloned from the clip you gave',
+  );
+  await expect(voice(page).getByRole('alert')).toBeHidden();
+  // The cloned voice can be heard only once the clip is saved.
+  await expect(
+    voice(page).getByRole('button', { name: 'Preview voice' }),
+  ).toBeDisabled();
+  expect(
+    await page.request.get('/api/characters').then((r) => r.json()),
+  ).toHaveLength(1);
+
+  await page.getByRole('button', { name: 'Save character' }).click();
+  await page.getByRole('link', { name: 'Edit Tomas Reed' }).click();
+
+  await expect(voice(page)).toContainText(
+    'spoken in the voice cloned from the clip you gave',
+  );
+  const clip = await previewedVoice(page, app);
+  expect(path.dirname(String(clip))).toBe(
+    testInfo.outputPath('data', 'voices'),
+  );
+  expect(wavSeconds(await readFile(String(clip)))).toBeCloseTo(7, 1);
+});
+
+test("a new character's clip can be removed before it is saved", async ({
+  page,
+}, testInfo) => {
+  await page.goto('/#/characters/new');
+  await page.getByLabel('Name').fill('Tomas Reed');
+  await voice(page)
+    .getByLabel('Voice clip')
+    .setInputFiles(await recordingFile(testInfo, 'tomas.wav', 7));
+  await expect(voice(page)).toContainText('will be spoken in the voice cloned');
+
+  await voice(page).getByRole('button', { name: 'Remove voice clip' }).click();
+  await expect(voice(page)).toContainText('spoken in the built-in voice');
+  await page.getByRole('button', { name: 'Save character' }).click();
+  await page.getByRole('link', { name: 'Edit Tomas Reed' }).click();
+
+  await expect(voice(page)).toContainText('spoken in the built-in voice');
+});

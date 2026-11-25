@@ -3,8 +3,8 @@ import path from 'node:path';
 import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { z } from 'zod';
-import { type Character, MIN_VOICE_SECONDS } from '../../shared/api.ts';
-import { wavSeconds } from '../../shared/wav.ts';
+import type { Character } from '../../shared/api.ts';
+import { voiceClipProblem } from '../../shared/voiceClip.ts';
 import type { ReplyService } from '../chat/replies.ts';
 import type { EngineJobs } from '../engine/jobs.ts';
 import type { VoiceWarmer } from '../engine/warmer.ts';
@@ -55,16 +55,8 @@ function pictureKind(bytes: Uint8Array): string | undefined {
 
 /** Check that a voice can be cloned from an uploaded clip, or refuse it. */
 function checkVoiceClip(clip: Uint8Array): void {
-  const seconds = wavSeconds(clip);
-  if (seconds === undefined) {
-    throw new ApiError(400, 'A voice clip must be a WAV recording.');
-  }
-  if (seconds <= MIN_VOICE_SECONDS) {
-    throw new ApiError(
-      400,
-      `That recording is ${seconds.toFixed(1)} seconds long. A voice clip must be longer than ${String(MIN_VOICE_SECONDS)} seconds.`,
-    );
-  }
+  const problem = voiceClipProblem(clip);
+  if (problem !== undefined) throw new ApiError(400, problem);
 }
 
 const text = (label: string) =>
