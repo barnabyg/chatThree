@@ -1,8 +1,9 @@
 // Replies from OpenAI's Responses API, streamed.
 //
-// The request is plain `fetch` rather than OpenAI's SDK: the app uses one
-// endpoint, and this keeps the dependency list short.
+// The requests are plain `fetch` rather than OpenAI's SDK: the app uses two
+// endpoints, and this keeps the dependency list short.
 
+import { REASONING_EFFORTS, type ReasoningEffort } from '../../shared/api.ts';
 import { isWellFormedApiKey } from '../apiKey.ts';
 import {
   type ChatProvider,
@@ -12,6 +13,47 @@ import {
 } from './provider.ts';
 
 export const OPENAI_BASE_URL = 'https://api.openai.com/v1';
+
+/**
+ * Whether a model from `GET /models` can write a chat reply. The list says
+ * nothing about what a model does, so this goes by name: OpenAI's text
+ * families, without the models for pictures, sound, search, code or other
+ * special work, and without dated snapshots of a model also listed by name.
+ */
+export function isChatModel(id: string): boolean {
+  if (!/^(gpt-|o\d|chat-latest$)/.test(id)) return false;
+  if (/-\d{4}-\d{2}-\d{2}$/.test(id)) return false;
+  return !/image|audio|realtime|tts|transcribe|whisper|embedding|moderation|search|live|codex|healthcare|instruct/.test(
+    id,
+  );
+}
+
+/**
+ * The thinking levels to try, in an order that finds one the model refuses
+ * quickly: a refusal names every level the model supports. Most models take
+ * only one of `minimal` and `max`.
+ */
+const PROBE_ORDER: readonly ReasoningEffort[] = [
+  'minimal',
+  'max',
+  'none',
+  'xhigh',
+  'low',
+  'high',
+  'medium',
+];
+
+/** The thinking levels named in OpenAI's refusal of one, or `undefined` if it names none. */
+export function supportedEfforts(
+  message: string,
+): ReasoningEffort[] | undefined {
+  const list = /Supported values are:(.*)$/s.exec(message)?.[1];
+  if (list === undefined) return undefined;
+  const named = new Set(
+    [...list.matchAll(/'([^']+)'/g)].map((match) => match[1]),
+  );
+  return REASONING_EFFORTS.filter((effort) => named.has(effort));
+}
 
 export interface OpenAIOptions {
   baseUrl: string;
@@ -143,16 +185,15 @@ export function openAIProvider(options: OpenAIOptions): ChatProvider {
     return key;
   };
 
-  /** Ask for a response, and return it once OpenAI has accepted the request. */
-  const post = async (
+  /** Ask for a response, whether or not OpenAI accepts the request. */
+  const send = async (
     body: object,
     accept: string,
     signal: AbortSignal | undefined,
   ): Promise<Response> => {
     const key = apiKey();
-    let response: Response;
     try {
-      response = await fetch(`${options.baseUrl}/responses`, {
+      return await fetch(`${options.baseUrl}/responses`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${key}`,
@@ -170,19 +211,39 @@ export function openAIProvider(options: OpenAIOptions): ChatProvider {
       if (signal?.aborted === true) throw error;
       throw networkFailure(error);
     }
+  };
+
+  /** Ask for a response, and return it once OpenAI has accepted the request. */
+  const post = async (
+    body: object,
+    accept: string,
+    signal: AbortSignal | undefined,
+  ): Promise<Response> => {
+    const response = await send(body, accept, signal);
     if (!response.ok) throw await rejection(response);
     return response;
   };
 
+  /** The request body's thinking level, if one was chosen. */
+  const reasoning = (effort: ReasoningEffort | undefined): object =>
+    effort === undefined ? {} : { reasoning: { effort } };
+
   return {
     async *streamReply({
       model,
+      reasoningEffort,
       instructions,
       messages,
       signal,
     }: ReplyRequest) {
       const response = await post(
-        { model, instructions, input: messages, stream: true },
+        {
+          model,
+          ...reasoning(reasoningEffort),
+          instructions,
+          input: messages,
+          stream: true,
+        },
         'text/event-stream',
         signal,
       );
@@ -232,6 +293,7 @@ export function openAIProvider(options: OpenAIOptions): ChatProvider {
 
     async structured({
       model,
+      reasoningEffort,
       instructions,
       input,
       schemaName,
@@ -241,6 +303,7 @@ export function openAIProvider(options: OpenAIOptions): ChatProvider {
       const response = await post(
         {
           model,
+          ...reasoning(reasoningEffort),
           instructions,
           input,
           stream: false,
@@ -271,6 +334,72 @@ export function openAIProvider(options: OpenAIOptions): ChatProvider {
       } catch {
         throw new ProviderError('OpenAI sent back an answer that is not JSON.');
       }
+    },
+
+    async models() {
+      const key = apiKey();
+      let response: Response;
+      try {
+        response = await fetch(`${options.baseUrl}/models`, {
+          headers: { Authorization: `Bearer ${key}` },
+        });
+      } catch (error) {
+        throw networkFailure(error);
+      }
+      if (!response.ok) throw await rejection(response);
+      let body: { data?: { id?: unknown; created?: unknown }[] };
+      try {
+        body = (await response.json()) as typeof body;
+      } catch {
+        throw new ProviderError(
+          'OpenAI sent back a model list that is not JSON.',
+        );
+      }
+      return (body.data ?? [])
+        .flatMap(({ id, created }) =>
+          typeof id === 'string' && isChatModel(id)
+            ? [{ id, created: typeof created === 'number' ? created : 0 }]
+            : [],
+        )
+        .sort((a, b) => b.created - a.created || a.id.localeCompare(b.id))
+        .map(({ id }) => id);
+    },
+
+    async reasoningEfforts(model) {
+      // OpenAI cannot be asked which levels a model takes, but its refusal of
+      // a level the model does not take lists the ones it does. A level the
+      // model takes is answered, as briefly as OpenAI allows, and the next
+      // one is tried.
+      for (const effort of PROBE_ORDER) {
+        const response = await send(
+          { model, input: '.', max_output_tokens: 16, reasoning: { effort } },
+          'application/json',
+          undefined,
+        );
+        if (response.ok) {
+          await response.body?.cancel();
+          continue;
+        }
+        if (response.status !== 400) throw await rejection(response);
+        let message = '';
+        try {
+          const body = (await response.json()) as {
+            error?: { message?: string };
+          };
+          message = body.error?.message ?? '';
+        } catch {
+          // Not JSON: reported below.
+        }
+        // A model that does not think at all refuses the parameter itself.
+        if (/Unsupported parameter/i.test(message)) return [];
+        const supported = supportedEfforts(message);
+        if (supported !== undefined) return supported;
+        throw new ProviderError(
+          `OpenAI returned an error (400): ${message === '' ? 'no detail given.' : message}`,
+        );
+      }
+      // It took every level.
+      return [...REASONING_EFFORTS];
     },
   };
 }

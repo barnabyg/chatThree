@@ -8,7 +8,11 @@
 
 import { randomInt } from 'node:crypto';
 import type { IllustrationProgress } from '../../shared/api.ts';
-import { ProviderError, type ChatProvider } from '../chat/provider.ts';
+import {
+  ProviderError,
+  type ChatProvider,
+  withEffort,
+} from '../chat/provider.ts';
 import { engineFailureMessage, NOT_PAINTED } from '../api/engineFailures.ts';
 import type { EngineJobs } from '../engine/jobs.ts';
 import type { SettingsStore } from '../settings.ts';
@@ -340,6 +344,7 @@ export class Illustrator {
     const { picture, place, worthIt } = readScene(
       await this.#provider.structured({
         model: this.#settings.sceneModel(),
+        ...withEffort(this.#settings.sceneReasoningEffort()),
         ...sceneRequest({
           character,
           scenario,

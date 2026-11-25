@@ -3,7 +3,12 @@
 // API key, and records every request so tests can see what was sent.
 // A request that does not stream (`"stream": false`) asks for a structured
 // answer, as the scene call does: those are answered and recorded apart from
-// the replies, so that tests of either can count on their own.
+// the replies, so that tests of either can count on their own. One that does
+// not stream and asks for no format is a plain request, as the app makes to
+// find out a model's thinking levels: those are recorded apart again.
+//
+// `GET /v1/models` lists `FAKE_MODELS`, and a request with a thinking level a
+// model in `FAKE_REASONING` does not take is refused as OpenAI refuses it.
 
 import {
   createServer,
@@ -15,6 +20,39 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 /** The only key the fake accepts. Anything else gets OpenAI's 401. */
 export const FAKE_API_KEY = 'sk-test-0000';
+
+/** What `GET /v1/models` lists, as OpenAI does: in no useful order, chat models among others. */
+export const FAKE_MODELS: readonly { id: string; created: number }[] = [
+  { id: 'gpt-image-2', created: 1_776_000_000 },
+  { id: 'gpt-4.1', created: 1_744_000_000 },
+  { id: 'gpt-5.5', created: 1_776_800_000 },
+  { id: 'gpt-5.5-2026-04-23', created: 1_776_800_000 },
+  { id: 'gpt-5-mini', created: 1_754_000_000 },
+  { id: 'tts-1', created: 1_681_000_000 },
+  { id: 'text-embedding-3-small', created: 1_705_000_000 },
+];
+
+/** The thinking levels of the fake's models; `null` for one that does not think. Any other model takes any level. */
+export const FAKE_REASONING: Readonly<Record<string, string[] | null>> = {
+  'gpt-5.5': ['none', 'low', 'medium', 'high', 'xhigh'],
+  'gpt-5-mini': ['minimal', 'low', 'medium', 'high'],
+  'gpt-4.1': null,
+};
+
+/** OpenAI's refusal of `effort` for `model`, or `undefined` if the model takes it. */
+function refuseEffort(model: string, effort: string): string | undefined {
+  const supported = FAKE_REASONING[model];
+  if (supported === null) {
+    return "Unsupported parameter: 'reasoning.effort' is not supported with this model.";
+  }
+  if (supported === undefined || supported.includes(effort)) return undefined;
+  const quoted = supported.map((level) => `'${level}'`);
+  const list =
+    quoted.length === 1
+      ? quoted.join('')
+      : `${quoted.slice(0, -1).join(', ')}, and ${quoted.at(-1) ?? ''}`;
+  return `Unsupported value: '${effort}' is not supported with the '${model}' model. Supported values are: ${list}.`;
+}
 
 export type Behaviour =
   /**
@@ -70,6 +108,8 @@ export interface FakeOpenAI {
   respondWith(...behaviours: [Behaviour, ...Behaviour[]]): void;
   /** The bodies of every authorised structured request, oldest first. */
   structuredRequests: Record<string, unknown>[];
+  /** The bodies of every authorised plain request, oldest first. */
+  plainRequests: Record<string, unknown>[];
   /**
    * Set how the next structured requests are answered, as `respondWith` does
    * for replies. Until this is called, every one gets `DEFAULT_STRUCTURED`.
@@ -201,6 +241,7 @@ export async function startFakeOpenAI(): Promise<FakeOpenAI> {
   const requests: RecordedRequest[] = [];
   let behaviours: Behaviour[] = [DEFAULT_REPLY];
   const structuredRequests: Record<string, unknown>[] = [];
+  const plainRequests: Record<string, unknown>[] = [];
   let structuredBehaviours: StructuredBehaviour[] = [DEFAULT_STRUCTURED];
   let release = (): void => undefined;
   const released = new Promise<void>((resolve) => {
@@ -209,7 +250,11 @@ export async function startFakeOpenAI(): Promise<FakeOpenAI> {
 
   const server = createServer((request, response) => {
     void (async () => {
-      if (request.method !== 'POST' || request.url !== '/v1/responses') {
+      const listing = request.method === 'GET' && request.url === '/v1/models';
+      if (
+        !listing &&
+        (request.method !== 'POST' || request.url !== '/v1/responses')
+      ) {
         sendError(response, 404, `Unknown path ${String(request.url)}`);
         return;
       }
@@ -217,10 +262,41 @@ export async function startFakeOpenAI(): Promise<FakeOpenAI> {
         sendError(response, 401, 'Incorrect API key provided.');
         return;
       }
+      if (listing) {
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.end(
+          JSON.stringify({
+            object: 'list',
+            data: FAKE_MODELS.map((model) => ({
+              ...model,
+              object: 'model',
+              owned_by: 'system',
+            })),
+          }),
+        );
+        return;
+      }
       const body = JSON.parse(await readBody(request)) as Record<
         string,
         unknown
       >;
+      const effort = (body.reasoning as { effort?: string } | undefined)
+        ?.effort;
+      if (body.stream !== true && body.text === undefined) {
+        plainRequests.push(body);
+      }
+      const refusal =
+        effort === undefined
+          ? undefined
+          : refuseEffort(String(body.model), effort);
+      if (refusal !== undefined) {
+        sendError(response, 400, refusal);
+        return;
+      }
+      if (body.stream !== true && body.text === undefined) {
+        answerStructured({ kind: 'text', text: 'Hi.' }, response);
+        return;
+      }
       if (body.stream === false) {
         structuredRequests.push(body);
         const next =
@@ -255,6 +331,7 @@ export async function startFakeOpenAI(): Promise<FakeOpenAI> {
       behaviours = [...next];
     },
     structuredRequests,
+    plainRequests,
     respondToStructuredWith(...next) {
       structuredBehaviours = [...next];
     },

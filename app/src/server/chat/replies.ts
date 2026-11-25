@@ -14,7 +14,7 @@ import type { ChatStore } from '../store/chats.ts';
 import type { CharacterStore } from '../store/characters.ts';
 import type { ScenarioStore } from '../store/scenarios.ts';
 import { buildPrompt } from './prompt.ts';
-import { type ChatProvider, ProviderError } from './provider.ts';
+import { type ChatProvider, ProviderError, withEffort } from './provider.ts';
 
 const STOP_ALL_TIMEOUT_MS = 2_000;
 
@@ -201,6 +201,7 @@ export class ReplyService {
       );
       const pieces = this.#provider.streamReply({
         model: this.#settings.model(),
+        ...withEffort(this.#settings.reasoningEffort()),
         ...prompt,
         signal,
       });

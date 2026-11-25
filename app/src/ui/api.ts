@@ -5,6 +5,8 @@ import type {
   CharacterInput,
   Chat,
   ChatSummary,
+  ModelList,
+  ModelReasoning,
   ReplyEvent,
   Scenario,
   ScenarioInput,
@@ -238,5 +240,13 @@ export const api = {
   getSettings: () => request<Settings>('GET', '/api/settings'),
   updateSettings: (update: SettingsUpdate) =>
     request<Settings>('PUT', '/api/settings', update),
+  /** The OpenAI models that can write replies, newest first. */
+  listModels: () => request<ModelList>('GET', '/api/models'),
+  /** The thinking levels a model takes. The first ask for a model may take a few seconds. */
+  modelReasoning: (model: string) =>
+    request<ModelReasoning>(
+      'GET',
+      `/api/models/${encodeURIComponent(model)}/reasoning`,
+    ),
   speak,
 };

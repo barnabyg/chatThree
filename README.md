@@ -42,7 +42,16 @@ app ends the engine's whole process tree.
 Replies come from OpenAI, so chat needs an OpenAI API key. Either set
 `OPENAI_API_KEY` before starting the app, or paste a key into **Settings**. A
 key saved in Settings is used in place of the environment variable, is sent
-only to the OpenAI API, and is never shown again. The model is also a setting.
+only to the OpenAI API, and is never shown again.
+
+The model is also a setting, picked from the chat models your key can use (the
+app asks OpenAI for its model list and leaves out the ones for pictures, sound,
+search and code, and dated snapshots). Each model also has a **thinking
+level**: how long it thinks before it answers. OpenAI does not say which levels
+a model takes, so the first time a model is chosen the app finds out with up to
+a few tiny requests, and keeps the answer for a month in
+`reasoning-levels.json` in the data directory. If the model list cannot be
+loaded (no key, no network), the model is typed instead.
 
 The app starts with one character, Mara Quill, and one scenario, The Storm at
 Gull Point. A chat pairs a character with a scenario: **New chat** asks for

@@ -1,11 +1,13 @@
 import { type SyntheticEvent, useEffect, useState } from 'react';
 import type {
   IllustrationMode,
+  ReasoningEffort,
   Settings,
   SettingsUpdate,
   SpeechScope,
 } from '../shared/api.ts';
-import { api } from './api.ts';
+import { api, errorMessage } from './api.ts';
+import { ModelField } from './ModelField.tsx';
 
 const KEY_SOURCE: Record<Settings['apiKey'], string> = {
   saved: 'Using the key saved here.',
@@ -16,8 +18,13 @@ const KEY_SOURCE: Record<Settings['apiKey'], string> = {
 export function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [apiKey, setApiKey] = useState('');
+  const [models, setModels] = useState<
+    string[] | undefined | { reason: string }
+  >(undefined);
   const [model, setModel] = useState('');
+  const [effort, setEffort] = useState<ReasoningEffort | null>(null);
   const [sceneModel, setSceneModel] = useState('');
+  const [sceneEffort, setSceneEffort] = useState<ReasoningEffort | null>(null);
   const [illustrationMode, setIllustrationMode] =
     useState<IllustrationMode>('key-moments');
   const [cooldown, setCooldown] = useState('');
@@ -32,7 +39,9 @@ export function SettingsPage() {
   const show = (loaded: Settings): void => {
     setSettings(loaded);
     setModel(loaded.model);
+    setEffort(loaded.reasoningEffort);
     setSceneModel(loaded.sceneModel);
+    setSceneEffort(loaded.sceneReasoningEffort);
     setIllustrationMode(loaded.illustrationMode);
     setCooldown(String(loaded.illustrationCooldown));
     setBudget(String(loaded.contextTokenBudget));
@@ -53,6 +62,14 @@ export function SettingsPage() {
     api.getSettings().then((loaded) => {
       if (current) show(loaded);
     }, fail);
+    api.listModels().then(
+      (list) => {
+        if (current) setModels(list.models);
+      },
+      (reason: unknown) => {
+        if (current) setModels({ reason: errorMessage(reason) });
+      },
+    );
     return () => {
       current = false;
     };
@@ -79,7 +96,9 @@ export function SettingsPage() {
     update(
       {
         model,
+        reasoningEffort: effort,
         sceneModel,
+        sceneReasoningEffort: sceneEffort,
         illustrationMode,
         illustrationCooldown: Number(cooldown),
         contextTokenBudget: Number(budget),
@@ -120,34 +139,27 @@ export function SettingsPage() {
           OpenAI and is never shown again.
         </p>
 
-        <label>
-          Model
-          <input
-            type="text"
-            required
-            value={model}
-            onChange={(event) => {
-              setModel(event.target.value);
-            }}
-          />
-        </label>
-        <p className="hint">The OpenAI model that writes the replies.</p>
+        <ModelField
+          label="Model"
+          levelLabel="Thinking level"
+          models={models}
+          model={model}
+          onModel={setModel}
+          effort={effort}
+          onEffort={setEffort}
+          hint="The OpenAI model that writes the replies."
+        />
 
-        <label>
-          Scene model
-          <input
-            type="text"
-            required
-            value={sceneModel}
-            onChange={(event) => {
-              setSceneModel(event.target.value);
-            }}
-          />
-        </label>
-        <p className="hint">
-          The OpenAI model that reads the latest messages and describes the
-          moment for an illustration. A small, cheap model does it well.
-        </p>
+        <ModelField
+          label="Scene model"
+          levelLabel="Scene thinking level"
+          models={models}
+          model={sceneModel}
+          onModel={setSceneModel}
+          effort={sceneEffort}
+          onEffort={setSceneEffort}
+          hint="The OpenAI model that reads the latest messages and describes the moment for an illustration. A small, cheap model does it well, at a low thinking level."
+        />
 
         <label>
           Illustrate replies by themselves

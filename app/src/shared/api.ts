@@ -192,10 +192,39 @@ export const ILLUSTRATION_MODES = [
 ] as const;
 export type IllustrationMode = (typeof ILLUSTRATION_MODES)[number];
 
+/**
+ * How hard a model thinks before it answers, least first. Each model supports
+ * only some of these; `GET /api/models/:model/reasoning` says which.
+ */
+export const REASONING_EFFORTS = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+] as const;
+export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
+
+/** The models that can write replies, newest first. */
+export interface ModelList {
+  models: string[];
+}
+
+/** The thinking levels a model supports. Empty when it has none to choose. */
+export interface ModelReasoning {
+  efforts: ReasoningEffort[];
+}
+
 export interface Settings {
   model: string;
+  /** The reply model's thinking level, or `null` for the model's own default. */
+  reasoningEffort: ReasoningEffort | null;
   /** The OpenAI model that describes scenes for illustration: a cheap one will do. */
   sceneModel: string;
+  /** The scene model's thinking level, or `null` for the model's own default. */
+  sceneReasoningEffort: ReasoningEffort | null;
   illustrationMode: IllustrationMode;
   /**
    * In Key moments, how many replies must pass after a picture before a
@@ -216,7 +245,10 @@ export interface Settings {
 
 export interface SettingsUpdate {
   model?: string;
+  /** `null` goes back to the model's own default. */
+  reasoningEffort?: ReasoningEffort | null;
   sceneModel?: string;
+  sceneReasoningEffort?: ReasoningEffort | null;
   illustrationMode?: IllustrationMode;
   illustrationCooldown?: number;
   contextTokenBudget?: number;

@@ -6,6 +6,8 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import {
   ILLUSTRATION_MODES,
   type IllustrationMode,
+  REASONING_EFFORTS,
+  type ReasoningEffort,
   type Settings,
   type SettingsUpdate,
   type SpeechScope,
@@ -27,13 +29,19 @@ export const DEFAULT_SPEECH_SCOPE: SpeechScope = 'dialogue';
 
 interface Saved {
   model?: string;
+  reasoningEffort?: ReasoningEffort;
   sceneModel?: string;
+  sceneReasoningEffort?: ReasoningEffort;
   illustrationMode?: IllustrationMode;
   illustrationCooldown?: number;
   contextTokenBudget?: number;
   speechMuted?: boolean;
   speechScope?: SpeechScope;
   openaiApiKey?: string;
+}
+
+function isReasoningEffort(value: unknown): value is ReasoningEffort {
+  return (REASONING_EFFORTS as readonly unknown[]).includes(value);
 }
 
 function load(file: string): Saved {
@@ -46,7 +54,9 @@ function load(file: string): Saved {
     if (typeof saved !== 'object' || saved === null) throw new Error();
     const {
       model,
+      reasoningEffort,
       sceneModel,
+      sceneReasoningEffort,
       illustrationMode,
       illustrationCooldown,
       contextTokenBudget,
@@ -56,7 +66,9 @@ function load(file: string): Saved {
     } = saved;
     return {
       ...(typeof model === 'string' && { model }),
+      ...(isReasoningEffort(reasoningEffort) && { reasoningEffort }),
       ...(typeof sceneModel === 'string' && { sceneModel }),
+      ...(isReasoningEffort(sceneReasoningEffort) && { sceneReasoningEffort }),
       ...((ILLUSTRATION_MODES as readonly unknown[]).includes(
         illustrationMode,
       ) && {
@@ -100,9 +112,19 @@ export class SettingsStore {
     return this.#saved.model ?? DEFAULT_MODEL;
   }
 
+  /** The reply model's thinking level, or `undefined` for its own default. */
+  reasoningEffort(): ReasoningEffort | undefined {
+    return this.#saved.reasoningEffort;
+  }
+
   /** The model that describes scenes for illustrations. */
   sceneModel(): string {
     return this.#saved.sceneModel ?? DEFAULT_SCENE_MODEL;
+  }
+
+  /** The scene model's thinking level, or `undefined` for its own default. */
+  sceneReasoningEffort(): ReasoningEffort | undefined {
+    return this.#saved.sceneReasoningEffort;
   }
 
   /** When replies are illustrated without being asked. */
@@ -129,7 +151,9 @@ export class SettingsStore {
   view(): Settings {
     return {
       model: this.model(),
+      reasoningEffort: this.reasoningEffort() ?? null,
       sceneModel: this.sceneModel(),
+      sceneReasoningEffort: this.sceneReasoningEffort() ?? null,
       illustrationMode: this.illustrationMode(),
       illustrationCooldown: this.illustrationCooldown(),
       contextTokenBudget: this.contextTokenBudget(),
@@ -147,7 +171,15 @@ export class SettingsStore {
   update(update: SettingsUpdate): Settings {
     const next: Saved = { ...this.#saved };
     if (update.model !== undefined) next.model = update.model;
+    if (update.reasoningEffort === null) delete next.reasoningEffort;
+    else if (update.reasoningEffort !== undefined) {
+      next.reasoningEffort = update.reasoningEffort;
+    }
     if (update.sceneModel !== undefined) next.sceneModel = update.sceneModel;
+    if (update.sceneReasoningEffort === null) delete next.sceneReasoningEffort;
+    else if (update.sceneReasoningEffort !== undefined) {
+      next.sceneReasoningEffort = update.sceneReasoningEffort;
+    }
     if (update.illustrationMode !== undefined) {
       next.illustrationMode = update.illustrationMode;
     }

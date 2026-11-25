@@ -3,6 +3,7 @@ import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import { serve } from '@hono/node-server';
 import { createApp } from './app.ts';
+import { ModelCatalog } from './chat/models.ts';
 import { openAIProvider } from './chat/openai.ts';
 import { ReplyService } from './chat/replies.ts';
 import type { AppConfig } from './config.ts';
@@ -41,6 +42,10 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
     baseUrl: config.openai.baseUrl,
     apiKey: () => settings.apiKey(),
   });
+  const models = new ModelCatalog(
+    path.join(config.dataDir, 'reasoning-levels.json'),
+    provider,
+  );
   const replies = new ReplyService(
     chats,
     characters,
@@ -81,6 +86,7 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
     scenarios,
     scenes,
     settings,
+    models,
     replies,
     illustrator,
   });
