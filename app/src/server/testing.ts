@@ -32,6 +32,7 @@ import { CharacterStore } from './store/characters.ts';
 import { ChatStore } from './store/chats.ts';
 import { openDatabase } from './store/database.ts';
 import { MediaStore } from './store/media.ts';
+import { PlayerStore } from './store/players.ts';
 import { ScenarioStore } from './store/scenarios.ts';
 
 /** Headers of a request from the app's own UI. */
@@ -246,6 +247,7 @@ export interface TestApp {
   chats: ChatStore;
   characters: CharacterStore;
   scenarios: ScenarioStore;
+  players: PlayerStore;
   scenes: SceneStore;
   settings: SettingsStore;
   models: ModelCatalog;
@@ -267,6 +269,7 @@ export interface TestApp {
   startChat(pairing?: {
     characterId?: string;
     scenarioId?: string;
+    playerId?: string | null;
   }): Promise<Chat>;
 }
 
@@ -274,7 +277,6 @@ export interface TestApp {
 export const BLANK_SCENARIO: ScenarioInput = {
   title: 'An empty room',
   premise: '',
-  userPersona: { name: '', description: '' },
   openingMessage: '',
   startingLocation: { name: '', description: '' },
 };
@@ -291,6 +293,7 @@ export function testApp(
   const chats = new ChatStore(database);
   const characters = new CharacterStore(database);
   const scenarios = new ScenarioStore(database);
+  const players = new PlayerStore(database);
   const settings = new SettingsStore(
     path.join(directory, 'settings.json'),
     options.environmentApiKey,
@@ -319,6 +322,7 @@ export function testApp(
     chats,
     characters,
     scenarios,
+    players,
     settings,
     provider,
   );
@@ -334,6 +338,7 @@ export function testApp(
     chats,
     characters,
     scenarios,
+    players,
     scenes,
     settings,
     models,
@@ -356,6 +361,7 @@ export function testApp(
     chats,
     characters,
     scenarios,
+    players,
     scenes,
     settings,
     models,
@@ -371,6 +377,7 @@ export function testApp(
       const response = await call('POST', '/api/chats', {
         characterId: pairing.characterId ?? characters.list()[0]?.id,
         scenarioId: pairing.scenarioId ?? scenarios.create(BLANK_SCENARIO).id,
+        playerId: pairing.playerId ?? null,
       });
       if (response.status !== 201) {
         throw new Error(`Starting a chat failed: ${await response.text()}`);

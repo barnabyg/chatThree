@@ -131,6 +131,8 @@ export function startingPlace(scenario: Scenario): Place {
 export interface SceneContext {
   character: Character;
   scenario: Scenario;
+  /** The name of who the user plays, or `undefined` for no one in particular. */
+  playerName: string | undefined;
   /** The conversation up to and including the message to illustrate. */
   messages: readonly Message[];
   /** Where the story is. */
@@ -143,11 +145,12 @@ export interface SceneContext {
 export function sceneRequest({
   character,
   scenario,
+  playerName,
   messages,
   place,
   places,
 }: SceneContext): Omit<StructuredRequest, 'model' | 'signal'> {
-  const userName = scenario.userPersona.name.trim() || 'The user';
+  const userName = (playerName ?? '').trim() || 'The user';
   const instructions = [
     `You describe moments of an illustrated roleplay story as pictures. The story is between ${character.name} and ${userName}.`,
     'Read the latest messages and describe the moment of the last one as a single picture of the character, for a painter who has a reference picture of the character and one of the place.',

@@ -3,6 +3,7 @@ import { characterRoutes } from './api/characters.ts';
 import { chatRoutes } from './api/chats.ts';
 import { engineRoutes } from './api/engine.ts';
 import { modelRoutes } from './api/models.ts';
+import { playerRoutes } from './api/players.ts';
 import { scenarioRoutes } from './api/scenarios.ts';
 import { ApiError } from './api/errors.ts';
 import { settingsRoutes } from './api/settings.ts';
@@ -27,6 +28,7 @@ import { staticFiles } from './staticFiles.ts';
 import type { CharacterStore } from './store/characters.ts';
 import type { ChatStore } from './store/chats.ts';
 import type { MediaStore } from './store/media.ts';
+import type { PlayerStore } from './store/players.ts';
 import type { ScenarioStore } from './store/scenarios.ts';
 import type { SceneStore } from './store/scenes.ts';
 
@@ -41,6 +43,7 @@ export interface AppDependencies {
   chats: ChatStore;
   characters: CharacterStore;
   scenarios: ScenarioStore;
+  players: PlayerStore;
   /** Chats' places and illustrations. */
   scenes: SceneStore;
   settings: SettingsStore;
@@ -61,6 +64,7 @@ export function createApp(dependencies: AppDependencies): Hono {
     chats,
     characters,
     scenarios,
+    players,
     scenes,
     settings,
     models,
@@ -78,6 +82,7 @@ export function createApp(dependencies: AppDependencies): Hono {
       chats,
       characters,
       scenarios,
+      players,
       scenes,
       replies,
       illustrator,
@@ -90,6 +95,7 @@ export function createApp(dependencies: AppDependencies): Hono {
     characterRoutes(characters, replies, media, warmer, jobs, illustrator),
   );
   app.route('/api/scenarios', scenarioRoutes(scenarios, replies, illustrator));
+  app.route('/api/players', playerRoutes(players, replies, illustrator));
   app.route('/api/settings', settingsRoutes(settings));
   app.route('/api/models', modelRoutes(models));
   app.route('/api/speech', speechRoutes(jobs, characters, media));

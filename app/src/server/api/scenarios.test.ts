@@ -5,7 +5,6 @@ import { readReply, replyEvents, type TestApp, testApp } from '../testing.ts';
 const FERRY = {
   title: 'The Night Ferry',
   premise: 'The last ferry of the night is leaving, and it is not empty.',
-  userPersona: { name: 'Wren', description: 'A courier with a sealed letter.' },
   openingMessage: 'You are late. Get aboard.',
   startingLocation: {
     name: 'The river quay',
@@ -67,7 +66,6 @@ describe('creating a scenario', () => {
     expect(created).toMatchObject({
       title: 'A blank page',
       premise: '',
-      userPersona: { name: '', description: '' },
       openingMessage: '',
       startingLocation: { name: '', description: '' },
     });
@@ -95,13 +93,22 @@ test('editing a scenario changes it', async () => {
 
   const response = await app.call('PUT', `/api/scenarios/${created.id}`, {
     ...FERRY,
-    userPersona: { name: 'Wren', description: 'A smuggler, in truth.' },
+    premise: 'The last ferry of the night is leaving, and it is full.',
   });
 
   expect(await response.json()).toMatchObject({
     id: created.id,
-    userPersona: { name: 'Wren', description: 'A smuggler, in truth.' },
+    premise: 'The last ferry of the night is leaving, and it is full.',
   });
+});
+
+test('a scenario no longer takes a part for the user: that is a player', async () => {
+  const response = await testApp().call('POST', '/api/scenarios', {
+    ...FERRY,
+    userPersona: { name: 'Wren', description: 'A courier.' },
+  });
+
+  expect(response.status).toBe(400);
 });
 
 test('an unknown scenario is a 404', async () => {
@@ -113,7 +120,7 @@ test('an unknown scenario is a 404', async () => {
   });
 });
 
-test("a chat's prompt carries its scenario's premise, the user's part and the starting location, after the character", async () => {
+test("a chat's prompt carries its scenario's premise and the starting location, after the character", async () => {
   const app = testApp();
   const chat = await app.startChat({ scenarioId: (await create(app)).id });
 
@@ -128,8 +135,6 @@ test("a chat's prompt carries its scenario's premise, the user's part and the st
     '# Character: Mara Quill',
     '# Scenario: The Night Ferry',
     FERRY.premise,
-    'Wren',
-    FERRY.userPersona.description,
     'The river quay',
     FERRY.startingLocation.description,
   ].map((part) => instructions.indexOf(part));

@@ -16,6 +16,7 @@ import type { SettingsStore } from '../settings.ts';
 import type { CharacterStore } from '../store/characters.ts';
 import type { ChatStore } from '../store/chats.ts';
 import type { MediaStore } from '../store/media.ts';
+import type { PlayerStore } from '../store/players.ts';
 import type { ScenarioStore } from '../store/scenarios.ts';
 import type { SceneStore, StoredLocation } from '../store/scenes.ts';
 import { engineFailure, NOT_PAINTED } from './engineFailures.ts';
@@ -26,6 +27,8 @@ const MAX_MESSAGE_LENGTH = 20_000;
 const newChat = z.strictObject({
   characterId: z.string('Choose a character for the chat.'),
   scenarioId: z.string('Choose a scenario for the chat.'),
+  /** Who the user plays. Left out or `null` for no one. */
+  playerId: z.string().nullable().default(null),
 });
 
 const newMessage = z.strictObject({
@@ -100,6 +103,7 @@ export interface ChatRouteDependencies {
   chats: ChatStore;
   characters: CharacterStore;
   scenarios: ScenarioStore;
+  players: PlayerStore;
   scenes: SceneStore;
   replies: ReplyService;
   illustrator: Illustrator;
@@ -111,6 +115,7 @@ export function chatRoutes({
   chats,
   characters,
   scenarios,
+  players,
   scenes,
   replies,
   illustrator,
@@ -126,7 +131,7 @@ export function chatRoutes({
     return chat;
   };
 
-  const view = ({ id, character, scenario }: ChatSummary): Chat => {
+  const view = ({ id, character, scenario, player }: ChatSummary): Chat => {
     const messages = chats.messages(id);
     const ids = new Set(messages.map((message) => message.id));
     const start = scenarios.find(scenario.id);
@@ -144,6 +149,7 @@ export function chatRoutes({
         imageUrl: characters.find(character.id)?.imageUrl ?? null,
       },
       scenario,
+      player,
       messages,
       location: current,
       locations: scenes.locations(id).map((place) => toLocation(id, place)),
@@ -164,7 +170,7 @@ export function chatRoutes({
   routes.get('/', (c) => c.json(chats.list()));
 
   routes.post('/', async (c) => {
-    const { characterId, scenarioId } = await readBody(c, newChat);
+    const { characterId, scenarioId, playerId } = await readBody(c, newChat);
     if (characters.find(characterId) === undefined) {
       throw new ApiError(400, 'That character does not exist.');
     }
@@ -172,8 +178,18 @@ export function chatRoutes({
     if (scenario === undefined) {
       throw new ApiError(400, 'That scenario does not exist.');
     }
+    if (playerId !== null && players.find(playerId) === undefined) {
+      throw new ApiError(400, 'That player does not exist.');
+    }
     return c.json(
-      view(chats.create(characterId, scenarioId, scenario.openingMessage)),
+      view(
+        chats.create(
+          characterId,
+          scenarioId,
+          scenario.openingMessage,
+          playerId,
+        ),
+      ),
       201,
     );
   });

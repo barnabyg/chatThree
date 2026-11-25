@@ -348,6 +348,7 @@ export class Illustrator {
         ...sceneRequest({
           character,
           scenario,
+          playerName: chat?.player?.name,
           messages: messages.slice(0, upTo + 1),
           place: before,
           places: this.#scenes.locations(chatId),

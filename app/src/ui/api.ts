@@ -7,6 +7,8 @@ import type {
   ChatSummary,
   ModelList,
   ModelReasoning,
+  Player,
+  PlayerInput,
   ReplyEvent,
   Scenario,
   ScenarioInput,
@@ -175,8 +177,13 @@ async function* replyEvents(
 
 export const api = {
   listChats: () => request<ChatSummary[]>('GET', '/api/chats'),
-  createChat: (characterId: string, scenarioId: string) =>
-    request<Chat>('POST', '/api/chats', { characterId, scenarioId }),
+  /** Start a chat, played as `playerId` or, with `null`, as no one. */
+  createChat: (
+    characterId: string,
+    scenarioId: string,
+    playerId: string | null,
+  ) =>
+    request<Chat>('POST', '/api/chats', { characterId, scenarioId, playerId }),
   deleteChat: (id: string) => request<undefined>('DELETE', `/api/chats/${id}`),
   getChat: (id: string) => request<Chat>('GET', `/api/chats/${id}`),
   sendMessage: (chatId: string, content: string) =>
@@ -237,6 +244,14 @@ export const api = {
     request<Scenario>('PUT', `/api/scenarios/${id}`, scenario),
   deleteScenario: (id: string) =>
     request<undefined>('DELETE', `/api/scenarios/${id}`),
+  listPlayers: () => request<Player[]>('GET', '/api/players'),
+  getPlayer: (id: string) => request<Player>('GET', `/api/players/${id}`),
+  createPlayer: (player: PlayerInput) =>
+    request<Player>('POST', '/api/players', player),
+  updatePlayer: (id: string, player: PlayerInput) =>
+    request<Player>('PUT', `/api/players/${id}`, player),
+  deletePlayer: (id: string) =>
+    request<undefined>('DELETE', `/api/players/${id}`),
   getSettings: () => request<Settings>('GET', '/api/settings'),
   updateSettings: (update: SettingsUpdate) =>
     request<Settings>('PUT', '/api/settings', update),

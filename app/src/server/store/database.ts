@@ -5,7 +5,11 @@
 
 import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
-import { BUILT_IN_CHARACTER, BUILT_IN_SCENARIO } from '../chat/builtin.ts';
+import {
+  BUILT_IN_CHARACTER,
+  BUILT_IN_PLAYER,
+  BUILT_IN_SCENARIO,
+} from '../chat/builtin.ts';
 
 export type Db = Database.Database;
 
@@ -109,8 +113,8 @@ const MIGRATIONS: readonly ((db: Db) => void)[] = [
       builtIn,
       BUILT_IN_SCENARIO.title,
       BUILT_IN_SCENARIO.premise,
-      BUILT_IN_SCENARIO.userPersona.name,
-      BUILT_IN_SCENARIO.userPersona.description,
+      BUILT_IN_PLAYER.name,
+      BUILT_IN_PLAYER.background,
       BUILT_IN_SCENARIO.openingMessage,
       BUILT_IN_SCENARIO.startingLocation.name,
       BUILT_IN_SCENARIO.startingLocation.description,
@@ -189,6 +193,64 @@ const MIGRATIONS: readonly ((db: Db) => void)[] = [
       ALTER TABLE messages ADD COLUMN location_id INTEGER
         REFERENCES locations (id) ON DELETE SET NULL;
     `);
+  },
+
+  // 8: players. Who the user plays moves out of scenarios: each scenario's
+  // part (user_name, user_description), unless blank, becomes a player, one
+  // per distinct part, and that scenario's chats are played as it, so their
+  // prompts are unchanged. Those scenario columns are no longer used. A chat
+  // need not have a player; deleting a player deletes its chats.
+  (db) => {
+    db.exec(`
+      CREATE TABLE players (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        background TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      ALTER TABLE chats ADD COLUMN player_id TEXT
+        REFERENCES players (id) ON DELETE CASCADE;
+      CREATE INDEX chats_by_player ON chats (player_id);
+    `);
+    const scenarios = db
+      .prepare<
+        [],
+        {
+          id: string;
+          title: string;
+          user_name: string;
+          user_description: string;
+        }
+      >(
+        'SELECT id, title, user_name, user_description FROM scenarios ORDER BY rowid',
+      )
+      .all();
+    const insert = db.prepare(
+      'INSERT INTO players (id, name, background, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+    );
+    const assign = db.prepare(
+      'UPDATE chats SET player_id = ? WHERE scenario_id = ?',
+    );
+    const made = new Map<string, string>();
+    const now = new Date().toISOString();
+    for (const scenario of scenarios) {
+      const background = scenario.user_description.trim();
+      // A player needs a name; a part with only a description is named
+      // after its scenario.
+      const name =
+        scenario.user_name.trim() ||
+        (background === '' ? '' : `Player in ${scenario.title}`.slice(0, 100));
+      if (name === '') continue;
+      const key = JSON.stringify([name, background]);
+      let id = made.get(key);
+      if (id === undefined) {
+        id = randomUUID();
+        insert.run(id, name, background, now, now);
+        made.set(key, id);
+      }
+      assign.run(id, scenario.id);
+    }
   },
 ];
 

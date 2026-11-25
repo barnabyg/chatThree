@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, errorMessage } from './api.ts';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
 
-/** One character or scenario, as the list shows it. */
+/** One character, scenario or player, as the list shows it. */
 interface Item {
   id: string;
   name: string;
@@ -12,7 +12,7 @@ interface Item {
   imageUrl?: string | null;
 }
 
-/** What differs between the list of characters and the list of scenarios. */
+/** What differs between the lists of characters, scenarios and players. */
 interface Kind {
   heading: string;
   noun: string;
@@ -21,7 +21,10 @@ interface Kind {
   /** The new-chat page's query parameter that preselects one of these. */
   chatParameter: string;
   chatLabel: (name: string) => string;
-  /** How a chat relates to one of these: "with Mara" or "set in The Storm". */
+  /**
+   * How a chat relates to one of these: "with Mara", "set in The Storm" or
+   * "played as Bob".
+   */
   chatsOf: (name: string) => string;
   list: () => Promise<Item[]>;
   remove: (id: string) => Promise<undefined>;
@@ -64,11 +67,28 @@ export const SCENARIOS: Kind = {
   remove: api.deleteScenario,
 };
 
+export const PLAYERS: Kind = {
+  heading: 'Players',
+  noun: 'player',
+  route: '/players',
+  chatParameter: 'player',
+  chatLabel: (name) => `Start a chat as ${name}`,
+  chatsOf: (name) => `played as ${name}`,
+  list: async () =>
+    (await api.listPlayers()).map(({ id, name, background, chatCount }) => ({
+      id,
+      name,
+      excerpt: background,
+      chatCount,
+    })),
+  remove: api.deletePlayer,
+};
+
 function chats(count: number): string {
   return count === 1 ? '1 chat' : `${String(count)} chats`;
 }
 
-/** The user's characters or scenarios, with ways to chat, edit and delete. */
+/** The user's characters, scenarios or players, with ways to chat, edit and delete. */
 export function LibraryPage({ kind }: { kind: Kind }) {
   const [items, setItems] = useState<Item[] | null>(null);
   const [error, setError] = useState<string | null>(null);

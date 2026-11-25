@@ -6,6 +6,7 @@ import { CharacterStore } from './characters.ts';
 import { ChatStore } from './chats.ts';
 import type { ChatSummary } from '../../shared/api.ts';
 import { type Db, openDatabase, SCHEMA_VERSION } from './database.ts';
+import { PlayerStore } from './players.ts';
 import { ScenarioStore } from './scenarios.ts';
 
 function databaseFile(): string {
@@ -266,6 +267,8 @@ test('a chat saved before scenarios existed keeps its own character and conversa
         id: expect.any(String) as string,
         title: 'The Storm at Gull Point',
       },
+      // The built-in scenario's part became a player.
+      player: { id: expect.any(String) as string, name: 'The Traveller' },
       lastActivityAt: '2026-02-01T10:05:00.000Z',
     },
   ]);
@@ -313,6 +316,7 @@ test('a chat saved before characters existed is still readable, with the built-i
         id: expect.any(String) as string,
         title: 'The Storm at Gull Point',
       },
+      player: { id: expect.any(String) as string, name: 'The Traveller' },
       lastActivityAt: '2026-01-01T10:05:00.000Z',
     },
   ]);
@@ -325,4 +329,86 @@ test('a chat saved before characters existed is still readable, with the built-i
   expect(db.prepare('SELECT COUNT(*) AS n FROM messages').get()).toEqual({
     n: 0,
   });
+});
+
+test("each scenario's part for the user becomes a player, once per distinct part, and its chats are played as it", () => {
+  // The tables as schema version 3 wrote them.
+  const file = databaseFile();
+  const old = new Database(file);
+  old.exec(`
+    CREATE TABLE characters (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      persona TEXT NOT NULL DEFAULT '',
+      speaking_style TEXT NOT NULL DEFAULT '',
+      example_dialogue TEXT NOT NULL DEFAULT '',
+      appearance TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE scenarios (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      premise TEXT NOT NULL DEFAULT '',
+      user_name TEXT NOT NULL DEFAULT '',
+      user_description TEXT NOT NULL DEFAULT '',
+      opening_message TEXT NOT NULL DEFAULT '',
+      location_name TEXT NOT NULL DEFAULT '',
+      location_description TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE chats (
+      id TEXT PRIMARY KEY,
+      character_id TEXT NOT NULL REFERENCES characters (id) ON DELETE CASCADE,
+      scenario_id TEXT NOT NULL REFERENCES scenarios (id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      chat_id TEXT NOT NULL REFERENCES chats (id) ON DELETE CASCADE,
+      role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+      content TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    INSERT INTO characters (id, name, created_at, updated_at) VALUES
+      ('tomas', 'Tomas Reed', '2026-03-01T09:00:00.000Z', '2026-03-01T09:00:00.000Z');
+    INSERT INTO scenarios (id, title, user_name, user_description, created_at, updated_at) VALUES
+      ('ferry', 'The Ferry', ' Wren ', 'A courier.', '2026-03-01T09:00:00.000Z', '2026-03-01T09:00:00.000Z'),
+      ('quay', 'The Quay', 'Wren', 'A courier. ', '2026-03-01T09:00:00.000Z', '2026-03-01T09:00:00.000Z'),
+      ('fog', 'The Fog', '', 'Someone lost.', '2026-03-01T09:00:00.000Z', '2026-03-01T09:00:00.000Z'),
+      ('blank', 'Blank', '', ' ', '2026-03-01T09:00:00.000Z', '2026-03-01T09:00:00.000Z');
+    INSERT INTO chats VALUES
+      ('on-ferry', 'tomas', 'ferry', '2026-03-01T10:00:00.000Z', '2026-03-01T10:00:00.000Z'),
+      ('on-quay', 'tomas', 'quay', '2026-03-01T10:00:00.000Z', '2026-03-01T10:00:00.000Z'),
+      ('in-fog', 'tomas', 'fog', '2026-03-01T10:00:00.000Z', '2026-03-01T10:00:00.000Z'),
+      ('nowhere', 'tomas', 'blank', '2026-03-01T10:00:00.000Z', '2026-03-01T10:00:00.000Z');
+    PRAGMA user_version = 3;
+  `);
+  old.close();
+
+  const db = openFile(file);
+  const players = new PlayerStore(db);
+  const chats = new ChatStore(db);
+
+  expect(players.list()).toEqual([
+    {
+      id: expect.any(String) as string,
+      name: 'Player in The Fog',
+      background: 'Someone lost.',
+      chatCount: 1,
+    },
+    {
+      id: expect.any(String) as string,
+      name: 'Wren',
+      background: 'A courier.',
+      chatCount: 2,
+    },
+  ]);
+  const playerOf = (id: string) => chats.find(id)?.player?.name ?? null;
+  expect(playerOf('on-ferry')).toBe('Wren');
+  expect(playerOf('on-quay')).toBe('Wren');
+  expect(playerOf('in-fog')).toBe('Player in The Fog');
+  expect(playerOf('nowhere')).toBeNull();
 });

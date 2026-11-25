@@ -53,8 +53,6 @@ export interface ScenarioInput {
   title: string;
   /** The situation the story starts from. */
   premise: string;
-  /** The part the user plays. */
-  userPersona: { name: string; description: string };
   /** The character's first message in a new chat. Blank for none. */
   openingMessage: string;
   /** Where the story begins. */
@@ -64,6 +62,19 @@ export interface ScenarioInput {
 export interface Scenario extends ScenarioInput {
   id: string;
   /** How many chats are set in this scenario. Deleting it deletes them too. */
+  chatCount: number;
+}
+
+/** Someone the user can play. Only the name is required. */
+export interface PlayerInput {
+  name: string;
+  /** Who they are: history, personality, what they want. */
+  background: string;
+}
+
+export interface Player extends PlayerInput {
+  id: string;
+  /** How many chats this player is in. Deleting it deletes them too. */
   chatCount: number;
 }
 
@@ -114,6 +125,8 @@ export interface Chat {
     imageUrl: string | null;
   };
   scenario: { id: string; title: string };
+  /** Who the user plays, or `null` when the chat has no player. */
+  player: { id: string; name: string } | null;
   /** The whole conversation, oldest first. */
   messages: Message[];
   /** Where the story is now. */
@@ -142,6 +155,8 @@ export interface ChatSummary {
   id: string;
   character: { id: string; name: string };
   scenario: { id: string; title: string };
+  /** Who the user plays, or `null` when the chat has no player. */
+  player: { id: string; name: string } | null;
   /** When a message was last added. */
   lastActivityAt: string;
 }

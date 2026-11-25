@@ -53,23 +53,28 @@ a few tiny requests, and keeps the answer for a month in
 `reasoning-levels.json` in the data directory. If the model list cannot be
 loaded (no key, no network), the model is typed instead.
 
-The app starts with one character, Mara Quill, and one scenario, The Storm at
-Gull Point. A chat pairs a character with a scenario: **New chat** asks for
-both, and the sidebar lists every chat with its character, scenario and last
-activity.
+The app starts with one character, Mara Quill, one scenario, The Storm at
+Gull Point, and one player, The Traveller. A chat pairs a character with a
+scenario, played as one of your players or as no one: **New chat** asks for
+all three, and the sidebar lists every chat with its character, scenario and
+last activity.
 
 - **Characters**: a name, a persona, a speaking style, example dialogue and
   an appearance. The persona, speaking style and example dialogue go into the
   prompt; the appearance is what the character's reference picture is made
   from. A character can also be given a voice of its own: see
   [Speech](#speech).
-- **Scenarios**: a title, a premise, the part you play (a name and a short
-  description), an opening message and a starting location. The opening
-  message becomes the character's first message in a new chat; the rest goes
-  into the prompt after the character.
+- **Scenarios**: a title, a premise, an opening message and a starting
+  location. The opening message becomes the character's first message in a
+  new chat; the rest goes into the prompt after the character.
+- **Players**: who you play, as a name and a background, chosen per chat so
+  the same player can go into any scenario. The player goes into the prompt
+  as the part the user plays. A scenario made before players existed had
+  this part in it; it became a player, and that scenario's chats are played
+  as it.
 
-Both built-ins can be edited or deleted like any other. Deleting a character
-or a scenario deletes the chats that use it, after asking.
+The built-ins can be edited or deleted like any other. Deleting a character,
+scenario or player deletes the chats that use it, after asking.
 
 A long chat is not sent whole. Each turn sends the character and scenario,
 then as much of the conversation as fits a token budget (a setting, 16,000 by

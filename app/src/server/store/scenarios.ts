@@ -6,8 +6,6 @@ interface ScenarioRow {
   id: string;
   title: string;
   premise: string;
-  user_name: string;
-  user_description: string;
   opening_message: string;
   location_name: string;
   location_description: string;
@@ -25,7 +23,6 @@ function toScenario(row: ScenarioRow): Scenario {
     id: row.id,
     title: row.title,
     premise: row.premise,
-    userPersona: { name: row.user_name, description: row.user_description },
     openingMessage: row.opening_message,
     startingLocation: {
       name: row.location_name,
@@ -40,8 +37,6 @@ function columns(input: ScenarioInput): string[] {
   return [
     input.title,
     input.premise,
-    input.userPersona.name,
-    input.userPersona.description,
     input.openingMessage,
     input.startingLocation.name,
     input.startingLocation.description,
@@ -79,9 +74,9 @@ export class ScenarioStore {
     this.#db
       .prepare(
         `INSERT INTO scenarios
-           (title, premise, user_name, user_description, opening_message,
-            location_name, location_description, id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (title, premise, opening_message, location_name,
+            location_description, id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(...columns(input), id, now, now);
     return { ...input, id, chatCount: 0 };
@@ -92,9 +87,8 @@ export class ScenarioStore {
     this.#db
       .prepare(
         `UPDATE scenarios
-         SET title = ?, premise = ?, user_name = ?, user_description = ?,
-             opening_message = ?, location_name = ?, location_description = ?,
-             updated_at = ?
+         SET title = ?, premise = ?, opening_message = ?, location_name = ?,
+             location_description = ?, updated_at = ?
          WHERE id = ?`,
       )
       .run(...columns(input), new Date().toISOString(), id);

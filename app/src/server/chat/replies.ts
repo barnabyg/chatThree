@@ -6,12 +6,14 @@ import type {
   Character,
   ChatSummary,
   Message,
+  Player,
   ReplyEvent,
   Scenario,
 } from '../../shared/api.ts';
 import type { SettingsStore } from '../settings.ts';
 import type { ChatStore } from '../store/chats.ts';
 import type { CharacterStore } from '../store/characters.ts';
+import type { PlayerStore } from '../store/players.ts';
 import type { ScenarioStore } from '../store/scenarios.ts';
 import { buildPrompt } from './prompt.ts';
 import { type ChatProvider, ProviderError, withEffort } from './provider.ts';
@@ -39,6 +41,7 @@ export class ReplyService {
   readonly #chats: ChatStore;
   readonly #characters: CharacterStore;
   readonly #scenarios: ScenarioStore;
+  readonly #players: PlayerStore;
   readonly #settings: SettingsStore;
   readonly #provider: ChatProvider;
   /** One entry per chat that has a reply in progress. */
@@ -51,12 +54,14 @@ export class ReplyService {
     chats: ChatStore,
     characters: CharacterStore,
     scenarios: ScenarioStore,
+    players: PlayerStore,
     settings: SettingsStore,
     provider: ChatProvider,
   ) {
     this.#chats = chats;
     this.#characters = characters;
     this.#scenarios = scenarios;
+    this.#players = players;
     this.#settings = settings;
     this.#provider = provider;
   }
@@ -139,8 +144,8 @@ export class ReplyService {
     }
   }
 
-  /** The character and scenario of `chatId`, as they are now. */
-  #pairing(chatId: string): [Character, Scenario] {
+  /** The character, scenario and player of `chatId`, as they are now. */
+  #pairing(chatId: string): [Character, Scenario, Player | undefined] {
     const chat = this.#chats.find(chatId);
     const character =
       chat === undefined ? undefined : this.#characters.find(chat.character.id);
@@ -149,7 +154,11 @@ export class ReplyService {
     if (character === undefined || scenario === undefined) {
       throw new Error(`Chat ${chatId} has lost its character or scenario.`);
     }
-    return [character, scenario];
+    const player =
+      chat === undefined || chat.player === null
+        ? undefined
+        : this.#players.find(chat.player.id);
+    return [character, scenario, player];
   }
 
   /** Mark `chatId` as replying, or throw `ChatBusyError` if it already is. */

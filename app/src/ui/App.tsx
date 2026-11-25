@@ -3,8 +3,9 @@ import { ChatList } from './ChatList.tsx';
 import { ChatPage } from './ChatPage.tsx';
 import { EngineStatusPanel } from './EngineStatus.tsx';
 import { Home } from './Home.tsx';
-import { CHARACTERS, LibraryPage, SCENARIOS } from './LibraryPage.tsx';
+import { CHARACTERS, LibraryPage, PLAYERS, SCENARIOS } from './LibraryPage.tsx';
 import { NewChatPage } from './NewChatPage.tsx';
+import { PlayerEditor } from './PlayerEditor.tsx';
 import { useRoute } from './router.ts';
 import { ScenarioEditor } from './ScenarioEditor.tsx';
 import { SettingsPage } from './SettingsPage.tsx';
@@ -32,6 +33,7 @@ function Page({ section, id, query }: Route) {
             preselected={{
               characterId: query.get('character') ?? undefined,
               scenarioId: query.get('scenario') ?? undefined,
+              playerId: query.get('player') ?? undefined,
             }}
           />
         );
@@ -51,6 +53,13 @@ function Page({ section, id, query }: Route) {
         <ScenarioEditor key="new" />
       ) : (
         <ScenarioEditor key={id} id={id} />
+      );
+    case 'players':
+      if (id === undefined) return <LibraryPage kind={PLAYERS} />;
+      return id === 'new' ? (
+        <PlayerEditor key="new" />
+      ) : (
+        <PlayerEditor key={id} id={id} />
       );
     case 'settings':
       return <SettingsPage />;
@@ -93,6 +102,9 @@ export function App() {
           </NavLink>
           <NavLink to="/scenarios" current={section === 'scenarios'}>
             Scenarios
+          </NavLink>
+          <NavLink to="/players" current={section === 'players'}>
+            Players
           </NavLink>
           <NavLink to="/settings" current={section === 'settings'}>
             Settings
