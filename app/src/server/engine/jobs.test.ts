@@ -43,7 +43,11 @@ async function engine(
     server.listen(0, '127.0.0.1', resolve);
   });
   const url = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
-  return { jobs: engineJobs({ url: () => url }), received, url };
+  return {
+    jobs: engineJobs({ url: () => url }, { log: () => undefined }),
+    received,
+    url,
+  };
 }
 
 test('speaking sends the text and returns the clip', async () => {
@@ -103,6 +107,30 @@ test('painting sends what to paint and returns the picture', async () => {
 
   expect([...picture]).toEqual([137, 80, 78, 71]);
   expect(received).toEqual([{ path: '/image', body: request }]);
+});
+
+test('painting logs the prompt and how it was asked for', async () => {
+  const lines: string[] = [];
+  const { url } = await engine((response) => {
+    response.writeHead(200, { 'Content-Type': 'image/png' });
+    response.end(Buffer.from([137]));
+  });
+  const jobs = engineJobs(
+    { url: () => url },
+    { log: (line) => lines.push(line) },
+  );
+
+  await jobs.paint({
+    prompt: 'A lighthouse.',
+    width: 768,
+    height: 1024,
+    seed: 7,
+    references: ['C:\\data\\mara.png'],
+  });
+
+  expect(lines).toEqual([
+    '[image] 768x1024, seed 7, C:\\data\\mara.png\nA lighthouse.',
+  ]);
 });
 
 test('an engine that is not ready is unavailable', async () => {
