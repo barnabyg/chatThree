@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { characterRoutes } from './api/characters.ts';
 import { chatRoutes } from './api/chats.ts';
 import { engineRoutes } from './api/engine.ts';
+import { modelRoutes } from './api/models.ts';
 import { scenarioRoutes } from './api/scenarios.ts';
 import { ApiError } from './api/errors.ts';
 import { settingsRoutes } from './api/settings.ts';
@@ -11,6 +12,7 @@ import {
   ChatRequestError,
   type ReplyService,
 } from './chat/replies.ts';
+import type { ModelCatalog } from './chat/models.ts';
 import type { EngineJobs } from './engine/jobs.ts';
 import {
   IllustrationBusyError,
@@ -42,6 +44,8 @@ export interface AppDependencies {
   /** Chats' places and illustrations. */
   scenes: SceneStore;
   settings: SettingsStore;
+  /** The models that can write replies, and their thinking levels. */
+  models: ModelCatalog;
   replies: ReplyService;
   illustrator: Illustrator;
 }
@@ -59,6 +63,7 @@ export function createApp(dependencies: AppDependencies): Hono {
     scenarios,
     scenes,
     settings,
+    models,
     replies,
     illustrator,
   } = dependencies;
@@ -86,6 +91,7 @@ export function createApp(dependencies: AppDependencies): Hono {
   );
   app.route('/api/scenarios', scenarioRoutes(scenarios, replies, illustrator));
   app.route('/api/settings', settingsRoutes(settings));
+  app.route('/api/models', modelRoutes(models));
   app.route('/api/speech', speechRoutes(jobs, characters, media));
   app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));
 

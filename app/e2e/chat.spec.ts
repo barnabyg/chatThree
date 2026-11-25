@@ -200,9 +200,11 @@ test('a refusal is reported in the chat with the reason given', async ({
 
 test('the model is a setting, with a default', async ({ page, openai }) => {
   await page.goto('/#/settings');
-  await expect(page.getByLabel('Model', { exact: true })).not.toHaveValue('');
+  await expect(
+    page.getByRole('combobox', { name: 'Model', exact: true }),
+  ).not.toHaveValue('');
   const defaultModel = await page
-    .getByLabel('Model', { exact: true })
+    .getByRole('combobox', { name: 'Model', exact: true })
     .inputValue();
 
   await openEmptyChat(page);
@@ -210,7 +212,9 @@ test('the model is a setting, with a default', async ({ page, openai }) => {
   await expect(conversation(page)).toContainText('Hello from the fake model.');
 
   await page.getByRole('link', { name: 'Settings' }).click();
-  await page.getByLabel('Model', { exact: true }).fill('another-model');
+  await page
+    .getByRole('combobox', { name: 'Model', exact: true })
+    .selectOption('gpt-5-mini');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(
     page.getByRole('status').getByText('Settings saved.'),
@@ -222,6 +226,6 @@ test('the model is a setting, with a default', async ({ page, openai }) => {
 
   expect(openai.requests.map((request) => request.body.model)).toEqual([
     defaultModel,
-    'another-model',
+    'gpt-5-mini',
   ]);
 });

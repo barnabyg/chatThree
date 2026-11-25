@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { ILLUSTRATION_MODES } from '../../shared/api.ts';
+import { ILLUSTRATION_MODES, REASONING_EFFORTS } from '../../shared/api.ts';
 import { isWellFormedApiKey } from '../apiKey.ts';
 import {
   MAX_ILLUSTRATION_COOLDOWN,
@@ -12,6 +12,14 @@ import { readBody } from './errors.ts';
 const MIN_TOKEN_BUDGET = 100;
 const MAX_TOKEN_BUDGET = 1_000_000;
 
+const reasoningEffort = z
+  .enum(
+    REASONING_EFFORTS,
+    `The thinking level must be one of ${REASONING_EFFORTS.map((effort) => `"${effort}"`).join(', ')}.`,
+  )
+  .nullable()
+  .optional();
+
 const update = z.strictObject({
   model: z
     .string()
@@ -19,12 +27,14 @@ const update = z.strictObject({
     .min(1, 'The model name cannot be empty.')
     .max(200, 'The model name is too long.')
     .optional(),
+  reasoningEffort,
   sceneModel: z
     .string()
     .trim()
     .min(1, 'The scene model name cannot be empty.')
     .max(200, 'The scene model name is too long.')
     .optional(),
+  sceneReasoningEffort: reasoningEffort,
   illustrationMode: z
     .enum(
       ILLUSTRATION_MODES,
@@ -84,7 +94,9 @@ export function settingsRoutes(settings: SettingsStore): Hono {
   routes.put('/', async (c) => {
     const {
       model,
+      reasoningEffort: effort,
       sceneModel,
+      sceneReasoningEffort,
       illustrationMode,
       illustrationCooldown,
       contextTokenBudget,
@@ -95,7 +107,9 @@ export function settingsRoutes(settings: SettingsStore): Hono {
     return c.json(
       settings.update({
         ...(model !== undefined && { model }),
+        ...(effort !== undefined && { reasoningEffort: effort }),
         ...(sceneModel !== undefined && { sceneModel }),
+        ...(sceneReasoningEffort !== undefined && { sceneReasoningEffort }),
         ...(illustrationMode !== undefined && { illustrationMode }),
         ...(illustrationCooldown !== undefined && { illustrationCooldown }),
         ...(contextTokenBudget !== undefined && { contextTokenBudget }),

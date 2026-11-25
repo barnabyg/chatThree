@@ -13,7 +13,9 @@ test('settings start with the default model and say where the key comes from', a
 
   expect(await response.json()).toEqual({
     model: DEFAULT_MODEL,
+    reasoningEffort: null,
     sceneModel: DEFAULT_SCENE_MODEL,
+    sceneReasoningEffort: null,
     illustrationMode: 'key-moments',
     illustrationCooldown: 3,
     contextTokenBudget: DEFAULT_CONTEXT_TOKEN_BUDGET,
@@ -165,4 +167,59 @@ test('the illustration mode and cooldown can be changed, within limits', async (
   expect(badMode.status).toBe(400);
   expect(badCooldown.status).toBe(400);
   expect(app.settings.illustrationMode()).toBe('every-reply');
+});
+
+test('a thinking level can be chosen for each model, and cleared again', async () => {
+  const app = testApp();
+
+  const chosen = await app.call('PUT', '/api/settings', {
+    reasoningEffort: 'high',
+    sceneReasoningEffort: 'minimal',
+  });
+  expect(await chosen.json()).toMatchObject({
+    reasoningEffort: 'high',
+    sceneReasoningEffort: 'minimal',
+  });
+  const cleared = await app.call('PUT', '/api/settings', {
+    reasoningEffort: null,
+  });
+
+  expect(await cleared.json()).toMatchObject({
+    reasoningEffort: null,
+    sceneReasoningEffort: 'minimal',
+  });
+});
+
+test('a thinking level that does not exist is refused with a reason', async () => {
+  const app = testApp();
+
+  const response = await app.call('PUT', '/api/settings', {
+    reasoningEffort: 'enormous',
+  });
+
+  expect(response.status).toBe(400);
+  expect(await response.json()).toEqual({
+    error:
+      'The thinking level must be one of "none", "minimal", "low", "medium", "high", "xhigh", "max".',
+  });
+});
+
+test('replies and scene descriptions are asked for at their chosen thinking levels', async () => {
+  const app = testApp();
+  await app.call('PUT', '/api/settings', {
+    reasoningEffort: 'low',
+    sceneReasoningEffort: 'minimal',
+  });
+  const chat = await app.startChat();
+
+  await (
+    await app.call('POST', `/api/chats/${chat.id}/messages`, {
+      content: 'Hello?',
+    })
+  ).text();
+
+  expect(app.provider.requests[0]?.reasoningEffort).toBe('low');
+  await expect
+    .poll(() => app.provider.structuredRequests[0]?.reasoningEffort)
+    .toBe('minimal');
 });

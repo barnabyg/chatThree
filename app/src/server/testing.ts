@@ -9,14 +9,17 @@ import type {
   Character,
   Chat,
   EngineStatus,
+  ReasoningEffort,
   ReplyEvent,
   ScenarioInput,
 } from '../shared/api.ts';
 import { createApp } from './app.ts';
-import type {
-  ChatProvider,
-  ReplyRequest,
-  StructuredRequest,
+import { ModelCatalog } from './chat/models.ts';
+import {
+  type ChatProvider,
+  ProviderError,
+  type ReplyRequest,
+  type StructuredRequest,
 } from './chat/provider.ts';
 import { Illustrator } from './scene/illustrator.ts';
 import { SceneStore } from './store/scenes.ts';
@@ -165,6 +168,12 @@ export type ScriptedProvider = ChatProvider & {
   structuredRequests: StructuredRequest[];
   /** Queue the answers to the next structured requests. Unscripted ones get `PLAIN_SCENE`. */
   scriptStructured(...answers: ScriptedAnswer[]): void;
+  /** The models listed, newest first. Starts with two. */
+  modelList: string[];
+  /** The thinking levels of each model. A model not here makes the provider fail. */
+  efforts: Map<string, ReasoningEffort[]>;
+  /** Every model whose thinking levels were found out, oldest first. */
+  effortChecks: string[];
 };
 
 function untilAborted(signal: AbortSignal): Promise<never> {
@@ -182,8 +191,26 @@ export function scriptedProvider(): ScriptedProvider {
   const queue: ScriptedReply[] = [];
   const structuredRequests: StructuredRequest[] = [];
   const answers: ScriptedAnswer[] = [];
+  const efforts = new Map<string, ReasoningEffort[]>([
+    ['gpt-5.5', ['none', 'low', 'medium', 'high', 'xhigh']],
+    ['gpt-4.1', []],
+  ]);
+  const effortChecks: string[] = [];
   return {
     requests,
+    modelList: ['gpt-5.5', 'gpt-4.1'],
+    efforts,
+    effortChecks,
+    models() {
+      return Promise.resolve([...this.modelList]);
+    },
+    reasoningEfforts(model) {
+      effortChecks.push(model);
+      const known = efforts.get(model);
+      return known === undefined
+        ? Promise.reject(new ProviderError(`No model called ${model}.`))
+        : Promise.resolve(known);
+    },
     script(...replies) {
       queue.push(...replies);
     },
@@ -221,6 +248,7 @@ export interface TestApp {
   scenarios: ScenarioStore;
   scenes: SceneStore;
   settings: SettingsStore;
+  models: ModelCatalog;
   /** Where the app keeps its files. */
   dataDir: string;
   /** Send a JSON request as the app's own UI would. */
@@ -283,6 +311,10 @@ export function testApp(
     jobs,
     media,
   });
+  const models = new ModelCatalog(
+    path.join(directory, 'reasoning-levels.json'),
+    provider,
+  );
   const replies = new ReplyService(
     chats,
     characters,
@@ -304,6 +336,7 @@ export function testApp(
     scenarios,
     scenes,
     settings,
+    models,
     replies,
     illustrator,
   });
@@ -325,6 +358,7 @@ export function testApp(
     scenarios,
     scenes,
     settings,
+    models,
     dataDir,
     call,
     upload: async (method, url, file) =>

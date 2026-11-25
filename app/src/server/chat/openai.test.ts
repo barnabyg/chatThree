@@ -4,7 +4,8 @@ import {
   type FakeOpenAI,
   startFakeOpenAI,
 } from '../../../test-support/fake-openai.ts';
-import { openAIProvider } from './openai.ts';
+import { REASONING_EFFORTS } from '../../shared/api.ts';
+import { isChatModel, openAIProvider, supportedEfforts } from './openai.ts';
 import {
   ProviderError,
   type ReplyRequest,
@@ -281,5 +282,113 @@ describe('structured answers', () => {
     );
 
     expect(message).toBe('OpenAI sent back an answer that is not JSON.');
+  });
+});
+
+test('sends the thinking level when one is chosen', async () => {
+  await collect(
+    provider().streamReply(
+      request({ model: 'gpt-5.5', reasoningEffort: 'high' }),
+    ),
+  );
+
+  expect(openai.requests[0]?.body).toMatchObject({
+    model: 'gpt-5.5',
+    reasoning: { effort: 'high' },
+  });
+});
+
+test('leaves the thinking level to the model when none is chosen', async () => {
+  await collect(provider().streamReply(request()));
+
+  expect(openai.requests[0]?.body).not.toHaveProperty('reasoning');
+});
+
+describe('models', () => {
+  test('lists only the models that can chat, newest first, without dated snapshots', async () => {
+    expect(await provider().models()).toEqual([
+      'gpt-5.5',
+      'gpt-5-mini',
+      'gpt-4.1',
+    ]);
+  });
+
+  test.each([
+    ['gpt-6.2-sol', true],
+    ['o3', true],
+    ['chat-latest', true],
+    ['gpt-5.5-pro', true],
+    ['gpt-5.5-2026-04-23', false],
+    ['gpt-image-2', false],
+    ['chatgpt-image-latest', false],
+    ['gpt-4o-mini-tts', false],
+    ['gpt-realtime-2', false],
+    ['gpt-4o-transcribe', false],
+    ['gpt-5-search-api', false],
+    ['gpt-5.3-codex', false],
+    ['gpt-live-1', false],
+    ['gpt-6.1-sol-healthcare', false],
+    ['omni-moderation-latest', false],
+    ['text-embedding-3-large', false],
+    ['whisper-1', false],
+  ])('%s is a chat model: %s', (id, chat) => {
+    expect(isChatModel(id)).toBe(chat);
+  });
+
+  test('says the key was rejected when listing models with a bad key', async () => {
+    await expect(provider('sk-wrong').models()).rejects.toThrow(
+      'OpenAI rejected the API key. Check the key in Settings.',
+    );
+  });
+});
+
+describe('thinking levels', () => {
+  test('are read from the refusal of a level the model does not take', async () => {
+    expect(await provider().reasoningEfforts('gpt-5.5')).toEqual([
+      'none',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+    ]);
+    // `minimal` was refused at once.
+    expect(openai.plainRequests).toHaveLength(1);
+  });
+
+  test('try the next level when the model takes the first', async () => {
+    expect(await provider().reasoningEfforts('gpt-5-mini')).toEqual([
+      'minimal',
+      'low',
+      'medium',
+      'high',
+    ]);
+    expect(
+      openai.plainRequests.map(
+        (body) => (body.reasoning as { effort: string }).effort,
+      ),
+    ).toEqual(['minimal', 'max']);
+    expect(openai.plainRequests[0]).toMatchObject({
+      max_output_tokens: 16,
+      store: false,
+    });
+  });
+
+  test('are none for a model that does not think', async () => {
+    expect(await provider().reasoningEfforts('gpt-4.1')).toEqual([]);
+  });
+
+  test('are all of them for a model that takes every level', async () => {
+    expect(await provider().reasoningEfforts('some-future-model')).toEqual(
+      REASONING_EFFORTS,
+    );
+    expect(openai.plainRequests).toHaveLength(REASONING_EFFORTS.length);
+  });
+
+  test('are read from a refusal that names a single level', () => {
+    expect(
+      supportedEfforts(
+        "Unsupported value: 'low' is not supported with the 'chat-latest' model. Supported values are: 'medium'.",
+      ),
+    ).toEqual(['medium']);
   });
 });

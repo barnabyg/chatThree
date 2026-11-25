@@ -18,7 +18,9 @@ test('with nothing saved, the model is the default and the key comes from the en
 
   expect(settings.view()).toEqual({
     model: DEFAULT_MODEL,
+    reasoningEffort: null,
     sceneModel: DEFAULT_SCENE_MODEL,
+    sceneReasoningEffort: null,
     illustrationMode: 'key-moments',
     illustrationCooldown: 3,
     contextTokenBudget: DEFAULT_CONTEXT_TOKEN_BUDGET,
