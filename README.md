@@ -39,7 +39,10 @@ app ends the engine's whole process tree.
 
 ## Chat
 
-Replies come from OpenAI, so chat needs an OpenAI API key. Either set
+Replies come from the **text backend**, chosen in **Settings > Connection**:
+OpenAI, the default, or a local model served by
+[KoboldCpp](#local-text-with-koboldcpp). With OpenAI, chat needs an OpenAI
+API key. Either set
 `OPENAI_API_KEY` before starting the app, or paste a key into **Settings**. A
 key saved in Settings is used in place of the environment variable, is sent
 only to the OpenAI API, and is never shown again.
@@ -93,7 +96,7 @@ Chats and settings are kept on this computer, outside the repository:
 | File | Holds |
 |---|---|
 | `%LOCALAPPDATA%\chatThree\chatthree.db` | Chats and messages (SQLite) |
-| `%LOCALAPPDATA%\chatThree\settings.json` | The models, the speech settings and a saved API key |
+| `%LOCALAPPDATA%\chatThree\settings.json` | The text backend, the models, the speech settings and a saved API key |
 | `%LOCALAPPDATA%\chatThree\voices\` | The characters' voice clips |
 | `%LOCALAPPDATA%\chatThree\images\` | The characters' reference pictures |
 | `%LOCALAPPDATA%\chatThree\scenes\` | Illustrations of chats |
@@ -125,6 +128,32 @@ the picture is held until **Save character** and saved with it. Generating
 needs a saved character.
 If a picture is uploaded while another is being generated, the uploaded one
 is kept.
+
+## Local text with KoboldCpp
+
+With **Text backend** set to **KoboldCpp**, the replies and the scene call are
+written by the model loaded in KoboldCpp, usually on another PC on your
+network, so the engine keeps this PC's VRAM for pictures and voices. No OpenAI
+key is needed, and the OpenAI key is never sent to KoboldCpp.
+
+- **Server address**: where KoboldCpp listens, such as
+  `http://192.168.1.50:5001`. The app adds the paths itself. Start KoboldCpp
+  with `--host 0.0.0.0` so that other PCs can reach it, and use the PC's IPv4
+  address: a `.local` name can resolve to an IPv6 address KoboldCpp does not
+  listen on.
+- **Test connection** shows the loaded model and its context length, or why
+  KoboldCpp could not be reached.
+- **Loaded model**: the model KoboldCpp has loaded, read-only. The app asks
+  KoboldCpp at startup, when the connection settings are saved or tested, and
+  after a failed request. To use another model, load it in KoboldCpp and save
+  or test the connection. The OpenAI model and scene model settings are hidden
+  and kept for when OpenAI is chosen again.
+
+KoboldCpp applies the model's chat template; the app sends the instructions as
+a system message, then the conversation. A password (`--password`) is not
+supported: start KoboldCpp without one. Chats cross the network unencrypted
+over plain HTTP. The choice takes effect on the next request, without a
+restart; settings saved before the choice existed load as OpenAI.
 
 ## Illustrations
 
@@ -433,6 +462,33 @@ picture (see the checks above).
    `no-such-model` and save. Send a message. Expect the reply as usual, no
    picture, and in the terminal running the app a line saying the scene
    call after a reply failed. Put the scene model back.
+
+## Manual check: replies from KoboldCpp
+
+Needs KoboldCpp running on another PC on the network with a model loaded, for
+example `koboldcpp.exe --model <file>.gguf --host 0.0.0.0 --port 5001
+--contextsize 8192`, and its IPv4 address (`ipconfig` on that PC).
+
+1. Start the app: `cd C:\docs\git\chatThree; pwsh ./start.ps1`
+2. Open **Settings > Connection**, set **Text backend** to **KoboldCpp** and
+   expect the OpenAI key and model fields to go. Enter the server address,
+   such as `http://192.168.1.50:5001`, and choose **Test connection**. Expect
+   **Connected.** with the model's name, such as
+   `koboldcpp/gemma-4-31B-it-Q4_K_S`, and its context length, and the name in
+   **Loaded model**. Choose **Save**.
+3. Choose **New chat**, then **Start chat**, and send
+   `Is it always this rough out here?`. Expect a reply from the local model,
+   streamed and spoken as it arrives (the first token may take several
+   seconds while KoboldCpp reads the prompt). With a thinking model, expect
+   no thoughts in the reply.
+4. Send another message and choose **Stop** part-way through the reply.
+   Expect the reply to stop and what was written to stay. Then choose
+   **Regenerate**, and **Delete** on the last message: both work as with
+   OpenAI.
+5. Stop KoboldCpp, and send a message. Expect an error that says it could not
+   reach KoboldCpp at the address you entered, not OpenAI.
+6. Set **Text backend** back to **OpenAI** and save. Expect the next reply
+   from OpenAI, without restarting the app.
 
 ## Check it
 

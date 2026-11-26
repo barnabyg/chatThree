@@ -14,6 +14,8 @@ import type {
   ScenarioInput,
 } from '../shared/api.ts';
 import { createApp } from './app.ts';
+import { backendProvider } from './chat/backend.ts';
+import { koboldCppProvider, type KoboldCppProvider } from './chat/koboldcpp.ts';
 import { ModelCatalog } from './chat/models.ts';
 import {
   type ChatProvider,
@@ -243,7 +245,10 @@ export function scriptedProvider(): ScriptedProvider {
 
 export interface TestApp {
   app: Hono;
+  /** Writes the text while the backend is OpenAI. */
   provider: ScriptedProvider;
+  /** Writes the text while the backend is KoboldCpp: a real provider, at the saved address. */
+  koboldcpp: KoboldCppProvider;
   jobs: FakeJobs;
   chats: ChatStore;
   characters: CharacterStore;
@@ -303,6 +308,13 @@ export function testApp(
     options.environmentApiKey,
   );
   const provider = scriptedProvider();
+  const koboldcpp = koboldCppProvider({
+    address: () => settings.koboldcppAddress(),
+  });
+  const backend = backendProvider(() => settings.textBackend(), {
+    openai: provider,
+    koboldcpp,
+  });
   const jobs = fakeJobs();
   const engine = options.engine ?? stubEngine({ state: 'ready' });
   const dataDir = path.join(directory, 'data');
@@ -314,13 +326,13 @@ export function testApp(
     scenarios,
     scenes,
     settings,
-    provider,
+    provider: backend,
     jobs,
     media,
   });
   const models = new ModelCatalog(
     path.join(directory, 'reasoning-levels.json'),
-    provider,
+    backend,
   );
   const replies = new ReplyService(
     chats,
@@ -329,7 +341,7 @@ export function testApp(
     players,
     replyPrompts,
     settings,
-    provider,
+    backend,
   );
   replies.onReplySaved((chatId, message) => {
     illustrator.afterReply(chatId, message.id);
@@ -348,6 +360,7 @@ export function testApp(
     scenes,
     settings,
     models,
+    koboldcpp,
     replies,
     illustrator,
   });
@@ -363,6 +376,7 @@ export function testApp(
   return {
     app,
     provider,
+    koboldcpp,
     jobs,
     chats,
     characters,

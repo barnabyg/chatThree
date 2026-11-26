@@ -12,6 +12,8 @@ test('settings start with the default model and say where the key comes from', a
   const response = await app.call('GET', '/api/settings');
 
   expect(await response.json()).toEqual({
+    textBackend: 'openai',
+    koboldcppAddress: '',
     model: DEFAULT_MODEL,
     reasoningEffort: null,
     sceneModel: DEFAULT_SCENE_MODEL,

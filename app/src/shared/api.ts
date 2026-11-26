@@ -245,6 +245,21 @@ export const REASONING_EFFORTS = [
 ] as const;
 export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 
+/**
+ * The service that writes all of the app's text: the replies and the scene
+ * call. OpenAI, or a local model served by KoboldCpp.
+ */
+export const TEXT_BACKENDS = ['openai', 'koboldcpp'] as const;
+export type TextBackend = (typeof TEXT_BACKENDS)[number];
+
+/** The model KoboldCpp has loaded, as a connection test finds it. */
+export interface KoboldCppStatus {
+  /** The model's id, such as `koboldcpp/gemma-4-31B-it-Q4_K_S`. */
+  model: string;
+  /** The context length KoboldCpp was started with, in tokens. */
+  contextLength: number;
+}
+
 /** The models that can write replies, newest first. */
 export interface ModelList {
   models: string[];
@@ -256,6 +271,13 @@ export interface ModelReasoning {
 }
 
 export interface Settings {
+  /** Who writes the replies and the scene call. */
+  textBackend: TextBackend;
+  /**
+   * KoboldCpp's address, such as `http://192.168.1.50:5001`, or `''` when
+   * none has been saved.
+   */
+  koboldcppAddress: string;
   model: string;
   /** The reply model's thinking level, or `null` for the model's own default. */
   reasoningEffort: ReasoningEffort | null;
@@ -284,6 +306,8 @@ export interface Settings {
 }
 
 export interface SettingsUpdate {
+  textBackend?: TextBackend;
+  koboldcppAddress?: string;
   model?: string;
   /** `null` goes back to the model's own default. */
   reasoningEffort?: ReasoningEffort | null;

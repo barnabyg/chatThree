@@ -3,6 +3,8 @@ import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import { serve } from '@hono/node-server';
 import { createApp } from './app.ts';
+import { backendProvider } from './chat/backend.ts';
+import { koboldCppProvider } from './chat/koboldcpp.ts';
 import { ModelCatalog } from './chat/models.ts';
 import { openAIProvider } from './chat/openai.ts';
 import { ReplyService } from './chat/replies.ts';
@@ -42,10 +44,22 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
     config.openai.apiKey,
   );
   const scenes = new SceneStore(database);
-  const provider = openAIProvider({
-    baseUrl: config.openai.baseUrl,
-    apiKey: () => settings.apiKey(),
+  const koboldcpp = koboldCppProvider({
+    address: () => settings.koboldcppAddress(),
   });
+  // Only OpenAI is given the OpenAI key; KoboldCpp is given no key at all.
+  const provider = backendProvider(() => settings.textBackend(), {
+    openai: openAIProvider({
+      baseUrl: config.openai.baseUrl,
+      apiKey: () => settings.apiKey(),
+    }),
+    koboldcpp,
+  });
+  if (settings.textBackend() === 'koboldcpp') {
+    // Found out now so the first reply need not wait for it. A failure is
+    // reported by the first request instead.
+    koboldcpp.loadedModel().catch(() => undefined);
+  }
   const models = new ModelCatalog(
     path.join(config.dataDir, 'reasoning-levels.json'),
     provider,
@@ -95,6 +109,7 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
     scenes,
     settings,
     models,
+    koboldcpp,
     replies,
     illustrator,
   });
