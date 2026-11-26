@@ -31,9 +31,11 @@ test('a reply prompt written in Settings can be chosen for a chat, whose instruc
 
   await page.getByRole('link', { name: 'New chat' }).click();
   await expect(
-    page.getByLabel('Reply prompt').locator('option:checked'),
+    page.getByLabel('Reply prompt', { exact: true }).locator('option:checked'),
   ).toHaveText('Default');
-  await page.getByLabel('Reply prompt').selectOption({ label: 'Narrator' });
+  await page
+    .getByLabel('Reply prompt', { exact: true })
+    .selectOption({ label: 'Narrator' });
   await expect(page.getByRole('main')).toContainText('Narrate in the third');
   await page.getByRole('button', { name: 'Start chat' }).click();
 
@@ -64,7 +66,9 @@ test('deleting a reply prompt asks first, and keeps its chats on the default', a
   await page.getByLabel('Prompt').fill('Answer in one line.');
   await page.getByRole('button', { name: 'Save reply prompt' }).click();
   await page.getByRole('link', { name: 'New chat' }).click();
-  await page.getByLabel('Reply prompt').selectOption({ label: 'Terse' });
+  await page
+    .getByLabel('Reply prompt', { exact: true })
+    .selectOption({ label: 'Terse' });
   await page.getByRole('button', { name: 'Start chat' }).click();
   await expect(page.getByRole('main')).toContainText('Reply prompt: Terse');
 
