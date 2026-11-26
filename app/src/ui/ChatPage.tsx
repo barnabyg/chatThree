@@ -80,6 +80,22 @@ function MessageItem({
   );
 }
 
+/** Which text backend writes the replies, as the saved settings say. */
+function textBackendLine({
+  textBackend,
+  model,
+  koboldcppAddress,
+}: Settings): string {
+  if (textBackend === 'openai') return `Text: OpenAI · ${model}`;
+  let where = koboldcppAddress;
+  try {
+    where = new URL(koboldcppAddress).host;
+  } catch {
+    // An address that is not a URL is shown as it was saved.
+  }
+  return where === '' ? 'Text: KoboldCpp' : `Text: KoboldCpp · ${where}`;
+}
+
 export function ChatPage({ chatId }: { chatId: string }) {
   const [chat, setChat] = useState<Chat | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -354,6 +370,9 @@ export function ChatPage({ chatId }: { chatId: string }) {
           {chat.player !== null && <p>Playing as {chat.player.name}</p>}
           {chat.replyPrompt !== null && (
             <p>Reply prompt: {chat.replyPrompt.name}</p>
+          )}
+          {settings !== null && (
+            <p data-testid="text-backend">{textBackendLine(settings)}</p>
           )}
           <p className="chat-location" data-testid="current-location">
             At {chat.location.name}

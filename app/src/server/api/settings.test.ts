@@ -22,6 +22,7 @@ test('settings start with the default model and say where the key comes from', a
     illustrationCooldown: 3,
     imageStyle: 'realistic',
     contextTokenBudget: DEFAULT_CONTEXT_TOKEN_BUDGET,
+    replyLengthWords: null,
     speechMuted: false,
     speechScope: 'dialogue',
     apiKey: 'environment',
@@ -241,4 +242,29 @@ test('the image style can be changed, to a known style only', async () => {
     error: 'The image style must be "realistic" or "illustration".',
   });
   expect(app.settings.imageStyle()).toBe('illustration');
+});
+
+test('a suggested reply length can be set and cleared', async () => {
+  const app = testApp();
+
+  const set = await app.call('PUT', '/api/settings', { replyLengthWords: 80 });
+  expect(await set.json()).toMatchObject({ replyLengthWords: 80 });
+
+  const cleared = await app.call('PUT', '/api/settings', {
+    replyLengthWords: null,
+  });
+  expect(await cleared.json()).toMatchObject({ replyLengthWords: null });
+});
+
+test('a suggested reply length out of range is refused with a reason', async () => {
+  const app = testApp();
+
+  const response = await app.call('PUT', '/api/settings', {
+    replyLengthWords: 3,
+  });
+
+  expect(response.status).toBe(400);
+  expect(await response.json()).toEqual({
+    error: 'The suggested reply length must be at least 10 words.',
+  });
 });

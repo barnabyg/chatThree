@@ -64,6 +64,8 @@ export function SettingsPage({ tab }: { tab: SettingsTab }) {
   const [cooldown, setCooldown] = useState('');
   const [imageStyle, setImageStyle] = useState<ImageStyle>('realistic');
   const [budget, setBudget] = useState('');
+  /** Words, or `''` for no suggested reply length. */
+  const [replyLength, setReplyLength] = useState('');
   const [speak, setSpeak] = useState(true);
   const [speechScope, setSpeechScope] = useState<SpeechScope>('dialogue');
   const [notice, setNotice] = useState<{
@@ -83,6 +85,9 @@ export function SettingsPage({ tab }: { tab: SettingsTab }) {
     setCooldown(String(loaded.illustrationCooldown));
     setImageStyle(loaded.imageStyle);
     setBudget(String(loaded.contextTokenBudget));
+    setReplyLength(
+      loaded.replyLengthWords === null ? '' : String(loaded.replyLengthWords),
+    );
     setSpeak(!loaded.speechMuted);
     setSpeechScope(loaded.speechScope);
     setApiKey('');
@@ -184,6 +189,8 @@ export function SettingsPage({ tab }: { tab: SettingsTab }) {
         illustrationCooldown: Number(cooldown),
         imageStyle,
         contextTokenBudget: Number(budget),
+        replyLengthWords:
+          replyLength.trim() === '' ? null : Number(replyLength),
         speechMuted: !speak,
         speechScope,
         ...(apiKey.trim() !== '' && { apiKey: apiKey.trim() }),
@@ -210,313 +217,346 @@ export function SettingsPage({ tab }: { tab: SettingsTab }) {
       </nav>
       {tab === 'reply-prompts' ? (
         <ReplyPrompts />
-      ) : tab === 'text' ? (
-        settings.textBackend === 'koboldcpp' ? (
-          <ProfileEditor />
-        ) : (
-          <p className="hint">
-            The model profile is for a local model in KoboldCpp. Choose
-            KoboldCpp as the text backend under Connection, and save, to edit
-            it. OpenAI's model is chosen under Connection.
-          </p>
-        )
       ) : (
-        <form className="form" onSubmit={save}>
-          {tab === 'connection' && (
-            <>
-              <label>
-                Text backend
-                <select
-                  value={textBackend}
-                  onChange={(event) => {
-                    setTextBackend(event.target.value as TextBackend);
-                  }}
-                >
-                  <option value="openai">OpenAI</option>
-                  <option value="koboldcpp">KoboldCpp</option>
-                </select>
-              </label>
-              <p className="hint">
-                Who writes the replies and describes scenes for illustrations:
-                OpenAI, or a local model loaded in KoboldCpp, usually on another
-                PC on your network.
-              </p>
-            </>
-          )}
-          {tab === 'connection' && local && (
-            <>
-              <label>
-                Server address
-                <input
-                  type="text"
-                  required
-                  placeholder="http://192.168.1.50:5001"
-                  value={koboldAddress}
-                  onChange={(event) => {
-                    setKoboldAddress(event.target.value);
-                    setKoboldCheck(undefined);
-                  }}
-                />
-              </label>
-              <p className="hint">
-                Where KoboldCpp is listening, such as http://192.168.1.50:5001.
-                chatThree adds the paths itself. Use the PC’s IPv4 address: a
-                .local name may not work. Nothing else is sent to KoboldCpp, and
-                never the OpenAI key.
-              </p>
-              <div className="form-actions">
-                <button
-                  type="button"
-                  disabled={
-                    koboldAddress.trim() === '' ||
-                    koboldCheck?.state === 'checking'
-                  }
-                  onClick={testConnection}
-                >
-                  Test connection
-                </button>
-              </div>
-              {koboldCheck?.state === 'checking' && (
-                <p className="hint" role="status">
-                  Connecting…
-                </p>
-              )}
-              {koboldCheck?.state === 'found' && (
-                <p className="hint" role="status">
-                  Connected. {koboldCheck.status.model} is loaded, with a
-                  context of{' '}
-                  {koboldCheck.status.contextLength.toLocaleString('en')}{' '}
-                  tokens.
-                </p>
-              )}
-              {koboldCheck?.state === 'failed' && (
-                <p className="form-error" role="alert">
-                  {koboldCheck.reason}
-                </p>
-              )}
-
-              <label>
-                Loaded model
-                <input
-                  type="text"
-                  readOnly
-                  value={loadedModel ?? ''}
-                  placeholder="Test the connection to see it"
-                />
-              </label>
-              <p className="hint">
-                The model loaded in KoboldCpp writes everything. To use another,
-                load it in KoboldCpp. How much of a conversation is sent follows
-                its context length, less room for the reply and the character's
-                instructions.
-              </p>
-            </>
-          )}
-          {tab === 'connection' && !local && (
-            <>
-              <label>
-                OpenAI API key
-                <input
-                  type="password"
-                  autoComplete="off"
-                  placeholder={
-                    settings.apiKey === 'saved'
-                      ? 'Replace the saved key'
-                      : 'sk-…'
-                  }
-                  value={apiKey}
-                  onChange={(event) => {
-                    setApiKey(event.target.value);
-                  }}
-                />
-              </label>
-              <p className="hint" data-testid="key-source">
-                {KEY_SOURCE[settings.apiKey]}
-              </p>
-              <p className="hint">
-                A key saved here is kept on this computer, outside the chatThree
-                folder, and is used in place of OPENAI_API_KEY. It is sent only
-                to OpenAI and is never shown again.
-              </p>
-
-              <ModelField
-                label="Model"
-                levelLabel="Thinking level"
-                models={openAIModels}
-                model={model}
-                onModel={setModel}
-                effort={effort}
-                onEffort={setEffort}
-                hint="The OpenAI model that writes the replies."
-              />
-            </>
-          )}
-          {tab === 'connection' && !local && (
-            <>
-              <label>
-                Conversation budget (tokens)
-                <input
-                  type="number"
-                  required
-                  min={100}
-                  step={1}
-                  value={budget}
-                  onChange={(event) => {
-                    setBudget(event.target.value);
-                  }}
-                />
-              </label>
-              <p className="hint">
-                How much of a conversation is sent to the model each turn,
-                counted back from the newest message. Older messages stay in the
-                chat but are no longer sent. The count is an estimate of four
-                characters per token.
-              </p>
-            </>
-          )}
-          {tab === 'images' && (
-            <>
-              {!local && (
-                <ModelField
-                  label="Scene model"
-                  levelLabel="Scene thinking level"
-                  models={openAIModels}
-                  model={sceneModel}
-                  onModel={setSceneModel}
-                  effort={sceneEffort}
-                  onEffort={setSceneEffort}
-                  hint="The OpenAI model that reads the latest messages and describes the moment for an illustration. A small, cheap model does it well, at a low thinking level."
-                />
-              )}
-              {local && (
+        <>
+          <form className="form" onSubmit={save}>
+            {tab === 'text' && (
+              <>
+                <label>
+                  Suggested reply length (words)
+                  <input
+                    type="number"
+                    min={10}
+                    max={2000}
+                    step={1}
+                    placeholder="No suggestion"
+                    value={replyLength}
+                    onChange={(event) => {
+                      setReplyLength(event.target.value);
+                    }}
+                  />
+                </label>
                 <p className="hint">
-                  Scenes are described by the model loaded in KoboldCpp.
+                  About how long each reply should be. The model is asked to
+                  keep to it, with either backend, but may run over. Leave it
+                  blank to let the model choose.
+                  {settings.textBackend === 'koboldcpp' &&
+                    ' The profile’s reply length below is the hard limit, in tokens.'}
                 </p>
-              )}
-
-              <label>
-                Illustrate replies by themselves
-                <select
-                  value={illustrationMode}
-                  onChange={(event) => {
-                    setIllustrationMode(event.target.value as IllustrationMode);
-                  }}
-                >
-                  <option value="off">Off</option>
-                  <option value="scene-changes">Scene changes only</option>
-                  <option value="key-moments">Key moments</option>
-                  <option value="every-reply">Every reply</option>
-                </select>
-              </label>
-              <p className="hint">
-                After each reply the scene model reads it, follows the story to
-                where it is, and says whether the moment is worth a picture.
-                Scene changes only paints one when the story moves somewhere;
-                Key moments also paints moments worth it, once the cooldown
-                below has passed. Off paints nothing by itself, but still
-                follows the story. Illustrate works in every mode.
-              </p>
-
-              <label>
-                Cooldown (replies)
-                <input
-                  type="number"
-                  required
-                  min={1}
-                  max={100}
-                  step={1}
-                  value={cooldown}
-                  onChange={(event) => {
-                    setCooldown(event.target.value);
-                  }}
-                />
-              </label>
-              <p className="hint">
-                In Key moments, how many replies must pass after a picture
-                before another moment worth one is painted. A move is painted at
-                once.
-              </p>
-
-              <label>
-                Picture style
-                <select
-                  value={imageStyle}
-                  onChange={(event) => {
-                    setImageStyle(event.target.value as ImageStyle);
-                  }}
-                >
-                  <option value="realistic">Realistic</option>
-                  <option value="illustration">Illustration</option>
-                </select>
-              </label>
-              <p className="hint">
-                How illustrations and places are painted: like photographs, or
-                as painted illustrations. Pictures already painted keep their
-                style; a place painted in the other style still pulls its scenes
-                towards it until you generate it again.
-              </p>
-            </>
-          )}
-          {tab === 'speech' && (
-            <>
-              <label className="toggle">
-                <input
-                  type="checkbox"
-                  checked={speak}
-                  onChange={(event) => {
-                    setSpeak(event.target.checked);
-                  }}
-                />
-                Speak replies aloud
-              </label>
-              <p className="hint">
-                Replies are spoken by the engine as they arrive, a sentence at a
-                time. This can also be switched in a chat.
-              </p>
-
-              <label>
-                What is spoken
-                <select
-                  value={speechScope}
-                  onChange={(event) => {
-                    setSpeechScope(event.target.value as SpeechScope);
-                  }}
-                >
-                  <option value="dialogue">Only what the character says</option>
-                  <option value="everything">The whole reply</option>
-                </select>
-              </label>
-              <p className="hint">
-                What the character says is the text in quotation marks. In a
-                reply that has none, it is everything outside *asterisks*.
-                Formatting marks are never spoken.
-              </p>
-            </>
-          )}
-          <div className="form-actions">
-            <button type="submit" className="primary">
-              Save
-            </button>
-            {tab === 'connection' && !local && settings.apiKey === 'saved' && (
-              <button
-                type="button"
-                onClick={() => {
-                  update({ apiKey: null }, 'The saved key was forgotten.');
-                }}
-              >
-                Forget saved key
-              </button>
+              </>
             )}
-          </div>
-          {notice !== null && (
-            <p
-              role={notice.kind}
-              className={notice.kind === 'alert' ? 'form-error' : 'hint'}
-            >
-              {notice.text}
-            </p>
-          )}
-        </form>
+            {tab === 'connection' && (
+              <>
+                <label>
+                  Text backend
+                  <select
+                    value={textBackend}
+                    onChange={(event) => {
+                      setTextBackend(event.target.value as TextBackend);
+                    }}
+                  >
+                    <option value="openai">OpenAI</option>
+                    <option value="koboldcpp">KoboldCpp</option>
+                  </select>
+                </label>
+                <p className="hint">
+                  Who writes the replies and describes scenes for illustrations:
+                  OpenAI, or a local model loaded in KoboldCpp, usually on
+                  another PC on your network.
+                </p>
+              </>
+            )}
+            {tab === 'connection' && local && (
+              <>
+                <label>
+                  Server address
+                  <input
+                    type="text"
+                    required
+                    placeholder="http://192.168.1.50:5001"
+                    value={koboldAddress}
+                    onChange={(event) => {
+                      setKoboldAddress(event.target.value);
+                      setKoboldCheck(undefined);
+                    }}
+                  />
+                </label>
+                <p className="hint">
+                  Where KoboldCpp is listening, such as
+                  http://192.168.1.50:5001. chatThree adds the paths itself. Use
+                  the PC’s IPv4 address: a .local name may not work. Nothing
+                  else is sent to KoboldCpp, and never the OpenAI key.
+                </p>
+                <div className="form-actions">
+                  <button
+                    type="button"
+                    disabled={
+                      koboldAddress.trim() === '' ||
+                      koboldCheck?.state === 'checking'
+                    }
+                    onClick={testConnection}
+                  >
+                    Test connection
+                  </button>
+                </div>
+                {koboldCheck?.state === 'checking' && (
+                  <p className="hint" role="status">
+                    Connecting…
+                  </p>
+                )}
+                {koboldCheck?.state === 'found' && (
+                  <p className="hint" role="status">
+                    Connected. {koboldCheck.status.model} is loaded, with a
+                    context of{' '}
+                    {koboldCheck.status.contextLength.toLocaleString('en')}{' '}
+                    tokens.
+                  </p>
+                )}
+                {koboldCheck?.state === 'failed' && (
+                  <p className="form-error" role="alert">
+                    {koboldCheck.reason}
+                  </p>
+                )}
+
+                <label>
+                  Loaded model
+                  <input
+                    type="text"
+                    readOnly
+                    value={loadedModel ?? ''}
+                    placeholder="Test the connection to see it"
+                  />
+                </label>
+                <p className="hint">
+                  The model loaded in KoboldCpp writes everything. To use
+                  another, load it in KoboldCpp. How much of a conversation is
+                  sent follows its context length, less room for the reply and
+                  the character's instructions.
+                </p>
+              </>
+            )}
+            {tab === 'connection' && !local && (
+              <>
+                <label>
+                  OpenAI API key
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    placeholder={
+                      settings.apiKey === 'saved'
+                        ? 'Replace the saved key'
+                        : 'sk-…'
+                    }
+                    value={apiKey}
+                    onChange={(event) => {
+                      setApiKey(event.target.value);
+                    }}
+                  />
+                </label>
+                <p className="hint" data-testid="key-source">
+                  {KEY_SOURCE[settings.apiKey]}
+                </p>
+                <p className="hint">
+                  A key saved here is kept on this computer, outside the
+                  chatThree folder, and is used in place of OPENAI_API_KEY. It
+                  is sent only to OpenAI and is never shown again.
+                </p>
+
+                <ModelField
+                  label="Model"
+                  levelLabel="Thinking level"
+                  models={openAIModels}
+                  model={model}
+                  onModel={setModel}
+                  effort={effort}
+                  onEffort={setEffort}
+                  hint="The OpenAI model that writes the replies."
+                />
+              </>
+            )}
+            {tab === 'connection' && !local && (
+              <>
+                <label>
+                  Conversation budget (tokens)
+                  <input
+                    type="number"
+                    required
+                    min={100}
+                    step={1}
+                    value={budget}
+                    onChange={(event) => {
+                      setBudget(event.target.value);
+                    }}
+                  />
+                </label>
+                <p className="hint">
+                  How much of a conversation is sent to the model each turn,
+                  counted back from the newest message. Older messages stay in
+                  the chat but are no longer sent. The count is an estimate of
+                  four characters per token.
+                </p>
+              </>
+            )}
+            {tab === 'images' && (
+              <>
+                {!local && (
+                  <ModelField
+                    label="Scene model"
+                    levelLabel="Scene thinking level"
+                    models={openAIModels}
+                    model={sceneModel}
+                    onModel={setSceneModel}
+                    effort={sceneEffort}
+                    onEffort={setSceneEffort}
+                    hint="The OpenAI model that reads the latest messages and describes the moment for an illustration. A small, cheap model does it well, at a low thinking level."
+                  />
+                )}
+                {local && (
+                  <p className="hint">
+                    Scenes are described by the model loaded in KoboldCpp.
+                  </p>
+                )}
+
+                <label>
+                  Illustrate replies by themselves
+                  <select
+                    value={illustrationMode}
+                    onChange={(event) => {
+                      setIllustrationMode(
+                        event.target.value as IllustrationMode,
+                      );
+                    }}
+                  >
+                    <option value="off">Off</option>
+                    <option value="scene-changes">Scene changes only</option>
+                    <option value="key-moments">Key moments</option>
+                    <option value="every-reply">Every reply</option>
+                  </select>
+                </label>
+                <p className="hint">
+                  After each reply the scene model reads it, follows the story
+                  to where it is, and says whether the moment is worth a
+                  picture. Scene changes only paints one when the story moves
+                  somewhere; Key moments also paints moments worth it, once the
+                  cooldown below has passed. Off paints nothing by itself, but
+                  still follows the story. Illustrate works in every mode.
+                </p>
+
+                <label>
+                  Cooldown (replies)
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    max={100}
+                    step={1}
+                    value={cooldown}
+                    onChange={(event) => {
+                      setCooldown(event.target.value);
+                    }}
+                  />
+                </label>
+                <p className="hint">
+                  In Key moments, how many replies must pass after a picture
+                  before another moment worth one is painted. A move is painted
+                  at once.
+                </p>
+
+                <label>
+                  Picture style
+                  <select
+                    value={imageStyle}
+                    onChange={(event) => {
+                      setImageStyle(event.target.value as ImageStyle);
+                    }}
+                  >
+                    <option value="realistic">Realistic</option>
+                    <option value="illustration">Illustration</option>
+                  </select>
+                </label>
+                <p className="hint">
+                  How illustrations and places are painted: like photographs, or
+                  as painted illustrations. Pictures already painted keep their
+                  style; a place painted in the other style still pulls its
+                  scenes towards it until you generate it again.
+                </p>
+              </>
+            )}
+            {tab === 'speech' && (
+              <>
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={speak}
+                    onChange={(event) => {
+                      setSpeak(event.target.checked);
+                    }}
+                  />
+                  Speak replies aloud
+                </label>
+                <p className="hint">
+                  Replies are spoken by the engine as they arrive, a sentence at
+                  a time. This can also be switched in a chat.
+                </p>
+
+                <label>
+                  What is spoken
+                  <select
+                    value={speechScope}
+                    onChange={(event) => {
+                      setSpeechScope(event.target.value as SpeechScope);
+                    }}
+                  >
+                    <option value="dialogue">
+                      Only what the character says
+                    </option>
+                    <option value="everything">The whole reply</option>
+                  </select>
+                </label>
+                <p className="hint">
+                  What the character says is the text in quotation marks. In a
+                  reply that has none, it is everything outside *asterisks*.
+                  Formatting marks are never spoken.
+                </p>
+              </>
+            )}
+            <div className="form-actions">
+              <button type="submit" className="primary">
+                Save
+              </button>
+              {tab === 'connection' &&
+                !local &&
+                settings.apiKey === 'saved' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      update({ apiKey: null }, 'The saved key was forgotten.');
+                    }}
+                  >
+                    Forget saved key
+                  </button>
+                )}
+            </div>
+            {notice !== null && (
+              <p
+                role={notice.kind}
+                className={notice.kind === 'alert' ? 'form-error' : 'hint'}
+              >
+                {notice.text}
+              </p>
+            )}
+          </form>
+          {tab === 'text' &&
+            (settings.textBackend === 'koboldcpp' ? (
+              <ProfileEditor />
+            ) : (
+              <p className="hint">
+                The model profile is for a local model in KoboldCpp. Choose
+                KoboldCpp as the text backend under Connection, and save, to
+                edit it. OpenAI's model is chosen under Connection.
+              </p>
+            ))}
+        </>
       )}
     </div>
   );

@@ -229,3 +229,32 @@ test('the model is a setting, with a default', async ({ page, openai }) => {
     'gpt-5-mini',
   ]);
 });
+
+test('the chat header says which text backend writes the replies', async ({
+  page,
+}) => {
+  await openEmptyChat(page);
+  await expect(page.getByTestId('text-backend')).toHaveText(
+    'Text: OpenAI · gpt-5.5',
+  );
+});
+
+test('a suggested reply length set in Settings is sent to the model', async ({
+  page,
+  openai,
+}) => {
+  await page.goto('/#/settings/text');
+  await page.getByLabel('Suggested reply length (words)').fill('90');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(
+    page.getByRole('status').getByText('Settings saved.'),
+  ).toBeVisible();
+
+  await openEmptyChat(page);
+  await send(page, 'Hello?');
+  await expect(conversation(page)).toContainText('Hello from the fake model.');
+
+  expect(openai.requests.at(-1)?.body.instructions).toMatch(
+    /Keep each reply to about 90 words\.$/,
+  );
+});

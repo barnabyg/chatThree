@@ -279,3 +279,17 @@ test("the loaded model's profile is edited under Settings > Text, and the next r
     page.getByRole('button', { name: 'Reset Temperature', exact: true }),
   ).toHaveCount(0);
 });
+
+test('with KoboldCpp as the text backend, the chat header names it and its address', async ({
+  page,
+  kobold,
+}) => {
+  const saved = await page.request.put('/api/settings', {
+    data: { textBackend: 'koboldcpp', koboldcppAddress: kobold.address },
+  });
+  expect(saved.ok()).toBe(true);
+  await openEmptyChat(page);
+  await expect(page.getByTestId('text-backend')).toHaveText(
+    `Text: KoboldCpp · ${new URL(kobold.address).host}`,
+  );
+});

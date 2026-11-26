@@ -31,3 +31,9 @@ Terms as they are used in chatThree's code, issues and docs.
 **Scene call**
 : The structured request that reads the latest messages and describes the
   moment as a picture, and says where the story is. Made by the text backend.
+
+**Suggested reply length**
+: About how many words a reply should be, set in Settings > Text and told to
+  the model at the end of the reply instructions, with either text backend. A
+  suggestion the model may run over; not the model profile's reply length,
+  which is KoboldCpp's hard limit in tokens.

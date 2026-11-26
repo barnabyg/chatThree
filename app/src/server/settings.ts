@@ -28,6 +28,9 @@ export const DEFAULT_ILLUSTRATION_MODE: IllustrationMode = 'key-moments';
 export const DEFAULT_ILLUSTRATION_COOLDOWN = 3;
 export const MIN_ILLUSTRATION_COOLDOWN = 1;
 export const MAX_ILLUSTRATION_COOLDOWN = 100;
+/** The bounds of a suggested reply length, in words. */
+export const MIN_REPLY_LENGTH_WORDS = 10;
+export const MAX_REPLY_LENGTH_WORDS = 2_000;
 /** Scenes and places look like photographs unless the user asks for paint. */
 export const DEFAULT_IMAGE_STYLE: ImageStyle = 'realistic';
 /** Narration is skipped unless the user asks for it. */
@@ -44,6 +47,7 @@ interface Saved {
   illustrationCooldown?: number;
   imageStyle?: ImageStyle;
   contextTokenBudget?: number;
+  replyLengthWords?: number;
   speechMuted?: boolean;
   speechScope?: SpeechScope;
   openaiApiKey?: string;
@@ -72,6 +76,7 @@ function load(file: string): Saved {
       illustrationCooldown,
       imageStyle,
       contextTokenBudget,
+      replyLengthWords,
       speechMuted,
       speechScope,
       openaiApiKey,
@@ -101,6 +106,12 @@ function load(file: string): Saved {
         imageStyle: imageStyle as ImageStyle,
       }),
       ...(typeof contextTokenBudget === 'number' && { contextTokenBudget }),
+      // A hand-edited length outside what Settings allows is ignored.
+      ...(Number.isInteger(replyLengthWords) &&
+        (replyLengthWords as number) >= MIN_REPLY_LENGTH_WORDS &&
+        (replyLengthWords as number) <= MAX_REPLY_LENGTH_WORDS && {
+          replyLengthWords: replyLengthWords as number,
+        }),
       ...(typeof speechMuted === 'boolean' && { speechMuted }),
       ...((speechScope === 'dialogue' || speechScope === 'everything') && {
         speechScope,
@@ -177,6 +188,11 @@ export class SettingsStore {
     return this.#saved.contextTokenBudget ?? DEFAULT_CONTEXT_TOKEN_BUDGET;
   }
 
+  /** About how many words a reply should be, or `undefined` for no suggestion. */
+  replyLengthWords(): number | undefined {
+    return this.#saved.replyLengthWords;
+  }
+
   /** The key to use: the saved one if there is one, else the environment's. */
   apiKey(): string | undefined {
     return this.#saved.openaiApiKey ?? this.#environmentApiKey;
@@ -195,6 +211,7 @@ export class SettingsStore {
       illustrationCooldown: this.illustrationCooldown(),
       imageStyle: this.imageStyle(),
       contextTokenBudget: this.contextTokenBudget(),
+      replyLengthWords: this.replyLengthWords() ?? null,
       speechMuted: this.#saved.speechMuted ?? false,
       speechScope: this.#saved.speechScope ?? DEFAULT_SPEECH_SCOPE,
       apiKey:
@@ -231,6 +248,10 @@ export class SettingsStore {
     if (update.imageStyle !== undefined) next.imageStyle = update.imageStyle;
     if (update.contextTokenBudget !== undefined) {
       next.contextTokenBudget = update.contextTokenBudget;
+    }
+    if (update.replyLengthWords === null) delete next.replyLengthWords;
+    else if (update.replyLengthWords !== undefined) {
+      next.replyLengthWords = update.replyLengthWords;
     }
     if (update.speechMuted !== undefined) next.speechMuted = update.speechMuted;
     if (update.speechScope !== undefined) next.speechScope = update.speechScope;

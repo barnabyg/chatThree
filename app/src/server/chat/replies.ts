@@ -17,7 +17,7 @@ import type { CharacterStore } from '../store/characters.ts';
 import type { PlayerStore } from '../store/players.ts';
 import type { ReplyPromptStore } from '../store/replyPrompts.ts';
 import type { ScenarioStore } from '../store/scenarios.ts';
-import { buildInstructions, buildPrompt } from './prompt.ts';
+import { buildInstructions, buildPrompt, withReplyLength } from './prompt.ts';
 import { type ChatProvider, ProviderError, withEffort } from './provider.ts';
 import type { ConversationWindow } from './window.ts';
 
@@ -184,7 +184,15 @@ export class ReplyService {
       chat === undefined || chat.replyPrompt === null
         ? undefined
         : this.#replyPrompts.find(chat.replyPrompt.id)?.prompt;
-    return [character, scenario, player, replyPrompt ?? DEFAULT_REPLY_PROMPT];
+    return [
+      character,
+      scenario,
+      player,
+      withReplyLength(
+        replyPrompt ?? DEFAULT_REPLY_PROMPT,
+        this.#settings.replyLengthWords(),
+      ),
+    ];
   }
 
   /** Mark `chatId` as replying, or throw `ChatBusyError` if it already is. */
