@@ -169,8 +169,8 @@ and the GGUF file's name), ignoring case and the quantisation suffix such as
 
 | Preset | Matches ids with | Notes |
 |---|---|---|
-| DeepSeek R1 distill | `deepseek-r1` | Instructions in the first user message, not a system message; thinking stripped |
-| Qwen3 | `qwen3` | Thinking stripped; more reply tokens, as thinking counts against them |
+| DeepSeek R1 distill | `deepseek-r1` | Instructions in the first user message, not a system message; a thinking model, given more reply tokens |
+| Qwen3 | `qwen3` | A thinking model, given more reply tokens, as thinking counts against them |
 | Mistral | `mistral` or `nemo` | |
 | Gemma | `gemma` | |
 | Llama 3 | `llama-3`, `llama3` | |
@@ -180,13 +180,13 @@ Each profile has these fields:
 
 | Field | Use |
 |---|---|
-| `contextLength` | The context length to plan for; `null` means what KoboldCpp reports |
+| `contextLength` | The context length to plan for; `null` means what KoboldCpp reports. Not used yet: the conversation budget will come from it |
 | `maxReplyTokens` | `max_tokens` on replies |
 | `temperature`, `top_p`, `top_k`, `min_p`, `rep_pen`, `rep_pen_range` | Samplers on replies |
 | `sceneTemperature` | The temperature of the scene call, low by default |
 | `stop` | Stop sequences on replies. `{user}` and `{character}` are filled in as in reply prompts. By default the reply stops where the model starts a line with your player's name and a colon |
 | `systemRole` | `system`, or `merge-into-first-user` for a chat template without a system role |
-| `thinking` | `{"mode": "none"}`, or `{"mode": "strip", "open": "<think>", "close": "</think>"}` |
+| `thinking` | `{"mode": "none"}`, or `{"mode": "strip", "open": "<think>", "close": "</think>"}`. Not used yet: for now a thinking model's thoughts are always left out of replies (KoboldCpp sends them apart), and `<think>…</think>` is always removed from the scene call's answer |
 | `extraBody` | A JSON object merged into every request, for KoboldCpp fields the app does not know about. It cannot change the model, the messages, streaming or the response format |
 
 To change a field for one model, put it in `local-models.json` in the data

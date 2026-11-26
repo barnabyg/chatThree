@@ -88,6 +88,8 @@ const GENERIC_PRESET: Preset = {
  * The presets, first match first. Values follow each family's published
  * recommendations, leaning towards roleplay where they leave room. A thinking
  * model gets more reply tokens, because its thinking counts against them.
+ * DeepSeek R1 comes first, so that a distill named after its base model
+ * (`DeepSeek-R1-Distill-Qwen-…`) gets the DeepSeek preset.
  */
 export const PRESETS: readonly Preset[] = [
   {

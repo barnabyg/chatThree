@@ -60,11 +60,7 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
     }),
     koboldcpp,
   });
-  if (settings.textBackend() === 'koboldcpp') {
-    // Found out now so the first reply need not wait for it. A failure is
-    // reported by the first request instead.
-    koboldcpp.loadedModel().catch(() => undefined);
-  }
+  if (settings.textBackend() === 'koboldcpp') koboldcpp.refresh();
   const models = new ModelCatalog(
     path.join(config.dataDir, 'reasoning-levels.json'),
     provider,

@@ -64,6 +64,11 @@ export interface KoboldCppProvider extends ChatProvider {
   check(address: string): Promise<LoadedModel>;
   /** Forget the loaded model, so that the next request finds it out again. */
   forget(): void;
+  /**
+   * Forget the loaded model, and find it out again now so that the next
+   * request need not wait. A failure is reported by that request instead.
+   */
+  refresh(): void;
 }
 
 /**
@@ -370,6 +375,7 @@ export function koboldCppProvider(
     const described = `${instructions}\n\n${describeSchema(schema)}`;
     const asked = `${described}\n\nAnswer with only the JSON object: no other text before or after it.`;
     const conversation: PromptMessage[] = [{ role: 'user', content: input }];
+    const address = savedAddress();
     let constrained = true;
     let retried = false;
     for (;;) {
@@ -416,7 +422,7 @@ export function koboldCppProvider(
       const wrong = errors.join('; ');
       if (retried) {
         throw new ProviderError(
-          `KoboldCpp at ${options.address()} answered in a form chatThree could not use (${wrong}). Try again.`,
+          `KoboldCpp at ${address} answered in a form chatThree could not use (${wrong}). Try again.`,
         );
       }
       retried = true;
@@ -442,6 +448,11 @@ export function koboldCppProvider(
 
     forget() {
       loaded = undefined;
+    },
+
+    refresh() {
+      loaded = undefined;
+      if (options.address() !== '') loadedModel().catch(() => undefined);
     },
 
     // The model and thinking level asked for are OpenAI's settings: KoboldCpp

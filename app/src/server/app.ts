@@ -112,10 +112,8 @@ export function createApp(dependencies: AppDependencies): Hono {
     '/api/settings',
     settingsRoutes(settings, () => {
       // The address may have changed: find out again what is loaded there.
-      koboldcpp.forget();
-      if (settings.textBackend() === 'koboldcpp') {
-        koboldcpp.loadedModel().catch(() => undefined);
-      }
+      if (settings.textBackend() === 'koboldcpp') koboldcpp.refresh();
+      else koboldcpp.forget();
     }),
   );
   app.route('/api/koboldcpp', koboldCppRoutes(koboldcpp));
