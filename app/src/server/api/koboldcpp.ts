@@ -6,7 +6,12 @@ import {
   type KoboldCppProvider,
   type LoadedModel,
 } from '../chat/koboldcpp.ts';
-import { type ModelProfiles, PRESETS, ProfileError } from '../chat/profiles.ts';
+import {
+  type ModelProfiles,
+  PRESETS,
+  ProfileError,
+  ProfileFileError,
+} from '../chat/profiles.ts';
 import { ProviderError } from '../chat/provider.ts';
 import { ApiError, readBody } from './errors.ts';
 
@@ -61,7 +66,9 @@ export function koboldCppRoutes(
       if (error instanceof ProfileError) {
         throw new ApiError(400, error.message, error.field);
       }
-      if (error instanceof Error) throw new ApiError(409, error.message);
+      if (error instanceof ProfileFileError) {
+        throw new ApiError(409, error.message);
+      }
       throw error;
     }
   };

@@ -210,6 +210,9 @@ const FIELDS: { [K in ProfileField]: z.ZodType<ModelProfile[K]> } = {
 /** The name of the preset the user chose by hand, saved among a model's overrides. */
 const PRESET_FIELD = 'preset';
 
+/** A profiles file that is not fit to be changed: it is left as it is. */
+export class ProfileFileError extends Error {}
+
 /** An edit to a profile that is refused, naming the field at fault. */
 export class ProfileError extends Error {
   readonly field: string;
@@ -372,7 +375,7 @@ export class ModelProfiles {
       try {
         parsed = JSON.parse(readFileSync(this.#file, 'utf8'));
       } catch {
-        throw new Error(
+        throw new ProfileFileError(
           `${this.#file} is not valid JSON, so it was not changed. Fix or remove it, then try again.`,
         );
       }
@@ -381,7 +384,7 @@ export class ModelProfiles {
         parsed === null ||
         Array.isArray(parsed)
       ) {
-        throw new Error(
+        throw new ProfileFileError(
           `${this.#file} is not an object of model ids, so it was not changed. Fix or remove it, then try again.`,
         );
       }

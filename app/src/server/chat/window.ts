@@ -20,6 +20,11 @@ import { countNotSent, notSentInBlocks } from './trim.ts';
 export const MESSAGE_FRAMING_TOKENS = 10;
 /** Tokens kept free for what the counts miss, such as the template's own text. */
 export const SAFETY_MARGIN_TOKENS = 64;
+/**
+ * The share of the context kept free instead, when any text is estimated:
+ * three characters a token undercounts some languages and emoji.
+ */
+export const ESTIMATED_MARGIN_SHARE = 0.1;
 /** The cautious estimate for a text KoboldCpp has not counted. */
 const CAUTIOUS_CHARACTERS_PER_TOKEN = 3;
 /** The start of the window moves at least this share of the budget at a time. */
@@ -91,13 +96,22 @@ export function conversationWindow(options: WindowOptions): ConversationWindow {
       }
       forModel(model.id);
       const profile = options.koboldcpp.profileOf(model.id);
+      const context = profile.contextLength ?? model.contextLength;
+      const estimated =
+        !counts.has(instructions) ||
+        conversation.some(({ content }) => !counts.has(content));
+      const margin = estimated
+        ? Math.max(SAFETY_MARGIN_TOKENS, context * ESTIMATED_MARGIN_SHARE)
+        : SAFETY_MARGIN_TOKENS;
       const budget = Math.max(
         0,
-        (profile.contextLength ?? model.contextLength) -
-          profile.maxReplyTokens -
-          tokens(instructions) -
-          MESSAGE_FRAMING_TOKENS -
-          SAFETY_MARGIN_TOKENS,
+        Math.floor(
+          context -
+            profile.maxReplyTokens -
+            tokens(instructions) -
+            MESSAGE_FRAMING_TOKENS -
+            margin,
+        ),
       );
       return notSentInBlocks(
         conversation.map(

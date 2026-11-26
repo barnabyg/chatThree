@@ -1,6 +1,7 @@
 import {
   FAKE_KOBOLDCPP_MODEL,
   KOBOLD_SCENE,
+  type KoboldBehaviour,
 } from '../test-support/fake-koboldcpp.ts';
 import { expect, test } from './fixtures.ts';
 import {
@@ -122,45 +123,63 @@ test('with KoboldCpp as the text backend, a message is illustrated from its desc
   expect(scenes.at(-1)?.body.prompt).toContain('Mara lights the great lamp.');
 });
 
-test("a thinking model's thoughts are never shown, saved or spoken, and Thinking… shows while it thinks", async ({
-  page,
-  app,
-  kobold,
-}) => {
-  const saved = await page.request.put('/api/settings', {
-    data: { textBackend: 'koboldcpp', koboldcppAddress: kobold.address },
-  });
-  expect(saved.ok()).toBe(true);
-  kobold.load('koboldcpp/Qwen3.8-27B-Uncensored-Q4_K_M');
-  kobold.respondWith({
-    kind: 'reply',
-    chunks: [
-      '<think>The traveller',
-      ' is cold. "Go away."</think>',
-      '\n\n"Come in.',
-      ' Sit by the stove."',
-    ],
-    holdAfter: 2,
-  });
-  await openEmptyChat(page);
-  await engineReady(page);
-  await send(page, 'Hello? Is anyone there?');
+const THINKING_REPLIES: [string, KoboldBehaviour][] = [
+  [
+    'sent apart, as KoboldCpp does',
+    {
+      kind: 'reply',
+      reasoning: ['The traveller', ' is cold. "Go away."'],
+      chunks: ['\n\n"Come in.', ' Sit by the stove."'],
+      holdAfter: 0,
+    },
+  ],
+  [
+    'between tags in the reply',
+    {
+      kind: 'reply',
+      chunks: [
+        '<think>The traveller',
+        ' is cold. "Go away."</think>',
+        '\n\n"Come in.',
+        ' Sit by the stove."',
+      ],
+      holdAfter: 2,
+    },
+  ],
+];
 
-  await expect(messages(page).last()).toHaveText(/Mara Quill\s*Thinking…/);
-  kobold.release();
+for (const [how, reply] of THINKING_REPLIES) {
+  test(`a thinking model's thoughts ${how} are never shown, saved or spoken, and Thinking… shows while it thinks`, async ({
+    page,
+    app,
+    kobold,
+  }) => {
+    const saved = await page.request.put('/api/settings', {
+      data: { textBackend: 'koboldcpp', koboldcppAddress: kobold.address },
+    });
+    expect(saved.ok()).toBe(true);
+    kobold.load('koboldcpp/Qwen3.8-27B-Uncensored-Q4_K_M');
+    kobold.respondWith(reply);
+    await openEmptyChat(page);
+    await engineReady(page);
+    await send(page, 'Hello? Is anyone there?');
 
-  await expect(messages(page)).toHaveText([
-    /Hello\? Is anyone there\?/,
-    /^Mara Quill\s*"Come in\. Sit by the stove\."(Illustrate)?$/,
-  ]);
-  await expect
-    .poll(() => app.spoken())
-    .toEqual(['Come in.', 'Sit by the stove.']);
-  await page.reload();
-  await expect(messages(page).last()).toHaveText(
-    /^Mara Quill\s*"Come in\. Sit by the stove\."(Illustrate)?$/,
-  );
-});
+    await expect(messages(page).last()).toHaveText(/Mara Quill\s*Thinking…/);
+    kobold.release();
+
+    await expect(messages(page)).toHaveText([
+      /Hello\? Is anyone there\?/,
+      /^Mara Quill\s*"Come in\. Sit by the stove\."(Illustrate)?$/,
+    ]);
+    await expect
+      .poll(() => app.spoken())
+      .toEqual(['Come in.', 'Sit by the stove.']);
+    await page.reload();
+    await expect(messages(page).last()).toHaveText(
+      /^Mara Quill\s*"Come in\. Sit by the stove\."(Illustrate)?$/,
+    );
+  });
+}
 
 test('closing the app during a reply from KoboldCpp stops KoboldCpp generating', async ({
   page,
@@ -182,7 +201,11 @@ test('closing the app during a reply from KoboldCpp stops KoboldCpp generating',
 
   await app.stop();
 
-  expect(kobold.aborts).toBe(1);
+  // Once more if the scene call after the stopped reply had begun.
+  expect(kobold.aborts).toBeGreaterThanOrEqual(1);
+  expect(kobold.structuredRequests.length).toBeLessThanOrEqual(
+    kobold.aborts - 1,
+  );
   expect(kobold.requests[0]?.abandoned).toBe(true);
 });
 

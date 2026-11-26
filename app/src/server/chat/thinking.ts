@@ -18,11 +18,21 @@ type State =
   | 'inside'
   /**
    * No open tag at the start, but a close tag may still come, and everything
-   * before it would be thinking: held back until the close tag or the end.
+   * before it would be thinking: held back until the close tag, the end, or
+   * `UNSURE_LIMIT` characters, past which it is taken as the reply.
    */
   | 'unsure'
   /** The reply proper: passed on. */
   | 'reply';
+
+/**
+ * How much of a reply without an open tag is held back in case a close tag
+ * follows (a template that opens the thinking in the prompt). Beyond it, the
+ * reply is taken as one without thinking, so that a model whose profile
+ * strips thinking but which does not think still streams, and is spoken, as
+ * it arrives, after a short wait.
+ */
+export const UNSURE_LIMIT = 1500;
 
 /** The longest end of `text` that `tag` begins with: a tag that may be split. */
 function partialTag(text: string, tag: string): number {
@@ -96,7 +106,6 @@ export class ThinkingFilter {
         if (text === '' || thinking.open.startsWith(text)) return '';
         // Thinking that came apart is over: what remains is the reply.
         this.#state = this.#dropLead ? 'reply' : 'unsure';
-        if (this.#state === 'unsure') this.#thought = true;
         continue;
       }
       if (this.#state === 'inside' || this.#state === 'unsure') {
@@ -106,9 +115,13 @@ export class ThinkingFilter {
             this.#held = this.#held.slice(
               this.#held.length - partialTag(this.#held, thinking.close),
             );
+          } else if (this.#held.length > UNSURE_LIMIT) {
+            this.#state = 'reply';
+            continue;
           }
           return '';
         }
+        this.#thought = true;
         this.#held = this.#held.slice(close + thinking.close.length);
         this.#state = 'reply';
         this.#dropLead = true;

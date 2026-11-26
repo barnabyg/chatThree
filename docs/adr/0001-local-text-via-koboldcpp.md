@@ -52,5 +52,15 @@ first (issue #33).
   and a long prompt can take tens of seconds before the first token. No
   timeout shorter than Node's five minutes is set, and a stream is always read
   to its end or aborted.
+- Because it works on one request at a time, stopping a request also asks
+  KoboldCpp to abort (`POST /api/extra/abort`, no `genkey`), but only when no
+  other request is waiting, since an abort stops whichever generation is
+  running. A reply comes first: the scene call the app makes by itself after
+  a reply is given up when the next reply starts. Shutting down aborts every
+  generation in progress.
+- How much of a conversation is sent follows the loaded model's context
+  length, counted by KoboldCpp's own tokeniser (`/api/extra/tokencount`). The
+  start of what is sent moves a block at a time, so that KoboldCpp can reuse
+  its prompt cache between moves.
 - KoboldCpp sends plain HTTP on the LAN: what is said in chats crosses the
   network unencrypted.

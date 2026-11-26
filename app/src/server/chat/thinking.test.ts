@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { ThinkingFilter, stripThinking } from './thinking.ts';
+import { ThinkingFilter, stripThinking, UNSURE_LIMIT } from './thinking.ts';
 
 const TAGS = { mode: 'strip', open: '<think>', close: '</think>' } as const;
 
@@ -49,11 +49,17 @@ describe('a model that thinks between tags', () => {
     }
   });
 
-  test('passes on a reply with no tags at all, once it ends', () => {
+  test('passes on a short reply with no tags at all once it ends, and a long one once it is past the hold', () => {
     expect(run(['Hello', ' there.'])).toEqual({
       text: 'Hello there.',
-      thought: true,
+      thought: false,
     });
+    const filter = new ThinkingFilter(TAGS);
+    const long = 'x'.repeat(UNSURE_LIMIT);
+    expect(filter.push(long)).toBe('');
+    expect(filter.push('y')).toBe(`${long}y`);
+    expect(filter.push(' More.')).toBe(' More.');
+    expect(filter.thinking).toBe(false);
   });
 
   test('treats a reply that is all thinking as empty', () => {

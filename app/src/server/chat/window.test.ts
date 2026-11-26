@@ -5,6 +5,7 @@ import { type ModelProfile, presetFor } from './profiles.ts';
 import { estimateTokens } from './trim.ts';
 import {
   conversationWindow,
+  ESTIMATED_MARGIN_SHARE,
   MESSAGE_FRAMING_TOKENS,
   SAFETY_MARGIN_TOKENS,
 } from './window.ts';
@@ -127,7 +128,7 @@ describe('with KoboldCpp', () => {
     expect(counted).toHaveLength(7);
   });
 
-  test('without token counting, a cautious estimate keeps what is sent within the context', async () => {
+  test('without token counting, a cautious estimate and a tenth of the context to spare keep what is sent within it', async () => {
     const { window } = setUp({ counting: false });
     // 1,000 characters: KoboldCpp would count about 250 tokens.
     const message = { content: 'abcd'.repeat(250) };
@@ -137,7 +138,7 @@ describe('with KoboldCpp', () => {
     const sent = conversation.length - window.notSent('', conversation);
 
     expect(sent * (334 + MESSAGE_FRAMING_TOKENS)).toBeLessThanOrEqual(
-      room(2000, 0),
+      room(2000, 0) - (2000 * ESTIMATED_MARGIN_SHARE - SAFETY_MARGIN_TOKENS),
     );
     expect(sent).toBeGreaterThan(0);
   });

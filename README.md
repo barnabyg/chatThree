@@ -197,8 +197,10 @@ set to `strip`, the app also drops anything between the open and close tags
 (`<think>` and `</think>` by default) at the start of the reply, as it
 arrives, on the server. If the reply has a close tag but no open tag (some
 templates open the thinking in the prompt), everything before the close tag
-is dropped; until a close tag comes, such a reply is held back and shown all
-at once at its end. A reply that is all thinking, cut off by its length limit
+is dropped. So a reply with neither tag is held back until a close tag
+comes, the reply ends, or 1,500 characters have arrived, after which it is
+taken as a reply without thinking and streams as usual: a model given a
+thinking preset that does not think only starts a little later. A reply that is all thinking, cut off by its length limit
 or by **Stop**, counts as empty. With `thinking` set to `none`, the reply is
 passed on unchanged, tags and all.
 
@@ -434,7 +436,8 @@ Everything works without any of these. They are read when the app starts.
   counts four characters as a token, which suits English prose and
   undercounts some other languages. KoboldCpp counts tokens itself; only a
   text it could not count is estimated, at a cautious three characters a
-  token.
+  token, and then a tenth of the context is kept free as well. Text in some
+  scripts (Chinese, Japanese) or full of emoji can still be more than that.
 
 ## Manual check: the engine stops with the app
 

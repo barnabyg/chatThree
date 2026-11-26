@@ -257,6 +257,9 @@ export function koboldCppProvider(
     setAside: boolean;
   }
   const generations = new Set<Generation>();
+  /** The requests in progress that have not been stopped. */
+  const live = (): Generation[] =>
+    [...generations].filter(({ controller }) => !controller.signal.aborted);
   /** Requests to KoboldCpp to abort, still on their way. */
   const aborting = new Set<Promise<void>>();
 
@@ -293,12 +296,11 @@ export function koboldCppProvider(
       setAside: false,
     };
     const onAbort = (): void => {
-      generation.controller.abort();
       // An abort stops whichever generation KoboldCpp is running, so it is
       // sent only when no other request could be the one running.
-      if (generations.size === 1 && generations.has(generation)) {
-        void askToAbort();
-      }
+      const others = live().filter((other) => other !== generation);
+      generation.controller.abort();
+      if (others.length === 0) void askToAbort();
     };
     generations.add(generation);
     if (signal?.aborted === true) onAbort();
@@ -313,15 +315,18 @@ export function koboldCppProvider(
   };
 
   /** Stop `stopping`, and KoboldCpp's generation if nothing else is waiting. */
-  const setAside = async (stopping: Generation[]): Promise<void> => {
+  const setAside = async (candidates: Generation[]): Promise<void> => {
+    // One already stopped has asked KoboldCpp to abort, if it was its turn.
+    const stopping = candidates.filter(
+      ({ controller }) => !controller.signal.aborted,
+    );
     if (stopping.length === 0) return;
+    const alone = live().every((generation) => stopping.includes(generation));
     for (const generation of stopping) {
       generation.setAside = true;
       generation.controller.abort();
     }
-    if ([...generations].every((generation) => stopping.includes(generation))) {
-      await askToAbort();
-    }
+    if (alone) await askToAbort();
   };
 
   /** Give up the requests the app made by itself, so that a reply need not wait. */
