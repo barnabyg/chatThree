@@ -18,7 +18,9 @@ import {
   type ReplyRequest,
   type StructuredRequest,
 } from './provider.ts';
+import { fillReplyPrompt } from '../../shared/replyPrompt.ts';
 import { describeSchema, findJson, schemaErrors } from './json.ts';
+import { type ModelProfile, presetFor } from './profiles.ts';
 import { eventData } from './sse.ts';
 
 /**
@@ -38,7 +40,15 @@ export interface LoadedModel {
 export interface KoboldCppOptions {
   /** Read on every request, so a saved address takes effect at once. */
   address: () => string;
+  /**
+   * The profile of a loaded model, applied to every request. Read on every
+   * request. Without it, each model gets its preset.
+   */
+  profile?: (modelId: string) => ModelProfile;
 }
+
+/** Request fields that `extraBody` cannot change: the app's own. */
+const OWN_FIELDS = new Set(['model', 'messages', 'stream', 'response_format']);
 
 export interface KoboldCppProvider extends ChatProvider {
   /**
@@ -168,12 +178,33 @@ interface Completion {
   }[];
 }
 
-/** The messages of a chat completion request: the instructions first. */
+/**
+ * The messages of a chat completion request: the instructions first, as a
+ * system message or, for a template without a system role, before the text
+ * of the first user message. A conversation that starts with the character's
+ * message gets a user message of its own for them.
+ */
 export function chatMessages(
   instructions: string,
   messages: readonly PromptMessage[],
+  systemRole: ModelProfile['systemRole'],
 ): { role: string; content: string }[] {
-  return [{ role: 'system', content: instructions }, ...messages];
+  if (systemRole === 'system') {
+    return [{ role: 'system', content: instructions }, ...messages];
+  }
+  const [first, ...rest] = messages;
+  if (first?.role !== 'user') {
+    return [{ role: 'user', content: instructions }, ...messages];
+  }
+  return [
+    {
+      role: 'user',
+      content: `${instructions}
+
+${first.content}`,
+    },
+    ...rest,
+  ];
 }
 
 export function koboldCppProvider(
@@ -270,18 +301,28 @@ export function koboldCppProvider(
     }
   };
 
-  /** POST a chat completion request, and return the response once accepted. */
+  /**
+   * POST a chat completion request, its body made by `build` from the loaded
+   * model's profile, with the profile's `extraBody` merged in. Return the
+   * response once it is accepted.
+   */
   const complete = async (
-    body: object,
+    build: (profile: ModelProfile) => object,
     accept: string,
     signal: AbortSignal | undefined,
   ): Promise<{ address: string; response: Response }> => {
     const address = savedAddress();
     const model = await loadedModel();
+    const profile = options.profile?.(model.id) ?? presetFor(model.id).profile;
+    const extra = Object.fromEntries(
+      Object.entries(profile.extraBody).filter(
+        ([field]) => !OWN_FIELDS.has(field),
+      ),
+    );
     const response = await send(address, '/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: accept },
-      body: JSON.stringify({ model: model.id, ...body }),
+      body: JSON.stringify({ model: model.id, ...build(profile), ...extra }),
       ...(signal !== undefined && { signal }),
     });
     return { address, response };
@@ -289,11 +330,11 @@ export function koboldCppProvider(
 
   /** The text of a non-streamed chat completion. */
   const answerText = async (
-    body: object,
+    build: (profile: ModelProfile) => object,
     signal: AbortSignal | undefined,
   ): Promise<string> => {
     const { address, response } = await complete(
-      { ...body, stream: false },
+      (profile) => ({ ...build(profile), stream: false }),
       'application/json',
       signal,
     );
@@ -326,32 +367,32 @@ export function koboldCppProvider(
   }: StructuredRequest): Promise<unknown> => {
     // The schema's own descriptions do not reach the model (#33), so the
     // fields are described in the instructions both ways.
-    const described = `${instructions}
-
-${describeSchema(schema)}`;
-    const asked = `${described}
-
-Answer with only the JSON object: no other text before or after it.`;
+    const described = `${instructions}\n\n${describeSchema(schema)}`;
+    const asked = `${described}\n\nAnswer with only the JSON object: no other text before or after it.`;
     const conversation: PromptMessage[] = [{ role: 'user', content: input }];
     let constrained = true;
     let retried = false;
     for (;;) {
       let text: string;
       try {
+        const instructionsNow = constrained ? described : asked;
+        const messages = [...conversation];
         text = await answerText(
-          {
+          (profile) => ({
             messages: chatMessages(
-              constrained ? described : asked,
-              conversation,
+              instructionsNow,
+              messages,
+              profile.systemRole,
             ),
             max_tokens: STRUCTURED_MAX_TOKENS,
+            temperature: profile.sceneTemperature,
             ...(constrained && {
               response_format: {
                 type: 'json_schema',
                 json_schema: { name: schemaName, strict: true, schema },
               },
             }),
-          },
+          }),
           signal,
         );
       } catch (error) {
@@ -405,10 +446,32 @@ Answer with only the JSON object: no other text before or after it.`;
 
     // The model and thinking level asked for are OpenAI's settings: KoboldCpp
     // has one model, and no level to choose.
-    async *streamReply({ instructions, messages, signal }: ReplyRequest) {
+    async *streamReply({
+      instructions,
+      messages,
+      names,
+      signal,
+    }: ReplyRequest) {
       try {
         const { address, response } = await complete(
-          { messages: chatMessages(instructions, messages), stream: true },
+          (profile) => ({
+            messages: chatMessages(instructions, messages, profile.systemRole),
+            stream: true,
+            max_tokens: profile.maxReplyTokens,
+            temperature: profile.temperature,
+            top_p: profile.top_p,
+            top_k: profile.top_k,
+            min_p: profile.min_p,
+            rep_pen: profile.rep_pen,
+            rep_pen_range: profile.rep_pen_range,
+            stop: profile.stop.map((stop) =>
+              fillReplyPrompt(
+                stop,
+                names?.character ?? 'the character',
+                names?.player,
+              ),
+            ),
+          }),
           'text/event-stream',
           signal,
         );

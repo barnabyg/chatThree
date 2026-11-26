@@ -19,6 +19,11 @@ export interface ReplyRequest {
   instructions: string;
   /** The conversation so far, oldest first, ending with the user's message. */
   messages: PromptMessage[];
+  /**
+   * The character's name and the player's, if any, for a provider that fills
+   * them into stop sequences as reply prompts are filled.
+   */
+  names?: { character: string; player: string | undefined };
   /** Aborting ends the reply early. */
   signal: AbortSignal;
 }

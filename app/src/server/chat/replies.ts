@@ -212,8 +212,10 @@ export class ReplyService {
   ): AsyncGenerator<ReplyEvent> {
     let text = '';
     try {
+      const pairing = this.#pairing(chatId);
+      const [character, , player] = pairing;
       const prompt = buildPrompt(
-        ...this.#pairing(chatId),
+        ...pairing,
         conversation,
         this.#settings.contextTokenBudget(),
       );
@@ -221,6 +223,7 @@ export class ReplyService {
         model: this.#settings.model(),
         ...withEffort(this.#settings.reasoningEffort()),
         ...prompt,
+        names: { character: character.name, player: player?.name },
         signal,
       });
       for await (const piece of pieces) {

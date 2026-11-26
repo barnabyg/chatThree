@@ -97,6 +97,7 @@ Chats and settings are kept on this computer, outside the repository:
 |---|---|
 | `%LOCALAPPDATA%\chatThree\chatthree.db` | Chats and messages (SQLite) |
 | `%LOCALAPPDATA%\chatThree\settings.json` | The text backend, the models, the speech settings and a saved API key |
+| `%LOCALAPPDATA%\chatThree\local-models.json` | Your overrides of local models' profiles, if any (see [Model profiles](#model-profiles)) |
 | `%LOCALAPPDATA%\chatThree\voices\` | The characters' voice clips |
 | `%LOCALAPPDATA%\chatThree\images\` | The characters' reference pictures |
 | `%LOCALAPPDATA%\chatThree\scenes\` | Illustrations of chats |
@@ -154,6 +155,61 @@ a system message, then the conversation. A password (`--password`) is not
 supported: start KoboldCpp without one. Chats cross the network unencrypted
 over plain HTTP. The choice takes effect on the next request, without a
 restart; settings saved before the choice existed load as OpenAI.
+
+### Model profiles
+
+Local models differ in what they need, so each model KoboldCpp loads gets a
+**model profile**: a **preset** that ships with the app, with your own
+**overrides** on top. A model seen for the first time gets its preset, with
+nothing to set up.
+
+The preset is chosen by the model's id, as KoboldCpp gives it (`koboldcpp/`
+and the GGUF file's name), ignoring case and the quantisation suffix such as
+`-Q4_K_M`. The first match wins:
+
+| Preset | Matches ids with | Notes |
+|---|---|---|
+| DeepSeek R1 distill | `deepseek-r1` | Instructions in the first user message, not a system message; thinking stripped |
+| Qwen3 | `qwen3` | Thinking stripped; more reply tokens, as thinking counts against them |
+| Mistral | `mistral` or `nemo` | |
+| Gemma | `gemma` | |
+| Llama 3 | `llama-3`, `llama3` | |
+| Generic | anything | |
+
+Each profile has these fields:
+
+| Field | Use |
+|---|---|
+| `contextLength` | The context length to plan for; `null` means what KoboldCpp reports |
+| `maxReplyTokens` | `max_tokens` on replies |
+| `temperature`, `top_p`, `top_k`, `min_p`, `rep_pen`, `rep_pen_range` | Samplers on replies |
+| `sceneTemperature` | The temperature of the scene call, low by default |
+| `stop` | Stop sequences on replies. `{user}` and `{character}` are filled in as in reply prompts. By default the reply stops where the model starts a line with your player's name and a colon |
+| `systemRole` | `system`, or `merge-into-first-user` for a chat template without a system role |
+| `thinking` | `{"mode": "none"}`, or `{"mode": "strip", "open": "<think>", "close": "</think>"}` |
+| `extraBody` | A JSON object merged into every request, for KoboldCpp fields the app does not know about. It cannot change the model, the messages, streaming or the response format |
+
+To change a field for one model, put it in `local-models.json` in the data
+directory (`%LOCALAPPDATA%\chatThree\local-models.json`), under the model's
+id exactly as **Test connection** shows it. Only the fields you change belong
+there, so a better preset in a later version still reaches the rest. For
+example:
+
+```json
+{
+  "koboldcpp/Qwen3.8-27B-Uncensored-Q4_K_M": {
+    "temperature": 0.8,
+    "maxReplyTokens": 1024,
+    "extraBody": { "reasoning_effort": "none" }
+  }
+}
+```
+
+(`"reasoning_effort": "none"` is the one way found to cut a Qwen3 model's
+thinking short in KoboldCpp; a line of thinking is still written.) An edit
+takes effect on the next request. A field that is not valid is ignored with
+a warning in the app's console, and so is the whole file if it is not valid
+JSON.
 
 ## Illustrations
 

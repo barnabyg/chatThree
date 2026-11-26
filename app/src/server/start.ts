@@ -6,6 +6,7 @@ import { createApp } from './app.ts';
 import { backendProvider } from './chat/backend.ts';
 import { koboldCppProvider } from './chat/koboldcpp.ts';
 import { ModelCatalog } from './chat/models.ts';
+import { ModelProfiles } from './chat/profiles.ts';
 import { openAIProvider } from './chat/openai.ts';
 import { ReplyService } from './chat/replies.ts';
 import type { AppConfig } from './config.ts';
@@ -44,8 +45,12 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
     config.openai.apiKey,
   );
   const scenes = new SceneStore(database);
+  const profiles = new ModelProfiles(
+    path.join(config.dataDir, 'local-models.json'),
+  );
   const koboldcpp = koboldCppProvider({
     address: () => settings.koboldcppAddress(),
+    profile: (modelId) => profiles.profile(modelId),
   });
   // Only OpenAI is given the OpenAI key; KoboldCpp is given no key at all.
   const provider = backendProvider(() => settings.textBackend(), {

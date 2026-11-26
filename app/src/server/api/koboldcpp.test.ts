@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import {
   FAKE_CONTEXT_LENGTH,
@@ -251,4 +253,25 @@ test('saving the connection settings finds out again which model is loaded', asy
   await expect
     .poll(async () => (await app.koboldcpp.loadedModel()).id)
     .toBe('koboldcpp/Qwen3.8-27B-Uncensored-Q4_K_M');
+});
+
+test("a reply carries the loaded model's profile, with the overrides in local-models.json", async () => {
+  const app = await koboldApp();
+  mkdirSync(app.dataDir, { recursive: true });
+  writeFileSync(
+    path.join(app.dataDir, 'local-models.json'),
+    JSON.stringify({
+      [FAKE_KOBOLDCPP_MODEL]: { temperature: 0.42, stop: ['\n{user}:', '###'] },
+    }),
+  );
+  const player = app.players.list()[0];
+  const chat = await app.startChat({ playerId: player?.id ?? null });
+
+  await replyEvents(await send(app, chat, 'Hello?'));
+
+  expect(kobold.requests[0]?.body).toMatchObject({
+    temperature: 0.42,
+    stop: [`\n${player?.name ?? ''}:`, '###'],
+    top_k: 64,
+  });
 });

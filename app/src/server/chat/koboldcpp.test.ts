@@ -12,6 +12,7 @@ import {
   networkFailure,
 } from './koboldcpp.ts';
 import { SCENE_SCHEMA } from '../scene/describe.ts';
+import { type ModelProfile, presetFor } from './profiles.ts';
 import { ProviderError, type ReplyRequest } from './provider.ts';
 
 // The provider is tested over real HTTP against a fake KoboldCpp that speaks
@@ -78,7 +79,9 @@ test('sends the instructions as a system message, then the conversation, to the 
   );
 
   // The OpenAI model and thinking level are not KoboldCpp's to use.
-  expect(kobold.requests[0]?.body).toEqual({
+  const body = kobold.requests[0]?.body;
+  expect(body).not.toHaveProperty('reasoning_effort');
+  expect(body).toMatchObject({
     model: FAKE_KOBOLDCPP_MODEL,
     messages: [
       { role: 'system', content: 'You are Mara.' },
@@ -427,5 +430,134 @@ describe('the scene call', () => {
       `KoboldCpp at ${kobold.address} returned an error (500): Out of memory`,
     );
     expect(kobold.structuredRequests).toHaveLength(1);
+  });
+});
+
+describe('model profiles', () => {
+  const GEMMA = presetFor(FAKE_KOBOLDCPP_MODEL).profile;
+
+  function profiled(change: Partial<ModelProfile>) {
+    return koboldCppProvider({
+      address: () => kobold.address,
+      profile: (id) => ({ ...presetFor(id).profile, ...change }),
+    });
+  }
+
+  test("a reply carries the loaded model's samplers, max_tokens and stop sequences, with the names filled in", async () => {
+    await collect(
+      provider().streamReply(
+        request({
+          names: { character: 'Mara Quill', player: 'The Traveller' },
+        }),
+      ),
+    );
+
+    expect(presetFor(FAKE_KOBOLDCPP_MODEL).name).toBe('Gemma');
+    expect(kobold.requests[0]?.body).toMatchObject({
+      max_tokens: GEMMA.maxReplyTokens,
+      temperature: GEMMA.temperature,
+      top_p: GEMMA.top_p,
+      top_k: GEMMA.top_k,
+      min_p: GEMMA.min_p,
+      rep_pen: GEMMA.rep_pen,
+      rep_pen_range: GEMMA.rep_pen_range,
+      stop: ['\nThe Traveller:'],
+    });
+  });
+
+  test('a chat with no player stops at "the user", as reply prompts call them', async () => {
+    await collect(
+      profiled({ stop: ['\n{user}:', '{character}:'] }).streamReply(
+        request({ names: { character: 'Mara Quill', player: undefined } }),
+      ),
+    );
+
+    expect(kobold.requests[0]?.body.stop).toEqual([
+      '\nthe user:',
+      'Mara Quill:',
+    ]);
+  });
+
+  test("extraBody is merged into every request, but cannot change the app's own fields", async () => {
+    const kobolds = profiled({
+      extraBody: {
+        top_a: 0.2,
+        temperature: 0.5,
+        model: 'other',
+        stream: false,
+      },
+    });
+
+    await collect(kobolds.streamReply(request()));
+    await kobolds.structured({
+      model: 'gpt-5-mini',
+      instructions: 'Describe the moment.',
+      input: 'Mara: Come in.',
+      schemaName: 'scene',
+      schema: SCENE_SCHEMA,
+    });
+
+    expect(kobold.requests[0]?.body).toMatchObject({
+      model: FAKE_KOBOLDCPP_MODEL,
+      stream: true,
+      top_a: 0.2,
+      temperature: 0.5,
+    });
+    expect(kobold.structuredRequests[0]).toMatchObject({
+      model: FAKE_KOBOLDCPP_MODEL,
+      stream: false,
+      top_a: 0.2,
+    });
+  });
+
+  test("the scene call uses the profile's scene temperature", async () => {
+    await profiled({ sceneTemperature: 0.15 }).structured({
+      model: 'gpt-5-mini',
+      instructions: 'Describe the moment.',
+      input: 'Mara: Come in.',
+      schemaName: 'scene',
+      schema: SCENE_SCHEMA,
+    });
+
+    expect(kobold.structuredRequests[0]?.temperature).toBe(0.15);
+  });
+
+  test('with merge-into-first-user, no system message is sent and the instructions come first in the first user message', async () => {
+    await collect(
+      profiled({ systemRole: 'merge-into-first-user' }).streamReply(
+        request({
+          messages: [
+            { role: 'user', content: 'Hello?' },
+            { role: 'assistant', content: 'Who goes there?' },
+            { role: 'user', content: 'A traveller.' },
+          ],
+        }),
+      ),
+    );
+
+    expect(kobold.requests[0]?.body.messages).toEqual([
+      { role: 'user', content: 'You are Mara.\n\nHello?' },
+      { role: 'assistant', content: 'Who goes there?' },
+      { role: 'user', content: 'A traveller.' },
+    ]);
+  });
+
+  test("with merge-into-first-user, a conversation that starts with the character's message gets the instructions as a user message before it", async () => {
+    await collect(
+      profiled({ systemRole: 'merge-into-first-user' }).streamReply(
+        request({
+          messages: [
+            { role: 'assistant', content: 'You are late.' },
+            { role: 'user', content: 'Sorry.' },
+          ],
+        }),
+      ),
+    );
+
+    expect(kobold.requests[0]?.body.messages).toEqual([
+      { role: 'user', content: 'You are Mara.' },
+      { role: 'assistant', content: 'You are late.' },
+      { role: 'user', content: 'Sorry.' },
+    ]);
   });
 });

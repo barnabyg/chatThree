@@ -17,6 +17,7 @@ import { createApp } from './app.ts';
 import { backendProvider } from './chat/backend.ts';
 import { koboldCppProvider, type KoboldCppProvider } from './chat/koboldcpp.ts';
 import { ModelCatalog } from './chat/models.ts';
+import { ModelProfiles } from './chat/profiles.ts';
 import {
   type ChatProvider,
   ProviderError,
@@ -308,8 +309,12 @@ export function testApp(
     options.environmentApiKey,
   );
   const provider = scriptedProvider();
+  const profiles = new ModelProfiles(
+    path.join(directory, 'data', 'local-models.json'),
+  );
   const koboldcpp = koboldCppProvider({
     address: () => settings.koboldcppAddress(),
+    profile: (modelId) => profiles.profile(modelId),
   });
   const backend = backendProvider(() => settings.textBackend(), {
     openai: provider,
