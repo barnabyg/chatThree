@@ -570,7 +570,8 @@ function gbnf(schema: Schema): string {
     ...rules,
     'string ::= "\\"" ([^"\\\\\\n] | "\\\\" ["\\\\/bfnrt])* "\\""',
     'boolean ::= "true" | "false"',
-    'ws ::= [ \\t\\n]*',
+    // Whitespace is limited: with `*`, a model can fill max_tokens with it.
+    'ws ::= " "?',
   ].join('\n');
 }
 
@@ -713,12 +714,6 @@ const LONG_STORY = {
 };
 
 async function check9(): Promise<void> {
-  console.log(
-    "  Watch the KoboldCpp console and the other PC's GPU load during this check.",
-  );
-  say(
-    'While this ran, the KoboldCpp console and GPU load were to be watched for the generation stopping.',
-  );
   await call('GET', '/api/extra/perf');
 
   say('### 9a: closing the connection mid-stream');
@@ -760,24 +755,26 @@ async function check9(): Promise<void> {
   await sleep(1000);
 
   say('### 9d: a second request while one is generating');
-  let second: Reply | undefined;
+  // The first stream keeps being read while the second waits: a reader that
+  // stops reading stalls KoboldCpp's writes, and with them the generation.
+  const first_body = { ...LONG_STORY, max_tokens: 300 };
   const second_body = {
     messages: user('Say hello.'),
     max_tokens: 10,
   };
-  const d = await stream(LONG_STORY, {
-    onChunk: async (n, abort) => {
+  const dStarted = performance.now();
+  let secondSentAt = 0;
+  let secondPromise: Promise<Reply> | undefined;
+  const d = await stream(first_body, {
+    onChunk: (n) => {
       if (n === 10) {
-        second = await call('POST', '/v1/chat/completions', second_body);
-        abort();
+        secondSentAt = Math.round(performance.now() - dStarted);
+        secondPromise = call('POST', '/v1/chat/completions', second_body);
       }
     },
   });
-  reportStream(
-    'first request, aborted once the second returned',
-    LONG_STORY,
-    d,
-  );
+  const second = await secondPromise;
+  reportStream('first request, read to the end', first_body, d);
   await call('POST', '/api/extra/abort', {});
 
   const chunksAfter = (r: StreamResult) =>
@@ -787,7 +784,7 @@ async function check9(): Promise<void> {
       `After closing the connection: ${afterClose.at(-1) ?? '?'} (idle 1 and a generate/check length that stops growing mean it stopped)`,
       `abort without genkey → ${String(abortReply?.status)} ${abortReply?.text.trim() ?? ''}; the stream then ended with ${String(chunksAfter(b))} data lines and finish_reason ${JSON.stringify(b.finishReasons)} after ${String(b.totalMs)} ms`,
       `abort with a wrong genkey: stream ended with ${String(chunksAfter(c))} data lines (about 30 means it stopped anyway; ~2000 means the genkey mattered)`,
-      `a second request while generating → ${String(second?.status)} after ${String(second?.ms)} ms: ${second?.text.slice(0, 300) ?? ''}`,
+      `a second request sent ${String(secondSentAt)} ms into a first that took ${String(d.totalMs)} ms → ${String(second?.status)} after ${String(second?.ms)} ms (an answer only after the first ended means it was queued): ${second?.text.slice(0, 300) ?? ''}`,
     ].join('. '),
   );
 }
@@ -844,7 +841,7 @@ async function check11(): Promise<void> {
     content: filler(100 + i, 1000),
   }));
   say(
-    `Context ${String(contextLength)} tokens; ${String(n)} messages of about ${String(perMessage)} tokens fill about 70% of it. Each turn asks for 8 tokens. Watch the KoboldCpp console for ContextShift / FastForward / "Processing Prompt".`,
+    `Context ${String(contextLength)} tokens; ${String(n)} messages of about ${String(perMessage)} tokens fill about 70% of it. Each turn asks for 8 tokens. The first token waits for the prompt to be processed, so its time shows how much of the prompt was processed again.`,
   );
   const turns: [string, number, number][] = [
     ['turn 1 (cold)', 0, n],
@@ -878,7 +875,7 @@ async function check11(): Promise<void> {
     ].join('\n'),
   );
   finding(
-    'Turns 2–4 near turn 1 mean the whole prompt is processed again when the oldest message drops; near turns 5–6 mean the cache was reused. Note what the console printed.',
+    'Turns 2–4 near turn 1 mean the whole prompt is processed again when the oldest message drops; near turns 5–6 mean the cache was reused.',
   );
 }
 
