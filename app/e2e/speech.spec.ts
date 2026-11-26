@@ -82,7 +82,7 @@ test('the whole reply is spoken when the setting says so, without its formatting
     kind: 'reply',
     chunks: ['*She pours the tea.* "Drink," she says. **Now.**'],
   });
-  await page.goto('/#/settings');
+  await page.goto('/#/settings/speech');
   await page
     .getByLabel('What is spoken')
     .selectOption({ label: 'The whole reply' });

@@ -61,7 +61,7 @@ test('in Off mode nothing is illustrated by itself, the story is still followed,
     value: MOVED_TO_THE_LAMP_ROOM,
   });
   await giveMaraAPicture(page);
-  await page.goto('/#/settings');
+  await page.goto('/#/settings/images');
   const mode = page.getByLabel('Illustrate replies by themselves');
   await expect(mode).toHaveValue('key-moments');
   await mode.selectOption({ label: 'Off' });

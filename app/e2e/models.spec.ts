@@ -77,10 +77,11 @@ test("a model's thinking levels are found out once", async ({
 }) => {
   await page.goto('/#/settings');
   await expect(
-    page.getByRole('combobox', { name: 'Scene thinking level', exact: true }),
-  ).toBeEnabled();
-  await expect(
     page.getByRole('combobox', { name: 'Thinking level', exact: true }),
+  ).toBeEnabled();
+  await page.getByRole('link', { name: 'Images' }).click();
+  await expect(
+    page.getByRole('combobox', { name: 'Scene thinking level', exact: true }),
   ).toBeEnabled();
   const checks = openai.plainRequests.length;
   expect(checks).toBeGreaterThan(0);
@@ -100,15 +101,19 @@ test.describe('with no API key', () => {
     page,
   }) => {
     await page.goto('/#/settings');
+    const why = page.getByText(
+      'The list of models could not be loaded, so type the name: No OpenAI API key is set.',
+      { exact: false },
+    );
 
-    await expect(
-      page.getByText(
-        'The list of models could not be loaded, so type the name: No OpenAI API key is set.',
-        { exact: false },
-      ),
-    ).toHaveCount(2);
+    await expect(why).toHaveCount(1);
     await expect(
       page.getByRole('textbox', { name: 'Model', exact: true }),
     ).toHaveValue('gpt-5.5');
+    await page.getByRole('link', { name: 'Images' }).click();
+    await expect(why).toHaveCount(1);
+    await expect(
+      page.getByRole('textbox', { name: 'Scene model', exact: true }),
+    ).not.toHaveValue('');
   });
 });
