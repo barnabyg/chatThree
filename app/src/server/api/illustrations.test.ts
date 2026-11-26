@@ -1,6 +1,11 @@
 import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import {
+  type FakeKoboldCpp,
+  KOBOLD_SCENE,
+  startFakeKoboldCpp,
+} from '../../../test-support/fake-koboldcpp.ts';
 import { solidPng } from '../../../test-support/png.ts';
 import type { Chat, ScenarioInput } from '../../shared/api.ts';
 import { ProviderError } from '../chat/provider.ts';
@@ -299,5 +304,76 @@ describe('illustrating a message', () => {
 
     expect(files(app, 'scenes')).toEqual([]);
     expect(files(app, 'locations')).toEqual([]);
+  });
+});
+
+describe('with KoboldCpp as the text backend', () => {
+  let kobold: FakeKoboldCpp;
+  beforeEach(async () => {
+    kobold = await startFakeKoboldCpp();
+  });
+  afterEach(async () => {
+    await kobold.close();
+  });
+
+  async function koboldIllustratable(): Promise<{ app: TestApp; chat: Chat }> {
+    const made = await illustratable();
+    made.app.settings.update({
+      textBackend: 'koboldcpp',
+      koboldcppAddress: kobold.address,
+    });
+    return made;
+  }
+
+  test('the scene is described by KoboldCpp, and not by OpenAI', async () => {
+    const { app, chat } = await koboldIllustratable();
+
+    await illustrate(app, chat, chat.messages[0]?.id);
+    const done = await settled(app, chat);
+
+    expect(done.illustrations).toHaveLength(1);
+    expect(kobold.structuredRequests).toHaveLength(1);
+    expect(app.provider.structuredRequests).toEqual([]);
+    expect(painted(app)[1]?.prompt).toContain(KOBOLD_SCENE.action);
+  });
+
+  test('the story follows KoboldCpp to a new place', async () => {
+    const { app, chat } = await koboldIllustratable();
+    kobold.answerWith({
+      kind: 'text',
+      text: `Here is the scene: ${JSON.stringify({
+        ...KOBOLD_SCENE,
+        moved: true,
+        location: {
+          name: 'The gallery',
+          description: 'A narrow iron walkway outside the lamp.',
+        },
+      })}`,
+    });
+
+    await illustrate(app, chat, chat.messages[0]?.id);
+    const done = await settled(app, chat);
+
+    expect(done.location.name).toBe('The gallery');
+  });
+
+  test('an answer that fails the schema twice fails with a reason naming KoboldCpp, and can be tried again', async () => {
+    const { app, chat } = await koboldIllustratable();
+    kobold.answerWith(
+      { kind: 'text', text: '{"action": "Mara waits."}' },
+      { kind: 'text', text: 'Mara waits by the stove.' },
+      { kind: 'text', text: JSON.stringify(KOBOLD_SCENE) },
+    );
+
+    await illustrate(app, chat, chat.messages[0]?.id);
+    await expect
+      .poll(async () => (await readChat(app, chat.id)).illustrating[0]?.error)
+      .toBe(
+        `KoboldCpp at ${kobold.address} answered in a form chatThree could not use (the answer is not a JSON object). Try again.`,
+      );
+
+    await illustrate(app, chat, chat.messages[0]?.id);
+    const done = await settled(app, chat);
+    expect(done.illustrations).toHaveLength(1);
   });
 });

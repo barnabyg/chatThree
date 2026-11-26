@@ -18,7 +18,14 @@ import {
   type ReplyRequest,
   type StructuredRequest,
 } from './provider.ts';
+import { describeSchema, findJson, schemaErrors } from './json.ts';
 import { eventData } from './sse.ts';
+
+/**
+ * Enough for a structured answer, with room for a thinking model to think
+ * first when it is not held to the schema.
+ */
+export const STRUCTURED_MAX_TOKENS = 2048;
 
 /** The model KoboldCpp has loaded. */
 export interface LoadedModel {
@@ -94,13 +101,24 @@ export function networkFailure(address: string, error: unknown): ProviderError {
   );
 }
 
+/** KoboldCpp's refusal of a request, with its status. */
+class KoboldCppRejection extends ProviderError {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 /** What KoboldCpp says went wrong, from a response that is not OK. */
 async function rejection(
   address: string,
   response: Response,
 ): Promise<ProviderError> {
   if (response.status === 401) {
-    return new ProviderError(
+    return new KoboldCppRejection(
+      401,
       `KoboldCpp at ${address} asks for a password, which chatThree does not send. Start KoboldCpp without --password.`,
     );
   }
@@ -127,7 +145,8 @@ async function rejection(
     // Not JSON: the text, or the status text, will do.
   }
   if (detail.length > 300) detail = `${detail.slice(0, 300)}…`;
-  return new ProviderError(
+  return new KoboldCppRejection(
+    response.status,
     `KoboldCpp at ${address} returned an error (${String(response.status)}): ${detail}`,
   );
 }
@@ -268,6 +287,109 @@ export function koboldCppProvider(
     return { address, response };
   };
 
+  /** The text of a non-streamed chat completion. */
+  const answerText = async (
+    body: object,
+    signal: AbortSignal | undefined,
+  ): Promise<string> => {
+    const { address, response } = await complete(
+      { ...body, stream: false },
+      'application/json',
+      signal,
+    );
+    let completion: Completion;
+    try {
+      completion = (await response.json()) as Completion;
+    } catch (error) {
+      if (signal?.aborted === true) throw error;
+      throw new ProviderError(
+        `KoboldCpp at ${address} sent back a response that is not JSON.`,
+      );
+    }
+    return completion.choices?.[0]?.message?.content ?? '';
+  };
+
+  /**
+   * An answer in JSON that follows the schema, checked. First the constrained
+   * way: the schema goes as `response_format`, so KoboldCpp can only write
+   * JSON of its shape. If KoboldCpp refuses that, the asked way: the
+   * instructions describe the JSON with an example. An answer that does not
+   * follow the schema either way is asked for once more, with what was
+   * wrong with it.
+   */
+  const structured = async ({
+    instructions,
+    input,
+    schemaName,
+    schema,
+    signal,
+  }: StructuredRequest): Promise<unknown> => {
+    // The schema's own descriptions do not reach the model (#33), so the
+    // fields are described in the instructions both ways.
+    const described = `${instructions}
+
+${describeSchema(schema)}`;
+    const asked = `${described}
+
+Answer with only the JSON object: no other text before or after it.`;
+    const conversation: PromptMessage[] = [{ role: 'user', content: input }];
+    let constrained = true;
+    let retried = false;
+    for (;;) {
+      let text: string;
+      try {
+        text = await answerText(
+          {
+            messages: chatMessages(
+              constrained ? described : asked,
+              conversation,
+            ),
+            max_tokens: STRUCTURED_MAX_TOKENS,
+            ...(constrained && {
+              response_format: {
+                type: 'json_schema',
+                json_schema: { name: schemaName, strict: true, schema },
+              },
+            }),
+          },
+          signal,
+        );
+      } catch (error) {
+        // A KoboldCpp that cannot constrain its answer refuses the request.
+        if (
+          constrained &&
+          error instanceof KoboldCppRejection &&
+          (error.status === 400 || error.status === 422)
+        ) {
+          constrained = false;
+          continue;
+        }
+        throw error;
+      }
+      const found = findJson(text);
+      const errors =
+        found === undefined
+          ? ['the answer is not a JSON object']
+          : schemaErrors(found.value, schema);
+      if (found !== undefined && errors.length === 0) return found.value;
+      const wrong = errors.join('; ');
+      if (retried) {
+        throw new ProviderError(
+          `KoboldCpp at ${options.address()} answered in a form chatThree could not use (${wrong}). Try again.`,
+        );
+      }
+      retried = true;
+      constrained = false;
+      conversation.push(
+        { role: 'assistant', content: text },
+        {
+          role: 'user',
+          content: `That answer could not be used: ${wrong}. Answer again with only the JSON object, with every field.`,
+        },
+      );
+    }
+  };
+
   return {
     loadedModel,
 
@@ -335,46 +457,8 @@ export function koboldCppProvider(
       }
     },
 
-    structured({
-      instructions,
-      input,
-      schemaName,
-      schema,
-      signal,
-    }: StructuredRequest) {
-      return forgettingOnFailure(async () => {
-        const { address, response } = await complete(
-          {
-            messages: chatMessages(instructions, [
-              { role: 'user', content: input },
-            ]),
-            stream: false,
-            response_format: {
-              type: 'json_schema',
-              json_schema: { name: schemaName, strict: true, schema },
-            },
-          },
-          'application/json',
-          signal,
-        );
-        let body: Completion;
-        try {
-          body = (await response.json()) as Completion;
-        } catch (error) {
-          if (signal?.aborted === true) throw error;
-          throw new ProviderError(
-            `KoboldCpp at ${address} sent back a response that is not JSON.`,
-          );
-        }
-        const text = body.choices?.[0]?.message?.content ?? '';
-        try {
-          return JSON.parse(text) as unknown;
-        } catch {
-          throw new ProviderError(
-            `KoboldCpp at ${address} sent back an answer that is not JSON.`,
-          );
-        }
-      });
+    structured(request: StructuredRequest) {
+      return forgettingOnFailure(() => structured(request));
     },
 
     async models() {

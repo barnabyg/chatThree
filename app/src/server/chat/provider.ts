@@ -1,6 +1,7 @@
-// The seam between the app and whichever service writes the replies.
-// OpenAI is the only provider today (openai.ts); another one implements
-// `ChatProvider` and nothing else in the app changes.
+// The seam between the app and whichever service writes the text: OpenAI
+// (openai.ts) or KoboldCpp (koboldcpp.ts), chosen as the text backend
+// (backend.ts). Another one implements `ChatProvider` and nothing else in the
+// app changes.
 
 import type { Message, ReasoningEffort } from '../../shared/api.ts';
 
@@ -10,6 +11,7 @@ export interface PromptMessage {
 }
 
 export interface ReplyRequest {
+  /** The OpenAI model. KoboldCpp uses the model it has loaded instead. */
   model: string;
   /** Left out, the model thinks as much as it does by default. */
   reasoningEffort?: ReasoningEffort;
@@ -43,7 +45,8 @@ export interface ChatProvider {
    */
   streamReply(request: ReplyRequest): AsyncIterable<string>;
   /**
-   * An answer in JSON that follows `request.schema`, parsed but not checked.
+   * An answer in JSON that follows `request.schema`, parsed. The caller
+   * checks it: a provider that holds the model to the schema need not.
    * Throws `ProviderError` when no answer can be produced.
    */
   structured(request: StructuredRequest): Promise<unknown>;

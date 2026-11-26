@@ -160,11 +160,16 @@ restart; settings saved before the choice existed load as OpenAI.
 Every message of the character's has an **Illustrate** button, which paints
 a picture of that moment under the message. It takes two steps:
 
-- A second, small request to OpenAI (the *scene call*) reads the latest
-  messages, up to the one illustrated, and describes the moment as a
+- A second, small request to the text backend (the *scene call*) reads the
+  latest messages, up to the one illustrated, and describes the moment as a
   picture: what the character is doing, their expression, the framing and
-  the light. Its model is **Settings > Images > Scene model**, `gpt-5-mini` unless
-  changed.
+  the light. With OpenAI, its model is **Settings > Images > Scene model**,
+  `gpt-5-mini` unless changed. With KoboldCpp, it is the loaded model, which
+  is held to the answer's JSON schema; if KoboldCpp will not be held to it,
+  the JSON is described in the instructions instead. Either way the answer is
+  checked, found inside prose, a code fence or after a thinking block, and
+  asked for once more if it does not fit. A second answer that does not fit
+  fails, with **Try again**.
 - The engine paints the scene from that description and two reference
   pictures: the character's, and one of the place the scene is in.
 

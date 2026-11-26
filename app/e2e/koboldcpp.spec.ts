@@ -1,6 +1,16 @@
-import { FAKE_KOBOLDCPP_MODEL } from '../test-support/fake-koboldcpp.ts';
+import {
+  FAKE_KOBOLDCPP_MODEL,
+  KOBOLD_SCENE,
+} from '../test-support/fake-koboldcpp.ts';
 import { expect, test } from './fixtures.ts';
-import { engineReady, messages, openEmptyChat, send } from './helpers.ts';
+import {
+  engineReady,
+  giveMaraAPicture,
+  messages,
+  openEmptyChat,
+  openLighthouseChat,
+  send,
+} from './helpers.ts';
 
 test('with KoboldCpp as the text backend, the connection is tested and replies come from it, spoken as they arrive', async ({
   page,
@@ -76,4 +86,36 @@ test('a KoboldCpp that cannot be reached is named in the error', async ({
   await expect(page.getByRole('alert')).toContainText(
     `Could not reach KoboldCpp at ${address}`,
   );
+});
+
+test('with KoboldCpp as the text backend, a message is illustrated from its description of the scene', async ({
+  page,
+  app,
+  openai,
+  kobold,
+}) => {
+  const saved = await page.request.put('/api/settings', {
+    data: { textBackend: 'koboldcpp', koboldcppAddress: kobold.address },
+  });
+  expect(saved.ok()).toBe(true);
+  kobold.answerWith({
+    kind: 'text',
+    text: `\`\`\`json\n${JSON.stringify({ ...KOBOLD_SCENE, action: 'Mara lights the great lamp.' })}\n\`\`\``,
+  });
+  await giveMaraAPicture(page);
+  await openLighthouseChat(page);
+  await engineReady(page);
+
+  const opening = messages(page).first();
+  await opening.getByRole('button', { name: 'Illustrate' }).click();
+
+  await expect(
+    opening.getByRole('img', { name: 'Illustration 1 of this moment' }),
+  ).toBeVisible();
+  expect(kobold.structuredRequests).toHaveLength(1);
+  expect(openai.structuredRequests).toHaveLength(0);
+  const scenes = (await app.engineJobs()).filter(
+    (job) => job.path === '/image',
+  );
+  expect(scenes.at(-1)?.body.prompt).toContain('Mara lights the great lamp.');
 });

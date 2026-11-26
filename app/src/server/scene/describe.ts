@@ -1,6 +1,6 @@
-// The scene call: a second, cheap request to OpenAI that reads the latest
-// messages of a chat and describes the moment as a picture. Its answer is
-// structured (SCENE_SCHEMA), and the image prompts are put together from it
+// The scene call: a second, cheap request to the text backend that reads the
+// latest messages of a chat and describes the moment as a picture. Its answer
+// is structured (SCENE_SCHEMA), and the image prompts are put together from it
 // here, so that what the engine is asked for stays in one shape.
 
 import { z } from 'zod';

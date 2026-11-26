@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   FAKE_CONTEXT_LENGTH,
   FAKE_KOBOLDCPP_MODEL,
   type FakeKoboldCpp,
+  KOBOLD_SCENE,
   startFakeKoboldCpp,
 } from '../../../test-support/fake-koboldcpp.ts';
 import {
@@ -10,6 +11,7 @@ import {
   koboldCppProvider,
   networkFailure,
 } from './koboldcpp.ts';
+import { SCENE_SCHEMA } from '../scene/describe.ts';
 import { ProviderError, type ReplyRequest } from './provider.ts';
 
 // The provider is tested over real HTTP against a fake KoboldCpp that speaks
@@ -312,4 +314,118 @@ test.each([
   'http://',
 ])('refuses %j as an address', (typed) => {
   expect(koboldCppAddress(typed)).toBeUndefined();
+});
+
+describe('the scene call', () => {
+  const SCENE_REQUEST = {
+    model: 'gpt-5-mini',
+    instructions: 'Describe the moment.',
+    input: 'Mara: Come in.',
+    schemaName: 'scene',
+    schema: SCENE_SCHEMA,
+  };
+
+  test('holds KoboldCpp to the schema, describes the fields too, and gets a good answer', async () => {
+    const answer = await provider().structured(SCENE_REQUEST);
+
+    expect(answer).toEqual(KOBOLD_SCENE);
+    expect(kobold.structuredRequests).toHaveLength(1);
+    const [body] = kobold.structuredRequests;
+    expect(body).toMatchObject({
+      model: FAKE_KOBOLDCPP_MODEL,
+      stream: false,
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'scene', strict: true, schema: SCENE_SCHEMA },
+      },
+    });
+    const [system, user] = body?.messages as {
+      role: string;
+      content: string;
+    }[];
+    expect(system?.role).toBe('system');
+    expect(system?.content).toMatch(/^Describe the moment\.\n\n/);
+    expect(system?.content).toContain('- action (text): What the character');
+    expect(user).toEqual({ role: 'user', content: 'Mara: Come in.' });
+  });
+
+  test.each([
+    ['in prose', `Here you go:\n${JSON.stringify(KOBOLD_SCENE)}\nEnjoy.`],
+    ['in a code fence', `\`\`\`json\n${JSON.stringify(KOBOLD_SCENE)}\n\`\`\``],
+    [
+      'after a thinking block',
+      `<think>\nA quiet moment.\n</think>\n\n${JSON.stringify(KOBOLD_SCENE)}`,
+    ],
+  ])('finds an answer %s', async (_where, text) => {
+    kobold.answerWith({ kind: 'text', text });
+
+    expect(await provider().structured(SCENE_REQUEST)).toEqual(KOBOLD_SCENE);
+    expect(kobold.structuredRequests).toHaveLength(1);
+  });
+
+  test('asks once more, with what was wrong, when the answer does not follow the schema', async () => {
+    const missing: Partial<typeof KOBOLD_SCENE> = { ...KOBOLD_SCENE };
+    delete missing.worthIllustrating;
+    kobold.answerWith(
+      { kind: 'text', text: JSON.stringify({ ...missing, moved: 'no' }) },
+      { kind: 'text', text: JSON.stringify(KOBOLD_SCENE) },
+    );
+
+    expect(await provider().structured(SCENE_REQUEST)).toEqual(KOBOLD_SCENE);
+
+    expect(kobold.structuredRequests).toHaveLength(2);
+    const retry = kobold.structuredRequests[1];
+    expect(retry?.response_format).toBeUndefined();
+    const messages = retry?.messages as { role: string; content: string }[];
+    expect(messages.map(({ role }) => role)).toEqual([
+      'system',
+      'user',
+      'assistant',
+      'user',
+    ]);
+    expect(messages[0]?.content).toContain('Answer with only the JSON object');
+    expect(messages[3]?.content).toBe(
+      'That answer could not be used: worthIllustrating is missing; moved should be a boolean, not a string. Answer again with only the JSON object, with every field.',
+    );
+  });
+
+  test('fails, naming KoboldCpp, when the second answer does not follow the schema either', async () => {
+    kobold.answerWith({ kind: 'text', text: 'A quiet moment by the stove.' });
+
+    expect(await failure(() => provider().structured(SCENE_REQUEST))).toBe(
+      `KoboldCpp at ${kobold.address} answered in a form chatThree could not use (the answer is not a JSON object). Try again.`,
+    );
+    expect(kobold.structuredRequests).toHaveLength(2);
+  });
+
+  test('asks for the JSON in words when KoboldCpp refuses to be held to the schema', async () => {
+    kobold.answerWith(
+      {
+        kind: 'http-error',
+        status: 400,
+        body: { detail: { msg: 'Unsupported response_format' } },
+      },
+      { kind: 'text', text: JSON.stringify(KOBOLD_SCENE) },
+    );
+
+    expect(await provider().structured(SCENE_REQUEST)).toEqual(KOBOLD_SCENE);
+
+    const asked = kobold.structuredRequests[1];
+    expect(asked?.response_format).toBeUndefined();
+    const [system] = asked?.messages as { content: string }[];
+    expect(system?.content).toContain('"worthIllustrating": false');
+  });
+
+  test('passes on any other error at once', async () => {
+    kobold.answerWith({
+      kind: 'http-error',
+      status: 500,
+      body: { detail: { msg: 'Out of memory' } },
+    });
+
+    expect(await failure(() => provider().structured(SCENE_REQUEST))).toBe(
+      `KoboldCpp at ${kobold.address} returned an error (500): Out of memory`,
+    );
+    expect(kobold.structuredRequests).toHaveLength(1);
+  });
 });
