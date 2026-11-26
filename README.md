@@ -158,6 +158,15 @@ supported: start KoboldCpp without one. Chats cross the network unencrypted
 over plain HTTP. The choice takes effect on the next request, without a
 restart; settings saved before the choice existed load as OpenAI.
 
+KoboldCpp works on one request at a time and queues the rest. **Stop**, and
+anything else that ends a reply early (regenerating, closing the app), also
+asks KoboldCpp to stop generating, so that it is free for the next request.
+A reply comes first: if the scene call that follows the last reply is still
+running when you send a message, it is given up (that reply is then not
+followed or illustrated), so the reply does not wait for it. A scene call you
+asked for with **Illustrate** is not given up; a reply sent meanwhile waits
+for it.
+
 ### Conversation budget with KoboldCpp
 
 With KoboldCpp, how much of a conversation is sent follows the loaded model's
@@ -582,8 +591,11 @@ example `koboldcpp.exe --model <file>.gguf --host 0.0.0.0 --port 5001
    seconds while KoboldCpp reads the prompt). With a thinking model, such as
    a Qwen3, expect **Thinking…** first, then the reply with no thoughts in
    it, shown, spoken and saved.
-4. Send another message and choose **Stop** part-way through the reply.
-   Expect the reply to stop and what was written to stay. Then choose
+4. Ask for something long, such as `Tell me the whole history of this
+   lighthouse.`, and choose **Stop** part-way through the reply. Expect the
+   reply to stop and what was written to stay, and KoboldCpp's console on the
+   other PC to stop generating at once (its output stops; the next request
+   starts without waiting). Then choose
    **Regenerate**, and **Delete** on the last message: both work as with
    OpenAI.
 5. Stop KoboldCpp, and send a message. Expect an error that says it could not

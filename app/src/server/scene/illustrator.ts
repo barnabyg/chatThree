@@ -289,7 +289,8 @@ export class Illustrator {
   async #followReply(chatId: string, messageId: number): Promise<void> {
     let described: Described | undefined;
     try {
-      described = await this.#describe(chatId, messageId);
+      // The next reply may give this call up: it comes first.
+      described = await this.#describe(chatId, messageId, true);
     } catch (error) {
       console.error(
         `The scene call after a reply failed, so the reply was not illustrated: ${describeFailure(error)}`,
@@ -328,6 +329,7 @@ export class Illustrator {
   async #describe(
     chatId: string,
     messageId: number,
+    background = false,
   ): Promise<Described | undefined> {
     const chat = this.#chats.find(chatId);
     const character =
@@ -353,6 +355,7 @@ export class Illustrator {
           place: before,
           places: this.#scenes.locations(chatId),
         }),
+        background,
       }),
     );
     // Only the latest of the character's messages says where the story is

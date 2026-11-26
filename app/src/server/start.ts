@@ -145,6 +145,8 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
     async stop() {
       // End replies in progress so that what they have written is saved.
       await replies.stopAll();
+      // Scene calls too, and KoboldCpp is asked to stop generating.
+      await koboldcpp.stopAll();
       const closed = new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) reject(error);

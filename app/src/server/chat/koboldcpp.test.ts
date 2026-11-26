@@ -644,3 +644,88 @@ describe('model profiles', () => {
     ]);
   });
 });
+
+describe('stopping', () => {
+  const scene = (background: boolean) => ({
+    model: 'gpt-5.5',
+    instructions: 'Describe the scene.',
+    input: 'Mara looks out.',
+    schemaName: 'scene',
+    schema: SCENE_SCHEMA,
+    background,
+  });
+
+  test('stopping a reply keeps what was written and asks KoboldCpp to abort', async () => {
+    kobold.respondWith({
+      kind: 'reply',
+      chunks: ['The lamp', ' is', ' lit.'],
+      holdAfter: 1,
+    });
+    const controller = new AbortController();
+    const pieces: string[] = [];
+
+    await expect(async () => {
+      for await (const piece of provider().streamReply(
+        request({ signal: controller.signal }),
+      )) {
+        pieces.push(typeof piece === 'string' ? piece : '[thinking]');
+        controller.abort();
+      }
+    }).rejects.toThrow();
+
+    expect(pieces).toEqual(['The lamp']);
+    await expect.poll(() => kobold.aborts).toBe(1);
+  });
+
+  test('a reply sets aside a scene call in the background, and KoboldCpp stops it before the reply is asked for', async () => {
+    kobold.answerWith({
+      kind: 'text',
+      text: JSON.stringify(KOBOLD_SCENE),
+      held: true,
+    });
+    const kobolds = provider();
+    const following = kobolds.structured(scene(true));
+    await expect.poll(() => kobold.structuredRequests.length).toBe(1);
+
+    const pieces = await collect(kobolds.streamReply(request()));
+
+    expect(pieces).toEqual(['Hello', ' from', ' the', ' local', ' model.']);
+    await expect(following).rejects.toThrow(ProviderError);
+    expect(kobold.events).toEqual(['answer', 'abort', 'reply']);
+  });
+
+  test('a scene call the user asked for is not set aside by a reply', async () => {
+    kobold.answerWith({
+      kind: 'text',
+      text: JSON.stringify(KOBOLD_SCENE),
+      held: true,
+    });
+    const kobolds = provider();
+    const asked = kobolds.structured(scene(false));
+    await expect.poll(() => kobold.structuredRequests.length).toBe(1);
+
+    const replying = collect(kobolds.streamReply(request()));
+    await expect.poll(() => kobold.requests.length).toBe(1);
+    kobold.release();
+
+    expect(await asked).toEqual(KOBOLD_SCENE);
+    await replying;
+    expect(kobold.aborts).toBe(0);
+  });
+
+  test('stopping everything ends a generation in progress on KoboldCpp', async () => {
+    kobold.respondWith({
+      kind: 'reply',
+      chunks: ['The lamp', ' is', ' lit.'],
+      holdAfter: 1,
+    });
+    const kobolds = provider();
+    const replying = collect(kobolds.streamReply(request()));
+    await expect.poll(() => kobold.requests.length).toBe(1);
+
+    await kobolds.stopAll();
+
+    expect(kobold.aborts).toBe(1);
+    await expect(replying).rejects.toThrow();
+  });
+});

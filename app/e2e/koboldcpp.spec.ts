@@ -161,3 +161,27 @@ test("a thinking model's thoughts are never shown, saved or spoken, and Thinking
     /^Mara Quill\s*"Come in\. Sit by the stove\."(Illustrate)?$/,
   );
 });
+
+test('closing the app during a reply from KoboldCpp stops KoboldCpp generating', async ({
+  page,
+  app,
+  kobold,
+}) => {
+  const saved = await page.request.put('/api/settings', {
+    data: { textBackend: 'koboldcpp', koboldcppAddress: kobold.address },
+  });
+  expect(saved.ok()).toBe(true);
+  kobold.respondWith({
+    kind: 'reply',
+    chunks: ['"Come in.', ' Sit by the stove."'],
+    holdAfter: 1,
+  });
+  await openEmptyChat(page);
+  await send(page, 'Hello? Is anyone there?');
+  await expect(messages(page).last()).toContainText('Come in.');
+
+  await app.stop();
+
+  expect(kobold.aborts).toBe(1);
+  expect(kobold.requests[0]?.abandoned).toBe(true);
+});

@@ -6,6 +6,7 @@ import {
   FAKE_KOBOLDCPP_MODEL,
   type FakeKoboldCpp,
   fakeTokenCount,
+  KOBOLD_SCENE,
   startFakeKoboldCpp,
 } from '../../../test-support/fake-koboldcpp.ts';
 import type { Chat, Settings } from '../../shared/api.ts';
@@ -116,6 +117,31 @@ test('stopping a reply from KoboldCpp keeps what was written', async () => {
     message: { content: 'The lamp' },
   });
   await expect.poll(() => kobold.requests[0]?.abandoned).toBe(true);
+  // KoboldCpp is asked to stop generating too.
+  await expect.poll(() => kobold.aborts).toBe(1);
+});
+
+test('a reply sent while the scene call after the last reply is running gives that call up, and is not held up by it', async () => {
+  const app = await koboldApp();
+  const chat = await app.startChat();
+  kobold.answerWith({
+    kind: 'text',
+    text: JSON.stringify(KOBOLD_SCENE),
+    held: true,
+  });
+  await replyEvents(await send(app, chat, 'Hello?'));
+  // The scene call after that reply is waiting on KoboldCpp.
+  await expect.poll(() => kobold.structuredRequests.length).toBe(1);
+
+  const events = await replyEvents(await send(app, chat, 'Anyone?'));
+
+  expect(events.at(-1)).toMatchObject({ type: 'done' });
+  expect(kobold.events.slice(0, 4)).toEqual([
+    'reply',
+    'answer',
+    'abort',
+    'reply',
+  ]);
 });
 
 test('a reply that fails names KoboldCpp and its address', async () => {

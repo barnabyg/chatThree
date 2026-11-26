@@ -41,6 +41,11 @@ export interface StructuredRequest {
   schema: object;
   /** Aborting gives up on the answer. */
   signal?: AbortSignal;
+  /**
+   * Asked for by the app itself, not the user: a provider that works on one
+   * request at a time may give up on it for a reply.
+   */
+  background?: boolean;
 }
 
 /** A sign, among a reply's pieces, that the model has begun to think. */
