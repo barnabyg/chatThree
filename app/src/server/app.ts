@@ -17,6 +17,7 @@ import {
 } from './chat/replies.ts';
 import type { KoboldCppProvider } from './chat/koboldcpp.ts';
 import type { ModelCatalog } from './chat/models.ts';
+import type { ModelProfiles } from './chat/profiles.ts';
 import type { EngineJobs } from './engine/jobs.ts';
 import {
   IllustrationBusyError,
@@ -57,6 +58,8 @@ export interface AppDependencies {
   models: ModelCatalog;
   /** The KoboldCpp text backend, whose connection can be tested. */
   koboldcpp: KoboldCppProvider;
+  /** The profiles of local models, which the profile editor changes. */
+  profiles: ModelProfiles;
   replies: ReplyService;
   illustrator: Illustrator;
 }
@@ -78,6 +81,7 @@ export function createApp(dependencies: AppDependencies): Hono {
     settings,
     models,
     koboldcpp,
+    profiles,
     replies,
     illustrator,
   } = dependencies;
@@ -115,7 +119,7 @@ export function createApp(dependencies: AppDependencies): Hono {
       else koboldcpp.forget();
     }),
   );
-  app.route('/api/koboldcpp', koboldCppRoutes(koboldcpp));
+  app.route('/api/koboldcpp', koboldCppRoutes(koboldcpp, profiles));
   app.route('/api/models', modelRoutes(models));
   app.route('/api/speech', speechRoutes(jobs, characters, media));
   app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));
@@ -123,7 +127,13 @@ export function createApp(dependencies: AppDependencies): Hono {
   // Every API failure is `{ "error": "<message for the user>" }`.
   app.onError((error, c) => {
     if (error instanceof ApiError) {
-      return c.json({ error: error.message }, error.status);
+      return c.json(
+        {
+          error: error.message,
+          ...(error.field !== undefined && { field: error.field }),
+        },
+        error.status,
+      );
     }
     if (error instanceof ChatBusyError) {
       return c.json({ error: error.message }, 409);

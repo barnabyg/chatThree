@@ -8,43 +8,24 @@
 // better preset in a later version still reaches every field the user has not
 // changed. See docs/adr/0002-model-profiles.md.
 
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import path from 'node:path';
 import { z } from 'zod';
+import {
+  type ModelProfile,
+  type ProfileField,
+  PROFILE_NUMBERS,
+  type ProfileNumberField,
+  type Thinking,
+} from '../../shared/api.ts';
 
-/** How a model's thinking is handled. */
-export type Thinking =
-  | { mode: 'none' }
-  /** Thinking between `open` and `close` is not part of the answer. */
-  | { mode: 'strip'; open: string; close: string };
-
-export interface ModelProfile {
-  /** The context length to plan for, in tokens; `null` for what KoboldCpp reports. */
-  contextLength: number | null;
-  /** `max_tokens` on replies. */
-  maxReplyTokens: number;
-  /** Samplers on replies, by KoboldCpp's names. */
-  temperature: number;
-  top_p: number;
-  top_k: number;
-  min_p: number;
-  rep_pen: number;
-  rep_pen_range: number;
-  /** The temperature of the scene call: low, so it keeps to the facts. */
-  sceneTemperature: number;
-  /** Stop sequences on replies. `{user}` and `{character}` are filled in. */
-  stop: string[];
-  /**
-   * `system` sends the instructions as a system message.
-   * `merge-into-first-user` puts them before the first user message's text,
-   * for chat templates that have no system role.
-   */
-  systemRole: 'system' | 'merge-into-first-user';
-  thinking: Thinking;
-  /** Merged into every request body, for KoboldCpp fields the app does not know. */
-  extraBody: Record<string, unknown>;
-}
-
-export type ProfileField = keyof ModelProfile;
+export type { ModelProfile, ProfileField, Thinking };
 
 export interface Preset {
   name: string;
@@ -179,31 +160,76 @@ export function presetFor(id: string): Preset {
   return PRESETS.find((preset) => preset.matches.test(name)) ?? GENERIC_PRESET;
 }
 
+/** The number `field`, in its range. */
+function number(field: ProfileNumberField): z.ZodNumber {
+  const { min, max, whole } = PROFILE_NUMBERS[field];
+  const shown = (value: number): string => value.toLocaleString('en');
+  return (
+    whole
+      ? z.int({ error: 'must be a whole number' })
+      : z.number({ error: 'must be a number' })
+  )
+    .min(min, `must be ${shown(min)} or more`)
+    .max(max, `must be ${shown(max)} or less`);
+}
+
 /** Each field of an override, checked alone so that one bad field costs only itself. */
 const FIELDS: { [K in ProfileField]: z.ZodType<ModelProfile[K]> } = {
-  contextLength: z.int().positive().nullable(),
-  maxReplyTokens: z.int().positive(),
-  temperature: z.number().min(0),
-  top_p: z.number().min(0).max(1),
-  top_k: z.int().min(0),
-  min_p: z.number().min(0).max(1),
-  rep_pen: z.number().min(0),
-  rep_pen_range: z.int().min(0),
-  sceneTemperature: z.number().min(0),
-  stop: z.array(z.string().min(1)),
-  systemRole: z.enum(['system', 'merge-into-first-user']),
-  thinking: z.union([
-    z.strictObject({ mode: z.literal('none') }),
-    z.strictObject({
-      mode: z.literal('strip'),
-      open: z.string().min(1),
-      close: z.string().min(1),
-    }),
-  ]),
-  extraBody: z.record(z.string(), z.unknown()),
+  contextLength: number('contextLength').nullable(),
+  maxReplyTokens: number('maxReplyTokens'),
+  temperature: number('temperature'),
+  top_p: number('top_p'),
+  top_k: number('top_k'),
+  min_p: number('min_p'),
+  rep_pen: number('rep_pen'),
+  rep_pen_range: number('rep_pen_range'),
+  sceneTemperature: number('sceneTemperature'),
+  stop: z.array(z.string({ error: 'must be text' }).min(1, 'cannot be empty'), {
+    error: 'must be a list of text',
+  }),
+  systemRole: z.enum(['system', 'merge-into-first-user'], {
+    error: 'must be system or merge-into-first-user',
+  }),
+  thinking: z.discriminatedUnion(
+    'mode',
+    [
+      z.strictObject({ mode: z.literal('none') }),
+      z.strictObject({
+        mode: z.literal('strip'),
+        open: z.string().min(1, 'needs an open tag'),
+        close: z.string().min(1, 'needs a close tag'),
+      }),
+    ],
+    { error: 'must be none, or strip with an open and a close tag' },
+  ),
+  extraBody: z.record(z.string(), z.unknown(), {
+    error: 'must be a JSON object',
+  }),
 };
 
-type Overrides = Partial<ModelProfile>;
+/** The name of the preset the user chose by hand, saved among a model's overrides. */
+const PRESET_FIELD = 'preset';
+
+/** An edit to a profile that is refused, naming the field at fault. */
+export class ProfileError extends Error {
+  readonly field: string;
+
+  constructor(field: string, message: string) {
+    super(message);
+    this.field = field;
+  }
+}
+
+/** The profile of a model as the editor shows it. */
+export interface ProfileView {
+  preset: string;
+  matchedPreset: string;
+  presetChosen: boolean;
+  profile: ModelProfile;
+  overridden: ProfileField[];
+}
+
+type Overrides = Partial<ModelProfile> & { preset?: string };
 
 /** The overrides for each model id in `file`'s content, warning of what is ignored. */
 function readOverrides(
@@ -234,6 +260,12 @@ function readOverrides(
     }
     const model: Record<string, unknown> = {};
     for (const [field, value] of Object.entries(fields)) {
+      if (field === PRESET_FIELD) {
+        if (PRESETS.some(({ name }) => name === value)) model[field] = value;
+        else
+          warn(`Ignoring ${id}.${field} in ${file}: there is no such preset.`);
+        continue;
+      }
       const schema = (FIELDS as Record<string, z.ZodType | undefined>)[field];
       if (schema === undefined) {
         warn(`Ignoring ${id}.${field} in ${file}: there is no such field.`);
@@ -275,7 +307,92 @@ export class ModelProfiles {
 
   /** The profile of model `id`: its preset, with its overrides field by field. */
   profile(id: string): ModelProfile {
-    return { ...presetFor(id).profile, ...this.#overrides().get(id) };
+    return this.view(id).profile;
+  }
+
+  /** The profile of model `id`, with where its values come from. */
+  view(id: string): ProfileView {
+    const { preset: chosen, ...fields } = this.#overrides().get(id) ?? {};
+    const matched = presetFor(id);
+    const preset = PRESETS.find(({ name }) => name === chosen) ?? matched;
+    return {
+      preset: preset.name,
+      matchedPreset: matched.name,
+      presetChosen: chosen !== undefined,
+      profile: { ...preset.profile, ...fields },
+      overridden: Object.keys(fields) as ProfileField[],
+    };
+  }
+
+  /**
+   * Replace model `id`'s overrides with `overrides`, and the preset chosen
+   * by hand with `preset` (`null` for the one matched). Other models' entries
+   * in the file are kept as they are. Throws `ProfileError` for a value
+   * that is not valid, and an `Error` when the file cannot be read or
+   * written.
+   */
+  save(
+    id: string,
+    { preset, overrides }: { preset: string | null; overrides: object },
+  ): void {
+    const model: Record<string, unknown> = {};
+    if (preset !== null) {
+      if (!PRESETS.some(({ name }) => name === preset)) {
+        throw new ProfileError(PRESET_FIELD, `There is no preset ${preset}.`);
+      }
+      model[PRESET_FIELD] = preset;
+    }
+    for (const [field, value] of Object.entries(overrides)) {
+      const schema = (FIELDS as Record<string, z.ZodType | undefined>)[field];
+      if (schema === undefined) {
+        throw new ProfileError(field, `There is no field ${field}.`);
+      }
+      const checked = schema.safeParse(value);
+      if (!checked.success) {
+        throw new ProfileError(
+          field,
+          `${field} ${checked.error.issues[0]?.message ?? 'is not valid'}.`,
+        );
+      }
+      model[field] = checked.data;
+    }
+    this.#write(id, Object.keys(model).length === 0 ? undefined : model);
+  }
+
+  /** Clear every override for model `id`. */
+  reset(id: string): void {
+    this.#write(id, undefined);
+  }
+
+  /** Put `model` in the file as `id`'s overrides, or take them out. */
+  #write(id: string, model: Record<string, unknown> | undefined): void {
+    let saved: Record<string, unknown> = {};
+    if (existsSync(this.#file)) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(readFileSync(this.#file, 'utf8'));
+      } catch {
+        throw new Error(
+          `${this.#file} is not valid JSON, so it was not changed. Fix or remove it, then try again.`,
+        );
+      }
+      if (
+        typeof parsed !== 'object' ||
+        parsed === null ||
+        Array.isArray(parsed)
+      ) {
+        throw new Error(
+          `${this.#file} is not an object of model ids, so it was not changed. Fix or remove it, then try again.`,
+        );
+      }
+      saved = parsed as Record<string, unknown>;
+    }
+    if (model === undefined) {
+      if (!(id in saved)) return;
+      Reflect.deleteProperty(saved, id);
+    } else saved[id] = model;
+    mkdirSync(path.dirname(this.#file), { recursive: true });
+    writeFileSync(this.#file, `${JSON.stringify(saved, null, 2)}\n`);
   }
 
   #overrides(): Map<string, Overrides> {

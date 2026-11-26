@@ -41,8 +41,12 @@ A model seen for the first time gets its preset, with nothing to set up.
 - Overrides are tied to the exact model id, so a different quantisation of
   the same model is a different model to tune, though it gets the same
   preset.
-- Until the profile editor exists, overrides are edited by hand. The file is
-  read again when it changes, so an edit takes effect on the next request.
+- Overrides are edited in **Settings > Text** (the profile editor), which
+  writes only the loaded model's entry and leaves the rest of the file as it
+  is, or by hand. The file is read again when it changes, so an edit takes
+  effect on the next request.
+- A preset can be chosen by hand, saved as a `"preset"` key among the
+  model's overrides, for a model whose id matches no preset that suits it.
 - `extraBody` lets the user send KoboldCpp fields the app does not know
   about, such as `"reasoning_effort": "none"` to cut a thinking model's
   thinking short, without a change to the app. It cannot change the model,

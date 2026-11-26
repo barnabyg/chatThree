@@ -235,11 +235,36 @@ Each profile has these fields:
 | `thinking` | `{"mode": "none"}`, or `{"mode": "strip", "open": "<think>", "close": "</think>"}`: see [Thinking models](#thinking-models) |
 | `extraBody` | A JSON object merged into every request, for KoboldCpp fields the app does not know about. It cannot change the model, the messages, streaming or the response format |
 
+#### The profile editor
+
+**Settings > Text**, while the text backend is KoboldCpp, edits the loaded
+model's profile, so that tuning a model needs no file editing. It shows the
+loaded model's id, the preset its name matched, and every field with the
+value in use.
+
+- A field you have changed is marked **Changed**, with a **Reset** that puts
+  the preset's value back. **Reset all** clears every change for the model at
+  once.
+- **Preset** can be chosen by hand, for a model whose name matches no preset
+  that suits it. Fields you have not changed follow the chosen preset.
+- **Stop sequences** are a list: **Add stop sequence**, or **Remove** one.
+  Write a new line as `\n`.
+- **Extra request fields** is JSON, checked when you save.
+- A value out of range, or JSON that is not an object, is refused with a
+  message at its field, by the page and again by the server.
+- **Save profile** saves this model's changes only, apart from the other
+  settings; other models' entries in the file are left as they are. A change
+  applies from the next reply.
+
+The editor saves to the same file, which can still be edited by hand.
+
+#### Editing the file
+
 To change a field for one model, put it in `local-models.json` in the data
 directory (`%LOCALAPPDATA%\chatThree\local-models.json`), under the model's
 id exactly as **Test connection** shows it. Only the fields you change belong
-there, so a better preset in a later version still reaches the rest. For
-example:
+there, so a better preset in a later version still reaches the rest.
+`"preset"` names a preset to use in place of the one matched. For example:
 
 ```json
 {

@@ -185,3 +185,77 @@ test('closing the app during a reply from KoboldCpp stops KoboldCpp generating',
   expect(kobold.aborts).toBe(1);
   expect(kobold.requests[0]?.abandoned).toBe(true);
 });
+
+test("the loaded model's profile is edited under Settings > Text, and the next reply uses it", async ({
+  page,
+  kobold,
+}) => {
+  const saved = await page.request.put('/api/settings', {
+    data: { textBackend: 'koboldcpp', koboldcppAddress: kobold.address },
+  });
+  expect(saved.ok()).toBe(true);
+  await page.goto('/#/settings/text');
+
+  await expect(page.getByTestId('profile-model')).toHaveText(
+    FAKE_KOBOLDCPP_MODEL,
+  );
+  await expect(page.getByLabel('Preset')).toHaveValue('');
+  await expect(page.getByLabel('Temperature', { exact: true })).toHaveValue(
+    '1',
+  );
+
+  // A value out of range is refused at its field.
+  await page.getByLabel('Temperature', { exact: true }).fill('9');
+  await page.getByRole('button', { name: 'Save profile' }).click();
+  await expect(
+    page.getByText('Temperature must be from 0 to 5.'),
+  ).toBeVisible();
+
+  await page.getByLabel('Temperature', { exact: true }).fill('0.4');
+  await expect(
+    page.getByRole('button', { name: 'Reset Temperature', exact: true }),
+  ).toBeVisible();
+  await page.getByLabel('Stop sequence 1', { exact: true }).fill('###');
+  await page.getByLabel('Extra request fields (JSON)').fill('{"top_a":');
+  await page.getByRole('button', { name: 'Save profile' }).click();
+  await expect(page.getByText(/^This is not valid JSON/)).toBeVisible();
+  await page
+    .getByRole('button', { name: 'Reset Extra request fields (JSON)' })
+    .click();
+  await page.getByRole('button', { name: 'Save profile' }).click();
+  await expect(
+    page
+      .getByRole('status')
+      .getByText('Profile saved. It applies from the next reply.'),
+  ).toBeVisible();
+
+  // Saved: it survives a reload, marked as changed.
+  await page.reload();
+  await expect(page.getByLabel('Temperature', { exact: true })).toHaveValue(
+    '0.4',
+  );
+  await expect(
+    page.getByRole('button', { name: 'Reset Temperature', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reset Top K' })).toHaveCount(
+    0,
+  );
+
+  await openEmptyChat(page);
+  await send(page, 'Hello? Is anyone there?');
+  await expect(messages(page)).toHaveCount(2);
+  expect(kobold.requests.at(-1)?.body).toMatchObject({
+    temperature: 0.4,
+    stop: ['###'],
+  });
+
+  // Reset all goes back to the preset.
+  await page.goto('/#/settings/text');
+  await page.getByRole('button', { name: 'Reset all' }).click();
+  await expect(page.getByLabel('Temperature', { exact: true })).toHaveValue(
+    '1',
+  );
+  await expect(
+    page.getByRole('button', { name: 'Reset Temperature', exact: true }),
+  ).toHaveCount(0);
+});

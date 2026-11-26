@@ -1,6 +1,6 @@
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import { temporaryDirectory } from '../../../test-support/temporary.ts';
 import { ModelProfiles, modelName, PRESETS, presetFor } from './profiles.ts';
 
@@ -133,4 +133,110 @@ test('a field that is not valid, or not a field, is ignored with a warning, and 
     expect.stringMatching(new RegExp(`^Ignoring ${QWEN}[.]systemRole in `)),
     `Ignoring ${QWEN}.colour in ${file}: there is no such field.`,
   ]);
+});
+
+describe('editing a profile', () => {
+  const GEMMA = 'koboldcpp/gemma-4-31B-it-Q4_K_S';
+
+  test('a view gives the preset, the values in use and which fields are changed', () => {
+    const { profiles } = profilesWith(
+      JSON.stringify({ [QWEN]: { temperature: 1.1 } }),
+    );
+
+    expect(profiles.view(QWEN)).toEqual({
+      preset: 'Qwen3',
+      matchedPreset: 'Qwen3',
+      presetChosen: false,
+      profile: { ...presetFor(QWEN).profile, temperature: 1.1 },
+      overridden: ['temperature'],
+    });
+  });
+
+  test("saving replaces the model's overrides and leaves other models' untouched", () => {
+    const other = { 'koboldcpp/x': { temperature: 'hot', mine: true } };
+    const { profiles, file } = profilesWith(
+      JSON.stringify({ ...other, [QWEN]: { temperature: 1.1 } }),
+    );
+
+    profiles.save(QWEN, { preset: null, overrides: { top_k: 50 } });
+
+    expect(profiles.profile(QWEN)).toEqual({
+      ...presetFor(QWEN).profile,
+      top_k: 50,
+    });
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({
+      ...other,
+      [QWEN]: { top_k: 50 },
+    });
+  });
+
+  test('a preset chosen by hand is used in place of the one matched, and saved as an override', () => {
+    const { profiles, file } = profilesWith(undefined);
+
+    profiles.save(GEMMA, { preset: 'Qwen3', overrides: { top_k: 50 } });
+
+    expect(profiles.view(GEMMA)).toMatchObject({
+      preset: 'Qwen3',
+      matchedPreset: 'Gemma',
+      presetChosen: true,
+      profile: { ...presetFor(QWEN).profile, top_k: 50 },
+      overridden: ['top_k'],
+    });
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({
+      [GEMMA]: { preset: 'Qwen3', top_k: 50 },
+    });
+  });
+
+  test('resetting clears every override for the model only', () => {
+    const { profiles, file } = profilesWith(
+      JSON.stringify({
+        [QWEN]: { temperature: 1.1, preset: 'Gemma' },
+        [GEMMA]: { top_k: 3 },
+      }),
+    );
+
+    profiles.reset(QWEN);
+
+    expect(profiles.profile(QWEN)).toEqual(presetFor(QWEN).profile);
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({
+      [GEMMA]: { top_k: 3 },
+    });
+  });
+
+  test.each([
+    [{ temperature: -1 }, 'temperature'],
+    [{ top_p: 1.5 }, 'top_p'],
+    [{ maxReplyTokens: 0 }, 'maxReplyTokens'],
+    [{ top_k: 2.5 }, 'top_k'],
+    [{ stop: [''] }, 'stop'],
+    [{ thinking: { mode: 'strip', open: '', close: '</think>' } }, 'thinking'],
+    [{ colour: 'blue' }, 'colour'],
+  ])('%j is refused, naming the field', (overrides, field) => {
+    const { profiles, file } = profilesWith(undefined);
+
+    expect(() => {
+      profiles.save(QWEN, {
+        preset: null,
+        overrides: overrides,
+      });
+    }).toThrow(expect.objectContaining({ field }) as Error);
+    expect(existsSync(file)).toBe(false);
+  });
+
+  test('a preset that does not exist is refused', () => {
+    const { profiles } = profilesWith(undefined);
+
+    expect(() => {
+      profiles.save(QWEN, { preset: 'Nonesuch', overrides: {} });
+    }).toThrow(expect.objectContaining({ field: 'preset' }) as Error);
+  });
+
+  test('a file that is not valid JSON is not overwritten', () => {
+    const { profiles, file } = profilesWith('{"koboldcpp/x": {');
+
+    expect(() => {
+      profiles.save(QWEN, { preset: null, overrides: { top_k: 50 } });
+    }).toThrow(/not valid JSON/);
+    expect(readFileSync(file, 'utf8')).toBe('{"koboldcpp/x": {');
+  });
 });

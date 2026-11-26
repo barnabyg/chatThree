@@ -117,6 +117,7 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
     settings,
     models,
     koboldcpp,
+    profiles,
     replies,
     illustrator,
   });

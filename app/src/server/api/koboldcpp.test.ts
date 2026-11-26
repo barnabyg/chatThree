@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { afterEach, beforeEach, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   FAKE_CONTEXT_LENGTH,
   FAKE_KOBOLDCPP_MODEL,
@@ -9,7 +9,8 @@ import {
   KOBOLD_SCENE,
   startFakeKoboldCpp,
 } from '../../../test-support/fake-koboldcpp.ts';
-import type { Chat, Settings } from '../../shared/api.ts';
+import type { Chat, LoadedModelProfile, Settings } from '../../shared/api.ts';
+import { presetFor } from '../chat/profiles.ts';
 import { replyEvents, type TestApp, testApp } from '../testing.ts';
 
 // The KoboldCpp text backend through the API, against a fake KoboldCpp.
@@ -337,4 +338,125 @@ test("with KoboldCpp, a request never asks for more than the model's context len
   expect(
     view.messages.slice(view.notSent).map(({ content }) => content),
   ).toEqual(sent.map(({ content }) => content));
+});
+
+describe("the loaded model's profile", () => {
+  const GEMMA = presetFor(FAKE_KOBOLDCPP_MODEL).profile;
+
+  async function profile(app: TestApp): Promise<LoadedModelProfile> {
+    const response = await app.call('GET', '/api/koboldcpp/profile');
+    expect(response.status).toBe(200);
+    return (await response.json()) as LoadedModelProfile;
+  }
+
+  test('reads as the loaded model, its preset and the values in use', async () => {
+    const app = await koboldApp();
+
+    const read = await profile(app);
+
+    expect(read).toMatchObject({
+      model: FAKE_KOBOLDCPP_MODEL,
+      contextLength: FAKE_CONTEXT_LENGTH,
+      preset: 'Gemma',
+      matchedPreset: 'Gemma',
+      presetChosen: false,
+      profile: GEMMA,
+      overridden: [],
+    });
+    expect(read.presets.map(({ name }) => name)).toContain('Qwen3');
+  });
+
+  test('a saved change takes effect on the next reply, and is marked as changed', async () => {
+    const app = await koboldApp();
+    const chat = await app.startChat();
+
+    const saved = await app.call('PUT', '/api/koboldcpp/profile', {
+      preset: null,
+      overrides: { temperature: 0.3, stop: ['###'] },
+    });
+
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toMatchObject({
+      profile: { ...GEMMA, temperature: 0.3, stop: ['###'] },
+      overridden: ['temperature', 'stop'],
+    });
+    await replyEvents(await send(app, chat, 'Hello?'));
+    expect(kobold.requests[0]?.body).toMatchObject({
+      temperature: 0.3,
+      stop: ['###'],
+    });
+  });
+
+  test('a preset chosen by hand is used for the next reply', async () => {
+    const app = await koboldApp();
+    const chat = await app.startChat();
+
+    await app.call('PUT', '/api/koboldcpp/profile', {
+      preset: 'Qwen3',
+      overrides: {},
+    });
+    await replyEvents(await send(app, chat, 'Hello?'));
+
+    expect(await profile(app)).toMatchObject({
+      preset: 'Qwen3',
+      presetChosen: true,
+    });
+    expect(kobold.requests[0]?.body).toMatchObject({ top_k: 20 });
+  });
+
+  test('a value that is not valid is refused, naming its field, and nothing is saved', async () => {
+    const app = await koboldApp();
+
+    const refused = await app.call('PUT', '/api/koboldcpp/profile', {
+      preset: null,
+      overrides: { temperature: 0.3, top_p: 2 },
+    });
+
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toEqual({
+      error: 'top_p must be 1 or less.',
+      field: 'top_p',
+    });
+    expect((await profile(app)).overridden).toEqual([]);
+  });
+
+  test('tags are needed to strip thinking', async () => {
+    const app = await koboldApp();
+
+    const refused = await app.call('PUT', '/api/koboldcpp/profile', {
+      preset: null,
+      overrides: { thinking: { mode: 'strip', open: '', close: '</think>' } },
+    });
+
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toMatchObject({ field: 'thinking' });
+  });
+
+  test('resetting clears every override', async () => {
+    const app = await koboldApp();
+    await app.call('PUT', '/api/koboldcpp/profile', {
+      preset: 'Qwen3',
+      overrides: { temperature: 0.3 },
+    });
+
+    const reset = await app.call('DELETE', '/api/koboldcpp/profile');
+
+    expect(reset.status).toBe(200);
+    expect(await reset.json()).toMatchObject({
+      preset: 'Gemma',
+      presetChosen: false,
+      profile: GEMMA,
+      overridden: [],
+    });
+  });
+
+  test('without a model loaded, the profile cannot be had', async () => {
+    const app = await koboldApp();
+    kobold.load(undefined);
+    app.koboldcpp.forget();
+
+    const response = await app.call('GET', '/api/koboldcpp/profile');
+
+    expect(response.status).toBe(502);
+  });
 });

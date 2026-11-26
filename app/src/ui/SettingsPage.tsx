@@ -11,11 +11,13 @@ import type {
 } from '../shared/api.ts';
 import { api, errorMessage } from './api.ts';
 import { ModelField } from './ModelField.tsx';
+import { ProfileEditor } from './ProfileEditor.tsx';
 import { ReplyPrompts } from './ReplyPrompts.tsx';
 
 /** The tabs of the Settings page, each at `#/settings/<id>`. */
 export const SETTINGS_TABS = [
   { id: 'connection', label: 'Connection' },
+  { id: 'text', label: 'Text' },
   { id: 'images', label: 'Images' },
   { id: 'speech', label: 'Speech' },
   { id: 'reply-prompts', label: 'Reply prompts' },
@@ -208,6 +210,16 @@ export function SettingsPage({ tab }: { tab: SettingsTab }) {
       </nav>
       {tab === 'reply-prompts' ? (
         <ReplyPrompts />
+      ) : tab === 'text' ? (
+        settings.textBackend === 'koboldcpp' ? (
+          <ProfileEditor />
+        ) : (
+          <p className="hint">
+            The model profile is for a local model in KoboldCpp. Choose
+            KoboldCpp as the text backend under Connection, and save, to edit
+            it. OpenAI's model is chosen under Connection.
+          </p>
+        )
       ) : (
         <form className="form" onSubmit={save}>
           {tab === 'connection' && (

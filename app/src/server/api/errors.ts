@@ -5,10 +5,13 @@ import type { z } from 'zod';
 /** A request the API refuses, with a message written for the user. */
 export class ApiError extends Error {
   readonly status: ContentfulStatusCode;
+  /** The field of the request at fault, if it is one field's. */
+  readonly field: string | undefined;
 
-  constructor(status: ContentfulStatusCode, message: string) {
+  constructor(status: ContentfulStatusCode, message: string, field?: string) {
     super(message);
     this.status = status;
+    this.field = field;
   }
 }
 

@@ -372,6 +372,7 @@ export function testApp(
     settings,
     models,
     koboldcpp,
+    profiles,
     replies,
     illustrator,
   });
