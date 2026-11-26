@@ -684,13 +684,17 @@ describe('stopping', () => {
       held: true,
     });
     const kobolds = provider();
-    const following = kobolds.structured(scene(true));
+    // Settled at once, so that its failure is not left unhandled meanwhile.
+    const following = kobolds.structured(scene(true)).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
     await expect.poll(() => kobold.structuredRequests.length).toBe(1);
 
     const pieces = await collect(kobolds.streamReply(request()));
 
     expect(pieces).toEqual(['Hello', ' from', ' the', ' local', ' model.']);
-    await expect(following).rejects.toThrow(ProviderError);
+    expect(await following).toBeInstanceOf(ProviderError);
     expect(kobold.events).toEqual(['answer', 'abort', 'reply']);
   });
 
@@ -720,12 +724,15 @@ describe('stopping', () => {
       holdAfter: 1,
     });
     const kobolds = provider();
-    const replying = collect(kobolds.streamReply(request()));
+    const replying = collect(kobolds.streamReply(request())).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
     await expect.poll(() => kobold.requests.length).toBe(1);
 
     await kobolds.stopAll();
 
     expect(kobold.aborts).toBe(1);
-    await expect(replying).rejects.toThrow();
+    expect(await replying).toBeInstanceOf(ProviderError);
   });
 });
