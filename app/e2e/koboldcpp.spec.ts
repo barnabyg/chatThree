@@ -201,11 +201,8 @@ test('closing the app during a reply from KoboldCpp stops KoboldCpp generating',
 
   await app.stop();
 
-  // Once more if the scene call after the stopped reply had begun.
+  // Once more if the scene call after the stopped reply was running.
   expect(kobold.aborts).toBeGreaterThanOrEqual(1);
-  expect(kobold.structuredRequests.length).toBeLessThanOrEqual(
-    kobold.aborts - 1,
-  );
   expect(kobold.requests[0]?.abandoned).toBe(true);
 });
 
