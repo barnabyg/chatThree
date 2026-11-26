@@ -229,3 +229,12 @@ test('the model is a setting, with a default', async ({ page, openai }) => {
     'gpt-5-mini',
   ]);
 });
+
+test('the chat header says which text backend writes the replies', async ({
+  page,
+}) => {
+  await openEmptyChat(page);
+  await expect(page.getByTestId('text-backend')).toHaveText(
+    'Text: OpenAI · gpt-5.5',
+  );
+});
