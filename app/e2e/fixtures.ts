@@ -8,6 +8,10 @@ import {
   type FakeOpenAI,
   startFakeOpenAI,
 } from '../test-support/fake-openai.ts';
+import {
+  type FakeKoboldCpp,
+  startFakeKoboldCpp,
+} from '../test-support/fake-koboldcpp.ts';
 
 const APP_ROOT = path.resolve(import.meta.dirname, '..');
 const START_TIMEOUT_MS = 15_000;
@@ -141,6 +145,8 @@ interface Fixtures {
   appEnv: NodeJS.ProcessEnv;
   /** The fake OpenAI server this test's app talks to. */
   openai: FakeOpenAI;
+  /** A fake KoboldCpp, started only for the tests that ask for it. */
+  kobold: FakeKoboldCpp;
   app: RunningApp;
 }
 
@@ -155,6 +161,12 @@ export const test = base.extend<Fixtures>({
     const openai = await startFakeOpenAI();
     await use(openai);
     await openai.close();
+  },
+  // eslint-disable-next-line no-empty-pattern -- As for `openai` above.
+  kobold: async ({}, use) => {
+    const kobold = await startFakeKoboldCpp();
+    await use(kobold);
+    await kobold.close();
   },
   app: async ({ appEnv, openai }, use, testInfo) => {
     const app = await startApp(testInfo.outputPath(), {

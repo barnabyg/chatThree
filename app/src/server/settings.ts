@@ -13,6 +13,8 @@ import {
   type Settings,
   type SettingsUpdate,
   type SpeechScope,
+  TEXT_BACKENDS,
+  type TextBackend,
 } from '../shared/api.ts';
 
 export const DEFAULT_MODEL = 'gpt-5.5';
@@ -32,6 +34,8 @@ export const DEFAULT_IMAGE_STYLE: ImageStyle = 'realistic';
 export const DEFAULT_SPEECH_SCOPE: SpeechScope = 'dialogue';
 
 interface Saved {
+  textBackend?: TextBackend;
+  koboldcppAddress?: string;
   model?: string;
   reasoningEffort?: ReasoningEffort;
   sceneModel?: string;
@@ -58,6 +62,8 @@ function load(file: string): Saved {
     > | null;
     if (typeof saved !== 'object' || saved === null) throw new Error();
     const {
+      textBackend,
+      koboldcppAddress,
       model,
       reasoningEffort,
       sceneModel,
@@ -71,6 +77,11 @@ function load(file: string): Saved {
       openaiApiKey,
     } = saved;
     return {
+      // Settings saved before there was a choice of backend load as OpenAI.
+      ...((TEXT_BACKENDS as readonly unknown[]).includes(textBackend) && {
+        textBackend: textBackend as TextBackend,
+      }),
+      ...(typeof koboldcppAddress === 'string' && { koboldcppAddress }),
       ...(typeof model === 'string' && { model }),
       ...(isReasoningEffort(reasoningEffort) && { reasoningEffort }),
       ...(typeof sceneModel === 'string' && { sceneModel }),
@@ -115,6 +126,16 @@ export class SettingsStore {
     this.#environmentApiKey =
       environmentApiKey === '' ? undefined : environmentApiKey;
     this.#saved = load(file);
+  }
+
+  /** Who writes the replies and the scene call. */
+  textBackend(): TextBackend {
+    return this.#saved.textBackend ?? 'openai';
+  }
+
+  /** KoboldCpp's address, without a trailing slash, or `''` if none is saved. */
+  koboldcppAddress(): string {
+    return this.#saved.koboldcppAddress ?? '';
   }
 
   model(): string {
@@ -164,6 +185,8 @@ export class SettingsStore {
   /** The settings as the browser may see them: never the key itself. */
   view(): Settings {
     return {
+      textBackend: this.textBackend(),
+      koboldcppAddress: this.koboldcppAddress(),
       model: this.model(),
       reasoningEffort: this.reasoningEffort() ?? null,
       sceneModel: this.sceneModel(),
@@ -185,6 +208,10 @@ export class SettingsStore {
 
   update(update: SettingsUpdate): Settings {
     const next: Saved = { ...this.#saved };
+    if (update.textBackend !== undefined) next.textBackend = update.textBackend;
+    if (update.koboldcppAddress !== undefined) {
+      next.koboldcppAddress = update.koboldcppAddress;
+    }
     if (update.model !== undefined) next.model = update.model;
     if (update.reasoningEffort === null) delete next.reasoningEffort;
     else if (update.reasoningEffort !== undefined) {

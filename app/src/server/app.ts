@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { characterRoutes } from './api/characters.ts';
 import { chatRoutes } from './api/chats.ts';
 import { engineRoutes } from './api/engine.ts';
+import { koboldCppRoutes } from './api/koboldcpp.ts';
 import { modelRoutes } from './api/models.ts';
 import { playerRoutes } from './api/players.ts';
 import { replyPromptRoutes } from './api/replyPrompts.ts';
@@ -14,6 +15,7 @@ import {
   ChatRequestError,
   type ReplyService,
 } from './chat/replies.ts';
+import type { KoboldCppProvider } from './chat/koboldcpp.ts';
 import type { ModelCatalog } from './chat/models.ts';
 import type { EngineJobs } from './engine/jobs.ts';
 import {
@@ -53,6 +55,8 @@ export interface AppDependencies {
   settings: SettingsStore;
   /** The models that can write replies, and their thinking levels. */
   models: ModelCatalog;
+  /** The KoboldCpp text backend, whose connection can be tested. */
+  koboldcpp: KoboldCppProvider;
   replies: ReplyService;
   illustrator: Illustrator;
 }
@@ -73,6 +77,7 @@ export function createApp(dependencies: AppDependencies): Hono {
     scenes,
     settings,
     models,
+    koboldcpp,
     replies,
     illustrator,
   } = dependencies;
@@ -103,7 +108,15 @@ export function createApp(dependencies: AppDependencies): Hono {
   app.route('/api/scenarios', scenarioRoutes(scenarios, replies, illustrator));
   app.route('/api/players', playerRoutes(players, replies, illustrator));
   app.route('/api/reply-prompts', replyPromptRoutes(replyPrompts));
-  app.route('/api/settings', settingsRoutes(settings));
+  app.route(
+    '/api/settings',
+    settingsRoutes(settings, () => {
+      // The address may have changed: find out again what is loaded there.
+      if (settings.textBackend() === 'koboldcpp') koboldcpp.refresh();
+      else koboldcpp.forget();
+    }),
+  );
+  app.route('/api/koboldcpp', koboldCppRoutes(koboldcpp));
   app.route('/api/models', modelRoutes(models));
   app.route('/api/speech', speechRoutes(jobs, characters, media));
   app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));

@@ -4,14 +4,17 @@ import {
   ILLUSTRATION_MODES,
   IMAGE_STYLES,
   REASONING_EFFORTS,
+  TEXT_BACKENDS,
 } from '../../shared/api.ts';
 import { isWellFormedApiKey } from '../apiKey.ts';
+import { koboldCppAddress } from '../chat/koboldcpp.ts';
 import {
   MAX_ILLUSTRATION_COOLDOWN,
   MIN_ILLUSTRATION_COOLDOWN,
   type SettingsStore,
 } from '../settings.ts';
 import { readBody } from './errors.ts';
+import { ADDRESS_FORMAT } from './koboldcpp.ts';
 
 const MIN_TOKEN_BUDGET = 100;
 const MAX_TOKEN_BUDGET = 1_000_000;
@@ -25,6 +28,21 @@ const reasoningEffort = z
   .optional();
 
 const update = z.strictObject({
+  textBackend: z
+    .enum(TEXT_BACKENDS, 'The text backend must be "openai" or "koboldcpp".')
+    .optional(),
+  koboldcppAddress: z
+    .string()
+    .max(500, 'The KoboldCpp address is too long.')
+    .transform((text, context) => {
+      const address = koboldCppAddress(text);
+      if (address === undefined) {
+        context.addIssue({ code: 'custom', message: ADDRESS_FORMAT });
+        return z.NEVER;
+      }
+      return address;
+    })
+    .optional(),
   model: z
     .string()
     .trim()
@@ -95,14 +113,22 @@ const update = z.strictObject({
     .optional(),
 });
 
-/** Settings as the browser may see them. The API key is write-only. */
-export function settingsRoutes(settings: SettingsStore): Hono {
+/**
+ * Settings as the browser may see them. The API key is write-only.
+ * `onSaved` is called after each change is saved.
+ */
+export function settingsRoutes(
+  settings: SettingsStore,
+  onSaved: () => void = () => undefined,
+): Hono {
   const routes = new Hono();
 
   routes.get('/', (c) => c.json(settings.view()));
 
   routes.put('/', async (c) => {
     const {
+      textBackend,
+      koboldcppAddress: address,
       model,
       reasoningEffort: effort,
       sceneModel,
@@ -115,21 +141,23 @@ export function settingsRoutes(settings: SettingsStore): Hono {
       speechScope,
       apiKey,
     } = await readBody(c, update);
-    return c.json(
-      settings.update({
-        ...(model !== undefined && { model }),
-        ...(effort !== undefined && { reasoningEffort: effort }),
-        ...(sceneModel !== undefined && { sceneModel }),
-        ...(sceneReasoningEffort !== undefined && { sceneReasoningEffort }),
-        ...(illustrationMode !== undefined && { illustrationMode }),
-        ...(illustrationCooldown !== undefined && { illustrationCooldown }),
-        ...(imageStyle !== undefined && { imageStyle }),
-        ...(contextTokenBudget !== undefined && { contextTokenBudget }),
-        ...(speechMuted !== undefined && { speechMuted }),
-        ...(speechScope !== undefined && { speechScope }),
-        ...(apiKey !== undefined && { apiKey }),
-      }),
-    );
+    const saved = settings.update({
+      ...(textBackend !== undefined && { textBackend }),
+      ...(address !== undefined && { koboldcppAddress: address }),
+      ...(model !== undefined && { model }),
+      ...(effort !== undefined && { reasoningEffort: effort }),
+      ...(sceneModel !== undefined && { sceneModel }),
+      ...(sceneReasoningEffort !== undefined && { sceneReasoningEffort }),
+      ...(illustrationMode !== undefined && { illustrationMode }),
+      ...(illustrationCooldown !== undefined && { illustrationCooldown }),
+      ...(imageStyle !== undefined && { imageStyle }),
+      ...(contextTokenBudget !== undefined && { contextTokenBudget }),
+      ...(speechMuted !== undefined && { speechMuted }),
+      ...(speechScope !== undefined && { speechScope }),
+      ...(apiKey !== undefined && { apiKey }),
+    });
+    onSaved();
+    return c.json(saved);
   });
 
   return routes;

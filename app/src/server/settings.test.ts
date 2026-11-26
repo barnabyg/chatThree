@@ -17,6 +17,8 @@ test('with nothing saved, the model is the default and the key comes from the en
   const settings = new SettingsStore(settingsFile(), 'sk-from-env');
 
   expect(settings.view()).toEqual({
+    textBackend: 'openai',
+    koboldcppAddress: '',
     model: DEFAULT_MODEL,
     reasoningEffort: null,
     sceneModel: DEFAULT_SCENE_MODEL,
@@ -150,4 +152,39 @@ test('the image style is saved and read back, and a hand-edited unknown one is i
 
   await writeFile(file, JSON.stringify({ imageStyle: 'cartoon' }));
   expect(new SettingsStore(file, undefined).imageStyle()).toBe('realistic');
+});
+
+test('settings saved before there was a choice of backend load as OpenAI, unchanged', async () => {
+  const file = settingsFile();
+  await writeFile(
+    file,
+    JSON.stringify({ model: 'gpt-4.1', openaiApiKey: 'sk-saved' }),
+  );
+
+  const settings = new SettingsStore(file, undefined);
+
+  expect(settings.textBackend()).toBe('openai');
+  expect(settings.koboldcppAddress()).toBe('');
+  expect(settings.model()).toBe('gpt-4.1');
+  expect(settings.apiKey()).toBe('sk-saved');
+});
+
+test('the text backend and the KoboldCpp address are saved, and read back by a later run', () => {
+  const file = settingsFile();
+  new SettingsStore(file, undefined).update({
+    textBackend: 'koboldcpp',
+    koboldcppAddress: 'http://192.168.1.50:5001',
+  });
+
+  const restarted = new SettingsStore(file, undefined);
+
+  expect(restarted.textBackend()).toBe('koboldcpp');
+  expect(restarted.koboldcppAddress()).toBe('http://192.168.1.50:5001');
+});
+
+test('a hand-edited unknown text backend is ignored for OpenAI', async () => {
+  const file = settingsFile();
+  await writeFile(file, JSON.stringify({ textBackend: 'llamacpp' }));
+
+  expect(new SettingsStore(file, undefined).textBackend()).toBe('openai');
 });

@@ -2,10 +2,12 @@ import { type SyntheticEvent, useEffect, useState } from 'react';
 import type {
   IllustrationMode,
   ImageStyle,
+  KoboldCppStatus,
   ReasoningEffort,
   Settings,
   SettingsUpdate,
   SpeechScope,
+  TextBackend,
 } from '../shared/api.ts';
 import { api, errorMessage } from './api.ts';
 import { ModelField } from './ModelField.tsx';
@@ -38,6 +40,15 @@ const KEY_SOURCE: Record<Settings['apiKey'], string> = {
  */
 export function SettingsPage({ tab }: { tab: SettingsTab }) {
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [textBackend, setTextBackend] = useState<TextBackend>('openai');
+  const [koboldAddress, setKoboldAddress] = useState('');
+  /** The last connection test: what it found, why it failed, or still going. */
+  const [koboldCheck, setKoboldCheck] = useState<
+    | { state: 'checking' }
+    | { state: 'found'; status: KoboldCppStatus }
+    | { state: 'failed'; reason: string }
+    | undefined
+  >(undefined);
   const [apiKey, setApiKey] = useState('');
   const [models, setModels] = useState<
     string[] | undefined | { reason: string }
@@ -60,6 +71,8 @@ export function SettingsPage({ tab }: { tab: SettingsTab }) {
 
   const show = (loaded: Settings): void => {
     setSettings(loaded);
+    setTextBackend(loaded.textBackend);
+    setKoboldAddress(loaded.koboldcppAddress);
     setModel(loaded.model);
     setEffort(loaded.reasoningEffort);
     setSceneModel(loaded.sceneModel);
@@ -80,19 +93,24 @@ export function SettingsPage({ tab }: { tab: SettingsTab }) {
     });
   };
 
+  /** Load the models of the saved backend. `current` says whether the page still wants them. */
+  const loadModels = (current: () => boolean = () => true): void => {
+    api.listModels().then(
+      (list) => {
+        if (current()) setModels(list.models);
+      },
+      (reason: unknown) => {
+        if (current()) setModels({ reason: errorMessage(reason) });
+      },
+    );
+  };
+
   useEffect(() => {
     let current = true;
     api.getSettings().then((loaded) => {
       if (current) show(loaded);
     }, fail);
-    api.listModels().then(
-      (list) => {
-        if (current) setModels(list.models);
-      },
-      (reason: unknown) => {
-        if (current) setModels({ reason: errorMessage(reason) });
-      },
-    );
+    loadModels(() => current);
     return () => {
       current = false;
     };
@@ -109,15 +127,53 @@ export function SettingsPage({ tab }: { tab: SettingsTab }) {
   const update = (change: SettingsUpdate, done: string): void => {
     setNotice(null);
     api.updateSettings(change).then((saved) => {
+      const backendChanged =
+        saved.textBackend !== settings.textBackend ||
+        saved.koboldcppAddress !== settings.koboldcppAddress;
       show(saved);
       setNotice({ kind: 'status', text: done });
+      // The models on offer are the saved backend's.
+      if (backendChanged) {
+        setModels(undefined);
+        loadModels();
+      }
     }, fail);
   };
+
+  const testConnection = (): void => {
+    setKoboldCheck({ state: 'checking' });
+    api.checkKoboldCpp(koboldAddress).then(
+      (status) => {
+        setKoboldCheck({ state: 'found', status });
+      },
+      (reason: unknown) => {
+        setKoboldCheck({ state: 'failed', reason: errorMessage(reason) });
+      },
+    );
+  };
+
+  /** The model KoboldCpp has loaded, as far as the page knows. */
+  const loadedModel =
+    koboldCheck?.state === 'found'
+      ? koboldCheck.status.model
+      : settings.textBackend === 'koboldcpp' &&
+          settings.koboldcppAddress === koboldAddress.trim() &&
+          Array.isArray(models)
+        ? models[0]
+        : undefined;
+  const local = textBackend === 'koboldcpp';
+  // The OpenAI models are listed only once OpenAI is the saved backend.
+  const openAIModels =
+    settings.textBackend === 'openai'
+      ? models
+      : { reason: 'Save to list the OpenAI models.' };
 
   const save = (event: SyntheticEvent): void => {
     event.preventDefault();
     update(
       {
+        textBackend,
+        koboldcppAddress: koboldAddress,
         model,
         reasoningEffort: effort,
         sceneModel,
@@ -157,6 +213,94 @@ export function SettingsPage({ tab }: { tab: SettingsTab }) {
           {tab === 'connection' && (
             <>
               <label>
+                Text backend
+                <select
+                  value={textBackend}
+                  onChange={(event) => {
+                    setTextBackend(event.target.value as TextBackend);
+                  }}
+                >
+                  <option value="openai">OpenAI</option>
+                  <option value="koboldcpp">KoboldCpp</option>
+                </select>
+              </label>
+              <p className="hint">
+                Who writes the replies and describes scenes for illustrations:
+                OpenAI, or a local model loaded in KoboldCpp, usually on another
+                PC on your network.
+              </p>
+            </>
+          )}
+          {tab === 'connection' && local && (
+            <>
+              <label>
+                Server address
+                <input
+                  type="text"
+                  required
+                  placeholder="http://192.168.1.50:5001"
+                  value={koboldAddress}
+                  onChange={(event) => {
+                    setKoboldAddress(event.target.value);
+                    setKoboldCheck(undefined);
+                  }}
+                />
+              </label>
+              <p className="hint">
+                Where KoboldCpp is listening, such as http://192.168.1.50:5001.
+                chatThree adds the paths itself. Use the PC’s IPv4 address: a
+                .local name may not work. Nothing else is sent to KoboldCpp, and
+                never the OpenAI key.
+              </p>
+              <div className="form-actions">
+                <button
+                  type="button"
+                  disabled={
+                    koboldAddress.trim() === '' ||
+                    koboldCheck?.state === 'checking'
+                  }
+                  onClick={testConnection}
+                >
+                  Test connection
+                </button>
+              </div>
+              {koboldCheck?.state === 'checking' && (
+                <p className="hint" role="status">
+                  Connecting…
+                </p>
+              )}
+              {koboldCheck?.state === 'found' && (
+                <p className="hint" role="status">
+                  Connected. {koboldCheck.status.model} is loaded, with a
+                  context of{' '}
+                  {koboldCheck.status.contextLength.toLocaleString('en')}{' '}
+                  tokens.
+                </p>
+              )}
+              {koboldCheck?.state === 'failed' && (
+                <p className="form-error" role="alert">
+                  {koboldCheck.reason}
+                </p>
+              )}
+
+              <label>
+                Loaded model
+                <input
+                  type="text"
+                  readOnly
+                  value={loadedModel ?? ''}
+                  placeholder="Test the connection to see it"
+                />
+              </label>
+              <p className="hint">
+                The model loaded in KoboldCpp writes everything. To use another,
+                load it in KoboldCpp.
+              </p>
+            </>
+          )}
+          {tab === 'connection' && !local && (
+            <>
+              <label>
                 OpenAI API key
                 <input
                   type="password"
@@ -184,14 +328,17 @@ export function SettingsPage({ tab }: { tab: SettingsTab }) {
               <ModelField
                 label="Model"
                 levelLabel="Thinking level"
-                models={models}
+                models={openAIModels}
                 model={model}
                 onModel={setModel}
                 effort={effort}
                 onEffort={setEffort}
                 hint="The OpenAI model that writes the replies."
               />
-
+            </>
+          )}
+          {tab === 'connection' && (
+            <>
               <label>
                 Conversation budget (tokens)
                 <input
@@ -215,16 +362,23 @@ export function SettingsPage({ tab }: { tab: SettingsTab }) {
           )}
           {tab === 'images' && (
             <>
-              <ModelField
-                label="Scene model"
-                levelLabel="Scene thinking level"
-                models={models}
-                model={sceneModel}
-                onModel={setSceneModel}
-                effort={sceneEffort}
-                onEffort={setSceneEffort}
-                hint="The OpenAI model that reads the latest messages and describes the moment for an illustration. A small, cheap model does it well, at a low thinking level."
-              />
+              {!local && (
+                <ModelField
+                  label="Scene model"
+                  levelLabel="Scene thinking level"
+                  models={openAIModels}
+                  model={sceneModel}
+                  onModel={setSceneModel}
+                  effort={sceneEffort}
+                  onEffort={setSceneEffort}
+                  hint="The OpenAI model that reads the latest messages and describes the moment for an illustration. A small, cheap model does it well, at a low thinking level."
+                />
+              )}
+              {local && (
+                <p className="hint">
+                  Scenes are described by the model loaded in KoboldCpp.
+                </p>
+              )}
 
               <label>
                 Illustrate replies by themselves
@@ -329,7 +483,7 @@ export function SettingsPage({ tab }: { tab: SettingsTab }) {
             <button type="submit" className="primary">
               Save
             </button>
-            {tab === 'connection' && settings.apiKey === 'saved' && (
+            {tab === 'connection' && !local && settings.apiKey === 'saved' && (
               <button
                 type="button"
                 onClick={() => {

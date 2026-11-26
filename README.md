@@ -39,7 +39,10 @@ app ends the engine's whole process tree.
 
 ## Chat
 
-Replies come from OpenAI, so chat needs an OpenAI API key. Either set
+Replies come from the **text backend**, chosen in **Settings > Connection**:
+OpenAI, the default, or a local model served by
+[KoboldCpp](#local-text-with-koboldcpp). With OpenAI, chat needs an OpenAI
+API key. Either set
 `OPENAI_API_KEY` before starting the app, or paste a key into **Settings**. A
 key saved in Settings is used in place of the environment variable, is sent
 only to the OpenAI API, and is never shown again.
@@ -93,7 +96,8 @@ Chats and settings are kept on this computer, outside the repository:
 | File | Holds |
 |---|---|
 | `%LOCALAPPDATA%\chatThree\chatthree.db` | Chats and messages (SQLite) |
-| `%LOCALAPPDATA%\chatThree\settings.json` | The models, the speech settings and a saved API key |
+| `%LOCALAPPDATA%\chatThree\settings.json` | The text backend, the models, the speech settings and a saved API key |
+| `%LOCALAPPDATA%\chatThree\local-models.json` | Your overrides of local models' profiles, if any (see [Model profiles](#model-profiles)) |
 | `%LOCALAPPDATA%\chatThree\voices\` | The characters' voice clips |
 | `%LOCALAPPDATA%\chatThree\images\` | The characters' reference pictures |
 | `%LOCALAPPDATA%\chatThree\scenes\` | Illustrations of chats |
@@ -126,16 +130,102 @@ needs a saved character.
 If a picture is uploaded while another is being generated, the uploaded one
 is kept.
 
+## Local text with KoboldCpp
+
+With **Text backend** set to **KoboldCpp**, the replies and the scene call are
+written by the model loaded in KoboldCpp, usually on another PC on your
+network, so the engine keeps this PC's VRAM for pictures and voices. No OpenAI
+key is needed, and the OpenAI key is never sent to KoboldCpp.
+
+- **Server address**: where KoboldCpp listens, such as
+  `http://192.168.1.50:5001`. The app adds the paths itself. Start KoboldCpp
+  with `--host 0.0.0.0` so that other PCs can reach it, and use the PC's IPv4
+  address: a `.local` name can resolve to an IPv6 address KoboldCpp does not
+  listen on.
+- **Test connection** shows the loaded model and its context length, or why
+  KoboldCpp could not be reached.
+- **Loaded model**: the model KoboldCpp has loaded, read-only. The app asks
+  KoboldCpp at startup, when the connection settings are saved or tested, and
+  after a failed request. To use another model, load it in KoboldCpp and save
+  or test the connection. The OpenAI model and scene model settings are hidden
+  and kept for when OpenAI is chosen again.
+
+KoboldCpp applies the model's chat template; the app sends the instructions as
+a system message, then the conversation. A password (`--password`) is not
+supported: start KoboldCpp without one. Chats cross the network unencrypted
+over plain HTTP. The choice takes effect on the next request, without a
+restart; settings saved before the choice existed load as OpenAI.
+
+### Model profiles
+
+Local models differ in what they need, so each model KoboldCpp loads gets a
+**model profile**: a **preset** that ships with the app, with your own
+**overrides** on top. A model seen for the first time gets its preset, with
+nothing to set up.
+
+The preset is chosen by the model's id, as KoboldCpp gives it (`koboldcpp/`
+and the GGUF file's name), ignoring case and the quantisation suffix such as
+`-Q4_K_M`. The first match wins:
+
+| Preset | Matches ids with | Notes |
+|---|---|---|
+| DeepSeek R1 distill | `deepseek-r1` | Instructions in the first user message, not a system message; a thinking model, given more reply tokens |
+| Qwen3 | `qwen3` | A thinking model, given more reply tokens, as thinking counts against them |
+| Mistral | `mistral` or `nemo` | |
+| Gemma | `gemma` | |
+| Llama 3 | `llama-3`, `llama3` | |
+| Generic | anything | |
+
+Each profile has these fields:
+
+| Field | Use |
+|---|---|
+| `contextLength` | The context length to plan for; `null` means what KoboldCpp reports. Not used yet: the conversation budget will come from it |
+| `maxReplyTokens` | `max_tokens` on replies |
+| `temperature`, `top_p`, `top_k`, `min_p`, `rep_pen`, `rep_pen_range` | Samplers on replies |
+| `sceneTemperature` | The temperature of the scene call, low by default |
+| `stop` | Stop sequences on replies. `{user}` and `{character}` are filled in as in reply prompts. By default the reply stops where the model starts a line with your player's name and a colon |
+| `systemRole` | `system`, or `merge-into-first-user` for a chat template without a system role |
+| `thinking` | `{"mode": "none"}`, or `{"mode": "strip", "open": "<think>", "close": "</think>"}`. Not used yet: for now a thinking model's thoughts are always left out of replies (KoboldCpp sends them apart), and `<think>…</think>` is always removed from the scene call's answer |
+| `extraBody` | A JSON object merged into every request, for KoboldCpp fields the app does not know about. It cannot change the model, the messages, streaming or the response format |
+
+To change a field for one model, put it in `local-models.json` in the data
+directory (`%LOCALAPPDATA%\chatThree\local-models.json`), under the model's
+id exactly as **Test connection** shows it. Only the fields you change belong
+there, so a better preset in a later version still reaches the rest. For
+example:
+
+```json
+{
+  "koboldcpp/Qwen3.8-27B-Uncensored-Q4_K_M": {
+    "temperature": 0.8,
+    "maxReplyTokens": 1024,
+    "extraBody": { "reasoning_effort": "none" }
+  }
+}
+```
+
+(`"reasoning_effort": "none"` is the one way found to cut a Qwen3 model's
+thinking short in KoboldCpp; a line of thinking is still written.) An edit
+takes effect on the next request. A field that is not valid is ignored with
+a warning in the app's console, and so is the whole file if it is not valid
+JSON.
+
 ## Illustrations
 
 Every message of the character's has an **Illustrate** button, which paints
 a picture of that moment under the message. It takes two steps:
 
-- A second, small request to OpenAI (the *scene call*) reads the latest
-  messages, up to the one illustrated, and describes the moment as a
+- A second, small request to the text backend (the *scene call*) reads the
+  latest messages, up to the one illustrated, and describes the moment as a
   picture: what the character is doing, their expression, the framing and
-  the light. Its model is **Settings > Images > Scene model**, `gpt-5-mini` unless
-  changed.
+  the light. With OpenAI, its model is **Settings > Images > Scene model**,
+  `gpt-5-mini` unless changed. With KoboldCpp, it is the loaded model, which
+  is held to the answer's JSON schema; if KoboldCpp will not be held to it,
+  the JSON is described in the instructions instead. Either way the answer is
+  checked, found inside prose, a code fence or after a thinking block, and
+  asked for once more if it does not fit. A second answer that does not fit
+  fails, with **Try again**.
 - The engine paints the scene from that description and two reference
   pictures: the character's, and one of the place the scene is in.
 
@@ -433,6 +523,33 @@ picture (see the checks above).
    `no-such-model` and save. Send a message. Expect the reply as usual, no
    picture, and in the terminal running the app a line saying the scene
    call after a reply failed. Put the scene model back.
+
+## Manual check: replies from KoboldCpp
+
+Needs KoboldCpp running on another PC on the network with a model loaded, for
+example `koboldcpp.exe --model <file>.gguf --host 0.0.0.0 --port 5001
+--contextsize 8192`, and its IPv4 address (`ipconfig` on that PC).
+
+1. Start the app: `cd C:\docs\git\chatThree; pwsh ./start.ps1`
+2. Open **Settings > Connection**, set **Text backend** to **KoboldCpp** and
+   expect the OpenAI key and model fields to go. Enter the server address,
+   such as `http://192.168.1.50:5001`, and choose **Test connection**. Expect
+   **Connected.** with the model's name, such as
+   `koboldcpp/gemma-4-31B-it-Q4_K_S`, and its context length, and the name in
+   **Loaded model**. Choose **Save**.
+3. Choose **New chat**, then **Start chat**, and send
+   `Is it always this rough out here?`. Expect a reply from the local model,
+   streamed and spoken as it arrives (the first token may take several
+   seconds while KoboldCpp reads the prompt). With a thinking model, expect
+   no thoughts in the reply.
+4. Send another message and choose **Stop** part-way through the reply.
+   Expect the reply to stop and what was written to stay. Then choose
+   **Regenerate**, and **Delete** on the last message: both work as with
+   OpenAI.
+5. Stop KoboldCpp, and send a message. Expect an error that says it could not
+   reach KoboldCpp at the address you entered, not OpenAI.
+6. Set **Text backend** back to **OpenAI** and save. Expect the next reply
+   from OpenAI, without restarting the app.
 
 ## Check it
 

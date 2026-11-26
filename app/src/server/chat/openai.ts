@@ -11,6 +11,7 @@ import {
   type ReplyRequest,
   type StructuredRequest,
 } from './provider.ts';
+import { eventData } from './sse.ts';
 
 export const OPENAI_BASE_URL = 'https://api.openai.com/v1';
 
@@ -73,27 +74,12 @@ interface StreamEvent {
   };
 }
 
-/** Parse a server-sent event stream into the JSON payload of each event. */
+/** The JSON payload of each event in a server-sent event stream. */
 async function* streamEvents(
   body: ReadableStream<Uint8Array>,
 ): AsyncGenerator<StreamEvent> {
-  let buffer = '';
-  const text = body.pipeThrough(new TextDecoderStream());
-  for await (const chunk of text) {
-    buffer += chunk;
-    // Events are separated by a blank line.
-    const events = buffer.split(/\r?\n\r?\n/);
-    buffer = events.pop() ?? '';
-    for (const event of events) {
-      const data = event
-        .split(/\r?\n/)
-        .filter((line) => line.startsWith('data:'))
-        .map((line) => line.slice('data:'.length).trimStart())
-        .join('\n');
-      if (data !== '' && data !== '[DONE]') {
-        yield JSON.parse(data) as StreamEvent;
-      }
-    }
+  for await (const data of eventData(body)) {
+    if (data !== '[DONE]') yield JSON.parse(data) as StreamEvent;
   }
 }
 
