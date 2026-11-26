@@ -6,5 +6,11 @@
     "lib": ["ES2023"],
     "types": ["node"]
   },
-  "include": ["src/server", "src/shared", "test-support", "*.config.ts"]
+  "include": [
+    "src/server",
+    "src/shared",
+    "test-support",
+    "scripts",
+    "*.config.ts"
+  ]
 }
