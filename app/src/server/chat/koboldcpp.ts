@@ -17,11 +17,13 @@ import {
   type PromptMessage,
   type ReplyRequest,
   type StructuredRequest,
+  THINKING,
 } from './provider.ts';
 import { fillReplyPrompt } from '../../shared/replyPrompt.ts';
 import { describeSchema, findJson, schemaErrors } from './json.ts';
 import { type ModelProfile, presetFor } from './profiles.ts';
 import { eventData } from './sse.ts';
+import { stripThinking, ThinkingFilter } from './thinking.ts';
 
 /**
  * Enough for a structured answer, with room for a thinking model to think
@@ -315,7 +317,11 @@ export function koboldCppProvider(
     build: (profile: ModelProfile) => object,
     accept: string,
     signal: AbortSignal | undefined,
-  ): Promise<{ address: string; response: Response }> => {
+  ): Promise<{
+    address: string;
+    response: Response;
+    profile: ModelProfile;
+  }> => {
     const address = savedAddress();
     const model = await loadedModel();
     const profile = options.profile?.(model.id) ?? presetFor(model.id).profile;
@@ -330,7 +336,7 @@ export function koboldCppProvider(
       body: JSON.stringify({ model: model.id, ...build(profile), ...extra }),
       ...(signal !== undefined && { signal }),
     });
-    return { address, response };
+    return { address, response, profile };
   };
 
   /** The text of a non-streamed chat completion. */
@@ -338,7 +344,7 @@ export function koboldCppProvider(
     build: (profile: ModelProfile) => object,
     signal: AbortSignal | undefined,
   ): Promise<string> => {
-    const { address, response } = await complete(
+    const { address, response, profile } = await complete(
       (profile) => ({ ...build(profile), stream: false }),
       'application/json',
       signal,
@@ -352,7 +358,11 @@ export function koboldCppProvider(
         `KoboldCpp at ${address} sent back a response that is not JSON.`,
       );
     }
-    return completion.choices?.[0]?.message?.content ?? '';
+    // Cut off while thinking, the content can be the thinking, in its tags.
+    return stripThinking(
+      completion.choices?.[0]?.message?.content ?? '',
+      profile.thinking,
+    );
   };
 
   /**
@@ -464,7 +474,7 @@ export function koboldCppProvider(
       signal,
     }: ReplyRequest) {
       try {
-        const { address, response } = await complete(
+        const { address, response, profile } = await complete(
           (profile) => ({
             messages: chatMessages(instructions, messages, profile.systemRole),
             stream: true,
@@ -491,9 +501,15 @@ export function koboldCppProvider(
             `KoboldCpp at ${address} sent an empty response.`,
           );
         }
+        const filter = new ThinkingFilter(profile.thinking);
+        let thinkingShown = false;
         try {
           for await (const data of eventData(response.body)) {
-            if (data === '[DONE]') return;
+            if (data === '[DONE]') {
+              const rest = filter.end();
+              if (rest !== '') yield rest;
+              return;
+            }
             const chunk = JSON.parse(data) as StreamChunk;
             if (chunk.error !== undefined) {
               const message =
@@ -506,15 +522,33 @@ export function koboldCppProvider(
             }
             const choice = chunk.choices?.[0];
             // A thinking model's thoughts come as `reasoning_content`, which
-            // is not part of the reply.
+            // is not part of the reply. The filter drops thinking that comes
+            // in the content, between tags.
+            const reasoning = choice?.delta?.reasoning_content;
+            if (typeof reasoning === 'string' && reasoning !== '') {
+              filter.reasoned();
+            }
             const content = choice?.delta?.content;
-            if (typeof content === 'string' && content !== '') yield content;
+            const text =
+              typeof content === 'string' && content !== ''
+                ? filter.push(content)
+                : '';
+            if (filter.thinking && !thinkingShown && text === '') {
+              thinkingShown = true;
+              yield THINKING;
+            }
+            if (text !== '') {
+              thinkingShown = true;
+              yield text;
+            }
             // `stop` for an end or a stop sequence, `length` for a limit:
             // either way, what arrived is the reply.
             if (
               choice?.finish_reason !== undefined &&
               choice.finish_reason !== null
             ) {
+              const rest = filter.end();
+              if (rest !== '') yield rest;
               return;
             }
           }

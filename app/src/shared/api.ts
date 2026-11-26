@@ -187,6 +187,11 @@ export interface ChatSummary {
 export type ReplyEvent =
   /** The user's message has been saved. */
   | { type: 'user-message'; message: Message }
+  /**
+   * The model has begun to think before it replies. Its thinking is never
+   * sent; the reply's text follows.
+   */
+  | { type: 'thinking' }
   /** The next piece of the reply's text. */
   | { type: 'delta'; text: string }
   /** The reply is finished and saved. `null` if it was stopped before any text arrived. */

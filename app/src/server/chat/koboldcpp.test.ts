@@ -13,7 +13,11 @@ import {
 } from './koboldcpp.ts';
 import { SCENE_SCHEMA } from '../scene/describe.ts';
 import { type ModelProfile, presetFor } from './profiles.ts';
-import { ProviderError, type ReplyRequest } from './provider.ts';
+import {
+  ProviderError,
+  type ReplyPiece,
+  type ReplyRequest,
+} from './provider.ts';
 
 // The provider is tested over real HTTP against a fake KoboldCpp that speaks
 // the chat completions streaming format a real one was seen to use.
@@ -41,9 +45,12 @@ function provider(address: () => string = () => kobold.address) {
   return koboldCppProvider({ address });
 }
 
-async function collect(stream: AsyncIterable<string>): Promise<string[]> {
+/** The pieces of a reply, with `[thinking]` where the model began to think. */
+async function collect(stream: AsyncIterable<ReplyPiece>): Promise<string[]> {
   const pieces: string[] = [];
-  for await (const piece of stream) pieces.push(piece);
+  for await (const piece of stream) {
+    pieces.push(typeof piece === 'string' ? piece : '[thinking]');
+  }
   return pieces;
 }
 
@@ -102,7 +109,83 @@ test("leaves a thinking model's thoughts out of the reply", async () => {
 
   const pieces = await collect(provider().streamReply(request()));
 
-  expect(pieces).toEqual(['Evening.']);
+  expect(pieces).toEqual(['[thinking]', 'Evening.']);
+});
+
+describe('thinking', () => {
+  const QWEN = 'koboldcpp/Qwen3.8-27B-Uncensored-Q4_K_M';
+
+  test('a reply after separate thinking starts without its blank lines', async () => {
+    kobold.load(QWEN);
+    kobold.respondWith({
+      kind: 'reply',
+      reasoning: ['Hmm.'],
+      chunks: ['\n\n', '"Come in."'],
+    });
+
+    const pieces = await collect(provider().streamReply(request()));
+
+    expect(pieces).toEqual(['[thinking]', '"Come in."']);
+  });
+
+  test('thinking between tags in the content is dropped, for a model whose profile strips it', async () => {
+    kobold.load(QWEN);
+    kobold.respondWith({
+      kind: 'reply',
+      chunks: ['<thi', 'nk>The user', ' knocks.</th', 'ink>\n\nCome', ' in.'],
+    });
+
+    const pieces = await collect(provider().streamReply(request()));
+
+    expect(pieces).toEqual(['[thinking]', 'Come', ' in.']);
+  });
+
+  test('a reply that is all thinking, cut off, has no text', async () => {
+    kobold.load(QWEN);
+    kobold.respondWith({
+      kind: 'reply',
+      chunks: ['<think>The user', ' knocks and'],
+      finishReason: 'length',
+    });
+
+    const pieces = await collect(provider().streamReply(request()));
+
+    expect(pieces).toEqual(['[thinking]']);
+  });
+
+  test('a model whose profile has no thinking streams its content unchanged, tags and all', async () => {
+    kobold.respondWith({
+      kind: 'reply',
+      chunks: ['<think>x</think>', ' Hello.'],
+    });
+
+    const pieces = await collect(provider().streamReply(request()));
+
+    expect(pieces).toEqual(['<think>x</think>', ' Hello.']);
+  });
+
+  test('a scene answer cut off mid-thought is asked for again, and a thought before the JSON is dropped', async () => {
+    kobold.load(QWEN);
+    kobold.answerWith(
+      { kind: 'text', text: '<think>\nThe user keep' },
+      {
+        kind: 'text',
+        text: `<think>Plan it.</think>
+${JSON.stringify(KOBOLD_SCENE)}`,
+      },
+    );
+
+    const scene = await provider().structured({
+      model: 'gpt-5.5',
+      instructions: 'Describe the scene.',
+      input: 'Mara looks out.',
+      schemaName: 'scene',
+      schema: SCENE_SCHEMA,
+    });
+
+    expect(scene).toEqual(KOBOLD_SCENE);
+    expect(kobold.structuredRequests).toHaveLength(2);
+  });
 });
 
 test('a reply cut off by a length limit is still the reply', async () => {
@@ -285,7 +368,7 @@ test('stopping a reply closes the connection', async () => {
     for await (const piece of provider().streamReply(
       request({ signal: controller.signal }),
     )) {
-      pieces.push(piece);
+      pieces.push(typeof piece === 'string' ? piece : '[thinking]');
       controller.abort();
     }
   }).rejects.toThrow();

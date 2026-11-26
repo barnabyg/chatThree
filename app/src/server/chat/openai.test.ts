@@ -8,6 +8,7 @@ import { REASONING_EFFORTS } from '../../shared/api.ts';
 import { isChatModel, openAIProvider, supportedEfforts } from './openai.ts';
 import {
   ProviderError,
+  type ReplyPiece,
   type ReplyRequest,
   type StructuredRequest,
 } from './provider.ts';
@@ -37,13 +38,15 @@ function provider(apiKey: string | undefined = FAKE_API_KEY) {
   return openAIProvider({ baseUrl: openai.baseUrl, apiKey: () => apiKey });
 }
 
-async function collect(stream: AsyncIterable<string>): Promise<string[]> {
+async function collect(stream: AsyncIterable<ReplyPiece>): Promise<string[]> {
   const pieces: string[] = [];
-  for await (const piece of stream) pieces.push(piece);
+  for await (const piece of stream) {
+    pieces.push(typeof piece === 'string' ? piece : '[thinking]');
+  }
   return pieces;
 }
 
-async function failure(stream: AsyncIterable<string>): Promise<string> {
+async function failure(stream: AsyncIterable<ReplyPiece>): Promise<string> {
   try {
     await collect(stream);
   } catch (error) {
@@ -170,7 +173,7 @@ test('stops asking OpenAI for more when the reply is aborted', async () => {
     for await (const piece of provider().streamReply(
       request({ signal: controller.signal }),
     )) {
-      pieces.push(piece);
+      pieces.push(typeof piece === 'string' ? piece : '[thinking]');
       controller.abort();
     }
   })();

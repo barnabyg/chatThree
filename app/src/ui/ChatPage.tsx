@@ -86,6 +86,8 @@ export function ChatPage({ chatId }: { chatId: string }) {
   const [draft, setDraft] = useState('');
   /** The reply's text so far while one is arriving, else `null`. */
   const [arriving, setArriving] = useState<string | null>(null);
+  /** Whether the model is thinking before the reply that is arriving. */
+  const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** The reply being regenerated: hidden while its replacement arrives. */
   const [replacing, setReplacing] = useState<Message | null>(null);
@@ -211,6 +213,7 @@ export function ChatPage({ chatId }: { chatId: string }) {
     let userMessageSaved = false;
     setError(null);
     setArriving('');
+    setThinking(false);
     setReplacing(old);
     // A new reply is spoken in place of whatever was still being said.
     speech.stop();
@@ -228,6 +231,9 @@ export function ChatPage({ chatId }: { chatId: string }) {
         case 'user-message':
           userMessageSaved = true;
           addMessage(event.message);
+          break;
+        case 'thinking':
+          setThinking(true);
           break;
         case 'delta':
           setArriving((text) => (text ?? '') + event.text);
@@ -421,7 +427,9 @@ export function ChatPage({ chatId }: { chatId: string }) {
             <MessageItem
               author={chat.character.name}
               role="assistant"
-              content={arriving === '' ? '…' : arriving}
+              content={
+                arriving !== '' ? arriving : thinking ? 'Thinking…' : '…'
+              }
               writing
             />
           )}

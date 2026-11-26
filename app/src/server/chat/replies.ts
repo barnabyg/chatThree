@@ -227,6 +227,10 @@ export class ReplyService {
         signal,
       });
       for await (const piece of pieces) {
+        if (typeof piece !== 'string') {
+          yield { type: 'thinking' };
+          continue;
+        }
         text += piece;
         yield { type: 'delta', text: piece };
       }

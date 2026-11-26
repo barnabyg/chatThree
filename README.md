@@ -156,6 +156,23 @@ supported: start KoboldCpp without one. Chats cross the network unencrypted
 over plain HTTP. The choice takes effect on the next request, without a
 restart; settings saved before the choice existed load as OpenAI.
 
+### Thinking models
+
+A thinking model, such as Qwen3 or a DeepSeek R1 distill, writes its reasoning
+before the reply. That reasoning is never shown, saved or spoken: while the
+model thinks, the chat shows **Thinking…** in place of the reply.
+
+KoboldCpp usually sends the thinking apart from the reply, and the app leaves
+it out whatever the profile says. For a model whose profile has `thinking`
+set to `strip`, the app also drops anything between the open and close tags
+(`<think>` and `</think>` by default) at the start of the reply, as it
+arrives, on the server. If the reply has a close tag but no open tag (some
+templates open the thinking in the prompt), everything before the close tag
+is dropped; until a close tag comes, such a reply is held back and shown all
+at once at its end. A reply that is all thinking, cut off by its length limit
+or by **Stop**, counts as empty. With `thinking` set to `none`, the reply is
+passed on unchanged, tags and all.
+
 ### Model profiles
 
 Local models differ in what they need, so each model KoboldCpp loads gets a
@@ -186,7 +203,7 @@ Each profile has these fields:
 | `sceneTemperature` | The temperature of the scene call, low by default |
 | `stop` | Stop sequences on replies. `{user}` and `{character}` are filled in as in reply prompts. By default the reply stops where the model starts a line with your player's name and a colon |
 | `systemRole` | `system`, or `merge-into-first-user` for a chat template without a system role |
-| `thinking` | `{"mode": "none"}`, or `{"mode": "strip", "open": "<think>", "close": "</think>"}`. Not used yet: for now a thinking model's thoughts are always left out of replies (KoboldCpp sends them apart), and `<think>…</think>` is always removed from the scene call's answer |
+| `thinking` | `{"mode": "none"}`, or `{"mode": "strip", "open": "<think>", "close": "</think>"}`: see [Thinking models](#thinking-models) |
 | `extraBody` | A JSON object merged into every request, for KoboldCpp fields the app does not know about. It cannot change the model, the messages, streaming or the response format |
 
 To change a field for one model, put it in `local-models.json` in the data
@@ -540,8 +557,9 @@ example `koboldcpp.exe --model <file>.gguf --host 0.0.0.0 --port 5001
 3. Choose **New chat**, then **Start chat**, and send
    `Is it always this rough out here?`. Expect a reply from the local model,
    streamed and spoken as it arrives (the first token may take several
-   seconds while KoboldCpp reads the prompt). With a thinking model, expect
-   no thoughts in the reply.
+   seconds while KoboldCpp reads the prompt). With a thinking model, such as
+   a Qwen3, expect **Thinking…** first, then the reply with no thoughts in
+   it, shown, spoken and saved.
 4. Send another message and choose **Stop** part-way through the reply.
    Expect the reply to stop and what was written to stay. Then choose
    **Regenerate**, and **Delete** on the last message: both work as with

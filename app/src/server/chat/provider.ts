@@ -43,12 +43,20 @@ export interface StructuredRequest {
   signal?: AbortSignal;
 }
 
+/** A sign, among a reply's pieces, that the model has begun to think. */
+export const THINKING = Object.freeze({ thinking: true } as const);
+
+/** A piece of a streamed reply: its next text, or `THINKING`. */
+export type ReplyPiece = string | typeof THINKING;
+
 export interface ChatProvider {
   /**
-   * Stream the reply as pieces of text, in order.
+   * Stream the reply as pieces of text, in order. `THINKING` comes once,
+   * before any text, when the model thinks before it replies: its thinking
+   * is never part of the reply.
    * Throws `ProviderError` when no reply can be produced.
    */
-  streamReply(request: ReplyRequest): AsyncIterable<string>;
+  streamReply(request: ReplyRequest): AsyncIterable<ReplyPiece>;
   /**
    * An answer in JSON that follows `request.schema`, parsed. The caller
    * checks it: a provider that holds the model to the schema need not.
