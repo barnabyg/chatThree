@@ -8,6 +8,7 @@ test('Settings is in tabs, which keep unsaved changes until Save saves them all'
   const tabs = page.getByRole('navigation', { name: 'Settings' });
   await expect(tabs.getByRole('link')).toHaveText([
     'Connection',
+    'Text',
     'Images',
     'Speech',
     'Reply prompts',

@@ -89,7 +89,9 @@ scenario or player deletes the chats that use it, after asking.
 A long chat is not sent whole. Each turn sends the character and scenario,
 then as much of the conversation as fits a token budget (a setting, 16,000 by
 default), counted back from the newest message. Older messages stay in the
-chat, and a line in the conversation marks where sending now starts.
+chat, and a line in the conversation marks where sending now starts. With
+KoboldCpp, the budget comes from the loaded model instead (see
+[Conversation budget with KoboldCpp](#conversation-budget-with-koboldcpp)).
 
 Chats and settings are kept on this computer, outside the repository:
 
@@ -156,6 +158,52 @@ supported: start KoboldCpp without one. Chats cross the network unencrypted
 over plain HTTP. The choice takes effect on the next request, without a
 restart; settings saved before the choice existed load as OpenAI.
 
+KoboldCpp works on one request at a time and queues the rest. **Stop**, and
+anything else that ends a reply early (regenerating, closing the app), also
+asks KoboldCpp to stop generating, so that it is free for the next request.
+A reply comes first: if the scene call that follows the last reply is still
+running when you send a message, it is given up (that reply is then not
+followed or illustrated), so the reply does not wait for it. A scene call you
+asked for with **Illustrate** is not given up; a reply sent meanwhile waits
+for it.
+
+### Conversation budget with KoboldCpp
+
+With KoboldCpp, how much of a conversation is sent follows the loaded model's
+context length, and the **Conversation budget** setting is hidden (it still
+applies to OpenAI). The conversation gets the context length (the profile's
+`contextLength`, or else what KoboldCpp reports), less the reply's
+`maxReplyTokens`, less the instructions, less a margin of 64 tokens and 10
+tokens a message for the chat template's own marks. Each text is counted once
+by KoboldCpp's tokeniser (`/api/extra/tokencount`) and the count remembered.
+
+KoboldCpp reuses its work on the prompt only as far as the prompt starts the
+same as the last one. When the oldest message sent drops out, it reads the
+whole prompt again: about 5 seconds before the first word for 6,000 tokens on
+the PC it was measured on, against under a second when the prompt only grows.
+So once the conversation fills its budget, a block of old messages, at least a
+quarter of the budget, stops being sent at once. Where sending starts then
+stays put for several turns, and the line in the chat moves with it.
+
+### Thinking models
+
+A thinking model, such as Qwen3 or a DeepSeek R1 distill, writes its reasoning
+before the reply. That reasoning is never shown, saved or spoken: while the
+model thinks, the chat shows **Thinking…** in place of the reply.
+
+KoboldCpp usually sends the thinking apart from the reply, and the app leaves
+it out whatever the profile says. For a model whose profile has `thinking`
+set to `strip`, the app also drops anything between the open and close tags
+(`<think>` and `</think>` by default) at the start of the reply, as it
+arrives, on the server. If the reply has a close tag but no open tag (some
+templates open the thinking in the prompt), everything before the close tag
+is dropped. So a reply with neither tag is held back until a close tag
+comes, the reply ends, or 1,500 characters have arrived, after which it is
+taken as a reply without thinking and streams as usual: a model given a
+thinking preset that does not think only starts a little later. A reply that is all thinking, cut off by its length limit
+or by **Stop**, counts as empty. With `thinking` set to `none`, the reply is
+passed on unchanged, tags and all.
+
 ### Model profiles
 
 Local models differ in what they need, so each model KoboldCpp loads gets a
@@ -180,20 +228,45 @@ Each profile has these fields:
 
 | Field | Use |
 |---|---|
-| `contextLength` | The context length to plan for; `null` means what KoboldCpp reports. Not used yet: the conversation budget will come from it |
+| `contextLength` | The context length to plan for; `null` means what KoboldCpp reports. The conversation budget comes from it |
 | `maxReplyTokens` | `max_tokens` on replies |
 | `temperature`, `top_p`, `top_k`, `min_p`, `rep_pen`, `rep_pen_range` | Samplers on replies |
 | `sceneTemperature` | The temperature of the scene call, low by default |
 | `stop` | Stop sequences on replies. `{user}` and `{character}` are filled in as in reply prompts. By default the reply stops where the model starts a line with your player's name and a colon |
 | `systemRole` | `system`, or `merge-into-first-user` for a chat template without a system role |
-| `thinking` | `{"mode": "none"}`, or `{"mode": "strip", "open": "<think>", "close": "</think>"}`. Not used yet: for now a thinking model's thoughts are always left out of replies (KoboldCpp sends them apart), and `<think>…</think>` is always removed from the scene call's answer |
+| `thinking` | `{"mode": "none"}`, or `{"mode": "strip", "open": "<think>", "close": "</think>"}`: see [Thinking models](#thinking-models) |
 | `extraBody` | A JSON object merged into every request, for KoboldCpp fields the app does not know about. It cannot change the model, the messages, streaming or the response format |
+
+#### The profile editor
+
+**Settings > Text**, while the text backend is KoboldCpp, edits the loaded
+model's profile, so that tuning a model needs no file editing. It shows the
+loaded model's id, the preset its name matched, and every field with the
+value in use.
+
+- A field you have changed is marked **Changed**, with a **Reset** that puts
+  the preset's value back. **Reset all** clears every change for the model at
+  once.
+- **Preset** can be chosen by hand, for a model whose name matches no preset
+  that suits it. Fields you have not changed follow the chosen preset.
+- **Stop sequences** are a list: **Add stop sequence**, or **Remove** one.
+  Write a new line as `\n`.
+- **Extra request fields** is JSON, checked when you save.
+- A value out of range, or JSON that is not an object, is refused with a
+  message at its field, by the page and again by the server.
+- **Save profile** saves this model's changes only, apart from the other
+  settings; other models' entries in the file are left as they are. A change
+  applies from the next reply.
+
+The editor saves to the same file, which can still be edited by hand.
+
+#### Editing the file
 
 To change a field for one model, put it in `local-models.json` in the data
 directory (`%LOCALAPPDATA%\chatThree\local-models.json`), under the model's
 id exactly as **Test connection** shows it. Only the fields you change belong
-there, so a better preset in a later version still reaches the rest. For
-example:
+there, so a better preset in a later version still reaches the rest.
+`"preset"` names a preset to use in place of the one matched. For example:
 
 ```json
 {
@@ -359,9 +432,12 @@ Everything works without any of these. They are read when the app starts.
 - **A sentence already sent to the engine is always finished.** Stopping
   speech stops the sound at once, but the engine completes the clip it is
   making.
-- **Token counts are estimates.** The conversation budget counts four
-  characters as a token, which suits English prose and undercounts some
-  other languages.
+- **Token counts are estimates with OpenAI.** The conversation budget
+  counts four characters as a token, which suits English prose and
+  undercounts some other languages. KoboldCpp counts tokens itself; only a
+  text it could not count is estimated, at a cautious three characters a
+  token, and then a tenth of the context is kept free as well. Text in some
+  scripts (Chinese, Japanese) or full of emoji can still be more than that.
 
 ## Manual check: the engine stops with the app
 
@@ -540,10 +616,14 @@ example `koboldcpp.exe --model <file>.gguf --host 0.0.0.0 --port 5001
 3. Choose **New chat**, then **Start chat**, and send
    `Is it always this rough out here?`. Expect a reply from the local model,
    streamed and spoken as it arrives (the first token may take several
-   seconds while KoboldCpp reads the prompt). With a thinking model, expect
-   no thoughts in the reply.
-4. Send another message and choose **Stop** part-way through the reply.
-   Expect the reply to stop and what was written to stay. Then choose
+   seconds while KoboldCpp reads the prompt). With a thinking model, such as
+   a Qwen3, expect **Thinking…** first, then the reply with no thoughts in
+   it, shown, spoken and saved.
+4. Ask for something long, such as `Tell me the whole history of this
+   lighthouse.`, and choose **Stop** part-way through the reply. Expect the
+   reply to stop and what was written to stay, and KoboldCpp's console on the
+   other PC to stop generating at once (its output stops; the next request
+   starts without waiting). Then choose
    **Regenerate**, and **Delete** on the last message: both work as with
    OpenAI.
 5. Stop KoboldCpp, and send a message. Expect an error that says it could not

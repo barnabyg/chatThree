@@ -28,6 +28,7 @@ import { Illustrator } from './scene/illustrator.ts';
 import { SceneStore } from './store/scenes.ts';
 import type { EngineJobs, PaintRequest } from './engine/jobs.ts';
 import { ReplyService } from './chat/replies.ts';
+import { conversationWindow } from './chat/window.ts';
 import type { EngineControl } from './engine/supervisor.ts';
 import { VoiceWarmer } from './engine/warmer.ts';
 import { SettingsStore } from './settings.ts';
@@ -347,6 +348,11 @@ export function testApp(
     replyPrompts,
     settings,
     backend,
+    conversationWindow({
+      backend: () => settings.textBackend(),
+      budget: () => settings.contextTokenBudget(),
+      koboldcpp,
+    }),
   );
   replies.onReplySaved((chatId, message) => {
     illustrator.afterReply(chatId, message.id);
@@ -366,6 +372,7 @@ export function testApp(
     settings,
     models,
     koboldcpp,
+    profiles,
     replies,
     illustrator,
   });

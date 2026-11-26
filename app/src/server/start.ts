@@ -9,6 +9,7 @@ import { ModelCatalog } from './chat/models.ts';
 import { ModelProfiles } from './chat/profiles.ts';
 import { openAIProvider } from './chat/openai.ts';
 import { ReplyService } from './chat/replies.ts';
+import { conversationWindow } from './chat/window.ts';
 import type { AppConfig } from './config.ts';
 import { engineJobs } from './engine/jobs.ts';
 import { EngineSupervisor } from './engine/supervisor.ts';
@@ -73,6 +74,11 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
     replyPrompts,
     settings,
     provider,
+    conversationWindow({
+      backend: () => settings.textBackend(),
+      budget: () => settings.contextTokenBudget(),
+      koboldcpp,
+    }),
   );
   const engine = new EngineSupervisor({
     ...config.engine,
@@ -111,6 +117,7 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
     settings,
     models,
     koboldcpp,
+    profiles,
     replies,
     illustrator,
   });
@@ -139,6 +146,8 @@ export async function startApp(config: AppConfig): Promise<RunningApp> {
     async stop() {
       // End replies in progress so that what they have written is saved.
       await replies.stopAll();
+      // Scene calls too, and KoboldCpp is asked to stop generating.
+      await koboldcpp.stopAll();
       const closed = new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) reject(error);

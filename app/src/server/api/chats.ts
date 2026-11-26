@@ -9,10 +9,8 @@ import type {
   ReplyEvent,
 } from '../../shared/api.ts';
 import type { ReplyService } from '../chat/replies.ts';
-import { countNotSent } from '../chat/trim.ts';
 import { startingPlace } from '../scene/describe.ts';
 import type { Illustrator } from '../scene/illustrator.ts';
-import type { SettingsStore } from '../settings.ts';
 import type { CharacterStore } from '../store/characters.ts';
 import type { ChatStore } from '../store/chats.ts';
 import type { MediaStore } from '../store/media.ts';
@@ -111,7 +109,6 @@ export interface ChatRouteDependencies {
   scenes: SceneStore;
   replies: ReplyService;
   illustrator: Illustrator;
-  settings: SettingsStore;
   media: MediaStore;
 }
 
@@ -124,7 +121,6 @@ export function chatRoutes({
   scenes,
   replies,
   illustrator,
-  settings,
   media,
 }: ChatRouteDependencies): Hono {
   const routes = new Hono();
@@ -174,7 +170,7 @@ export function chatRoutes({
         .progress(id)
         .filter(({ messageId }) => ids.has(messageId)),
       followingScene: illustrator.isFollowing(id),
-      notSent: countNotSent(messages, settings.contextTokenBudget()),
+      notSent: replies.notSent(id, messages),
       replying: replies.isReplying(id),
     };
   };

@@ -7,7 +7,12 @@
 // stream is OpenAI's chat completions format, a thinking model's thoughts
 // arrive in `reasoning_content` beside `content`, and a second request waits
 // for the first rather than being refused. So the first token can take a
-// long time, and a stream is always read to its end or aborted. Node's
+// long time, and a stream is always read to its end or aborted. Aborting a
+// request closes its connection, which stops KoboldCpp generating; the app
+// also asks KoboldCpp to abort (`POST /api/extra/abort`), in case the
+// connection stalls, but only when no other request is waiting, because an
+// abort stops whichever generation is running. A reply comes first: a scene
+// call the app made by itself is given up for it. Node's
 // `fetch` waits five minutes for the response to start, which is enough for a
 // long prompt on a slow PC; no shorter timeout is set.
 
@@ -17,17 +22,22 @@ import {
   type PromptMessage,
   type ReplyRequest,
   type StructuredRequest,
+  THINKING,
 } from './provider.ts';
 import { fillReplyPrompt } from '../../shared/replyPrompt.ts';
 import { describeSchema, findJson, schemaErrors } from './json.ts';
 import { type ModelProfile, presetFor } from './profiles.ts';
 import { eventData } from './sse.ts';
+import { stripThinking, ThinkingFilter } from './thinking.ts';
 
 /**
  * Enough for a structured answer, with room for a thinking model to think
  * first when it is not held to the schema.
  */
 export const STRUCTURED_MAX_TOKENS = 2048;
+
+/** How long asking KoboldCpp to abort may take. */
+const ABORT_TIMEOUT_MS = 2_000;
 
 /** The model KoboldCpp has loaded. */
 export interface LoadedModel {
@@ -57,6 +67,20 @@ export interface KoboldCppProvider extends ChatProvider {
    * Throws `ProviderError` when it cannot be found out.
    */
   loadedModel(): Promise<LoadedModel>;
+  /** The loaded model, if it has been found out: never waits. */
+  knownModel(): LoadedModel | undefined;
+  /** The profile of model `id`, as requests use it. */
+  profileOf(id: string): ModelProfile;
+  /**
+   * How many tokens `text` is to the loaded model, by KoboldCpp's own count.
+   * Throws `ProviderError` when it cannot be counted.
+   */
+  countTokens(text: string, signal?: AbortSignal): Promise<number>;
+  /**
+   * Stop every request in progress, and wait until KoboldCpp has been asked
+   * to stop generating. Never throws.
+   */
+  stopAll(): Promise<void>;
   /**
    * Ask `address` now which model it has loaded. Remembered when `address`
    * is the saved one. Throws `ProviderError` when it cannot be found out.
@@ -216,7 +240,101 @@ export function koboldCppProvider(
   options: KoboldCppOptions,
 ): KoboldCppProvider {
   /** The loaded model being found out, or found out, for one address. */
-  let loaded: { address: string; model: Promise<LoadedModel> } | undefined;
+  let loaded:
+    | {
+        address: string;
+        model: Promise<LoadedModel>;
+        /** The model, once found out. */
+        known?: LoadedModel;
+      }
+    | undefined;
+
+  /** A chat completion request in progress. */
+  interface Generation {
+    controller: AbortController;
+    background: boolean;
+    /** Stopped by the app, not by whoever asked for it. */
+    setAside: boolean;
+  }
+  const generations = new Set<Generation>();
+  /** The requests in progress that have not been stopped. */
+  const live = (): Generation[] =>
+    [...generations].filter(({ controller }) => !controller.signal.aborted);
+  /** Requests to KoboldCpp to abort, still on their way. */
+  const aborting = new Set<Promise<void>>();
+
+  /** Ask KoboldCpp at the saved address to stop generating. Never throws. */
+  const askToAbort = (): Promise<void> => {
+    const address = options.address();
+    if (address === '') return Promise.resolve();
+    const asked = fetch(`${address}/api/extra/abort`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // No `genkey` is needed (#33).
+      body: '{}',
+      signal: AbortSignal.timeout(ABORT_TIMEOUT_MS),
+    }).then(
+      (response) => response.body?.cancel(),
+      () => undefined,
+    );
+    aborting.add(asked);
+    void asked.finally(() => aborting.delete(asked));
+    return asked;
+  };
+
+  /**
+   * Track a request, which aborting `signal` stops, here and on KoboldCpp.
+   * `end` must be called once it is over.
+   */
+  const begin = (
+    signal: AbortSignal | undefined,
+    background: boolean,
+  ): { generation: Generation; end: () => void } => {
+    const generation: Generation = {
+      controller: new AbortController(),
+      background,
+      setAside: false,
+    };
+    const onAbort = (): void => {
+      // An abort stops whichever generation KoboldCpp is running, so it is
+      // sent only when no other request could be the one running.
+      const others = live().filter((other) => other !== generation);
+      generation.controller.abort();
+      if (others.length === 0) void askToAbort();
+    };
+    generations.add(generation);
+    if (signal?.aborted === true) onAbort();
+    else signal?.addEventListener('abort', onAbort, { once: true });
+    return {
+      generation,
+      end() {
+        signal?.removeEventListener('abort', onAbort);
+        generations.delete(generation);
+      },
+    };
+  };
+
+  /** Stop `stopping`, and KoboldCpp's generation if nothing else is waiting. */
+  const setAside = async (candidates: Generation[]): Promise<void> => {
+    // One already stopped has asked KoboldCpp to abort, if it was its turn.
+    const stopping = candidates.filter(
+      ({ controller }) => !controller.signal.aborted,
+    );
+    if (stopping.length === 0) return;
+    const alone = live().every((generation) => stopping.includes(generation));
+    for (const generation of stopping) {
+      generation.setAside = true;
+      generation.controller.abort();
+    }
+    if (alone) await askToAbort();
+  };
+
+  /** Give up the requests the app made by itself, so that a reply need not wait. */
+  const setAsideBackground = (): Promise<void> =>
+    setAside([...generations].filter(({ background }) => background));
+
+  const profileOf = (id: string): ModelProfile =>
+    options.profile?.(id) ?? presetFor(id).profile;
 
   /** The saved address, or the reason there is none. */
   const savedAddress = (): string => {
@@ -281,11 +399,16 @@ export function koboldCppProvider(
 
   /** Remember `model` as what `address` has loaded, unless it fails. */
   const remember = (address: string, model: Promise<LoadedModel>): void => {
-    const entry = { address, model };
+    const entry: NonNullable<typeof loaded> = { address, model };
     loaded = entry;
-    model.catch(() => {
-      if (loaded === entry) loaded = undefined;
-    });
+    model.then(
+      (found) => {
+        entry.known = found;
+      },
+      () => {
+        if (loaded === entry) loaded = undefined;
+      },
+    );
   };
 
   const loadedModel = (): Promise<LoadedModel> => {
@@ -315,10 +438,14 @@ export function koboldCppProvider(
     build: (profile: ModelProfile) => object,
     accept: string,
     signal: AbortSignal | undefined,
-  ): Promise<{ address: string; response: Response }> => {
+  ): Promise<{
+    address: string;
+    response: Response;
+    profile: ModelProfile;
+  }> => {
     const address = savedAddress();
     const model = await loadedModel();
-    const profile = options.profile?.(model.id) ?? presetFor(model.id).profile;
+    const profile = profileOf(model.id);
     const extra = Object.fromEntries(
       Object.entries(profile.extraBody).filter(
         ([field]) => !OWN_FIELDS.has(field),
@@ -330,7 +457,7 @@ export function koboldCppProvider(
       body: JSON.stringify({ model: model.id, ...build(profile), ...extra }),
       ...(signal !== undefined && { signal }),
     });
-    return { address, response };
+    return { address, response, profile };
   };
 
   /** The text of a non-streamed chat completion. */
@@ -338,7 +465,7 @@ export function koboldCppProvider(
     build: (profile: ModelProfile) => object,
     signal: AbortSignal | undefined,
   ): Promise<string> => {
-    const { address, response } = await complete(
+    const { address, response, profile } = await complete(
       (profile) => ({ ...build(profile), stream: false }),
       'application/json',
       signal,
@@ -352,7 +479,11 @@ export function koboldCppProvider(
         `KoboldCpp at ${address} sent back a response that is not JSON.`,
       );
     }
-    return completion.choices?.[0]?.message?.content ?? '';
+    // Cut off while thinking, the content can be the thinking, in its tags.
+    return stripThinking(
+      completion.choices?.[0]?.message?.content ?? '',
+      profile.thinking,
+    );
   };
 
   /**
@@ -440,6 +571,39 @@ export function koboldCppProvider(
   return {
     loadedModel,
 
+    knownModel() {
+      return loaded?.address === options.address() ? loaded.known : undefined;
+    },
+
+    profileOf,
+
+    async countTokens(text, signal) {
+      // Counting comes before a reply, which comes first.
+      await setAsideBackground();
+      const address = savedAddress();
+      const response = await send(address, '/api/extra/tokencount', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ prompt: text }),
+        ...(signal !== undefined && { signal }),
+      });
+      let count: unknown;
+      try {
+        count = ((await response.json()) as { value?: unknown } | null)?.value;
+      } catch {
+        count = undefined;
+      }
+      if (typeof count !== 'number' || count < 0) {
+        throw new ProviderError(
+          `KoboldCpp at ${address} did not say how many tokens a text is.`,
+        );
+      }
+      return count;
+    },
+
     check(address) {
       const model = findOut(address);
       if (address === options.address()) remember(address, model);
@@ -463,8 +627,11 @@ export function koboldCppProvider(
       names,
       signal,
     }: ReplyRequest) {
+      await setAsideBackground();
+      const { generation, end } = begin(signal, false);
+      const stopping = generation.controller.signal;
       try {
-        const { address, response } = await complete(
+        const { address, response, profile } = await complete(
           (profile) => ({
             messages: chatMessages(instructions, messages, profile.systemRole),
             stream: true,
@@ -484,16 +651,22 @@ export function koboldCppProvider(
             ),
           }),
           'text/event-stream',
-          signal,
+          stopping,
         );
         if (response.body === null) {
           throw new ProviderError(
             `KoboldCpp at ${address} sent an empty response.`,
           );
         }
+        const filter = new ThinkingFilter(profile.thinking);
+        let thinkingShown = false;
         try {
           for await (const data of eventData(response.body)) {
-            if (data === '[DONE]') return;
+            if (data === '[DONE]') {
+              const rest = filter.end();
+              if (rest !== '') yield rest;
+              return;
+            }
             const chunk = JSON.parse(data) as StreamChunk;
             if (chunk.error !== undefined) {
               const message =
@@ -506,33 +679,80 @@ export function koboldCppProvider(
             }
             const choice = chunk.choices?.[0];
             // A thinking model's thoughts come as `reasoning_content`, which
-            // is not part of the reply.
+            // is not part of the reply. The filter drops thinking that comes
+            // in the content, between tags.
+            const reasoning = choice?.delta?.reasoning_content;
+            if (typeof reasoning === 'string' && reasoning !== '') {
+              filter.reasoned();
+            }
             const content = choice?.delta?.content;
-            if (typeof content === 'string' && content !== '') yield content;
+            const text =
+              typeof content === 'string' && content !== ''
+                ? filter.push(content)
+                : '';
+            if (filter.thinking && !thinkingShown && text === '') {
+              thinkingShown = true;
+              yield THINKING;
+            }
+            if (text !== '') {
+              thinkingShown = true;
+              yield text;
+            }
             // `stop` for an end or a stop sequence, `length` for a limit:
             // either way, what arrived is the reply.
             if (
               choice?.finish_reason !== undefined &&
               choice.finish_reason !== null
             ) {
+              const rest = filter.end();
+              if (rest !== '') yield rest;
               return;
             }
           }
         } catch (error) {
-          if (error instanceof ProviderError || signal.aborted) throw error;
+          if (error instanceof ProviderError || stopping.aborted) throw error;
           throw networkFailure(address, error);
         }
         throw new ProviderError(
           `The connection to KoboldCpp at ${address} ended before the reply was complete. Try again.`,
         );
       } catch (error) {
+        if (generation.setAside && !signal.aborted) {
+          throw new ProviderError('The reply was stopped. Try again.');
+        }
         if (error instanceof ProviderError) loaded = undefined;
         throw error;
+      } finally {
+        end();
       }
     },
 
-    structured(request: StructuredRequest) {
-      return forgettingOnFailure(() => structured(request));
+    async structured(request: StructuredRequest) {
+      const { generation, end } = begin(
+        request.signal,
+        request.background === true,
+      );
+      try {
+        return await forgettingOnFailure(() =>
+          structured({ ...request, signal: generation.controller.signal }),
+        );
+      } catch (error) {
+        if (generation.setAside && request.signal?.aborted !== true) {
+          throw new ProviderError(
+            request.background === true
+              ? 'The scene call was given up for a reply.'
+              : 'The scene call was stopped. Try again.',
+          );
+        }
+        throw error;
+      } finally {
+        end();
+      }
+    },
+
+    async stopAll() {
+      await setAside([...generations]);
+      await Promise.all(aborting);
     },
 
     async models() {

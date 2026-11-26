@@ -6,6 +6,8 @@ import type {
   Chat,
   ChatSummary,
   KoboldCppStatus,
+  LoadedModelProfile,
+  LoadedModelProfileUpdate,
   ModelList,
   ModelReasoning,
   Player,
@@ -22,6 +24,16 @@ import type {
 
 const NOT_RUNNING =
   'chatThree is not running. Start it again, then reload this page.';
+
+/** A request refused because of one of its fields. */
+export class FieldError extends Error {
+  readonly field: string;
+
+  constructor(field: string, message: string) {
+    super(message);
+    this.field = field;
+  }
+}
 
 /** A failure as text to show the user. */
 export function errorMessage(reason: unknown): string {
@@ -85,14 +97,30 @@ async function sendFile<T>(
   return (await response.json()) as T;
 }
 
-async function failure(response: Response): Promise<string> {
+/** What a failed response says went wrong, and in which field if it says. */
+async function refusal(
+  response: Response,
+): Promise<{ message: string; field?: string }> {
   try {
-    const { error } = (await response.json()) as { error?: unknown };
-    if (typeof error === 'string') return error;
+    const { error, field } = (await response.json()) as {
+      error?: unknown;
+      field?: unknown;
+    };
+    if (typeof error === 'string') {
+      return typeof field === 'string'
+        ? { message: error, field }
+        : { message: error };
+    }
   } catch {
     // Not JSON: fall through to the status.
   }
-  return `chatThree answered with an error (${String(response.status)}).`;
+  return {
+    message: `chatThree answered with an error (${String(response.status)}).`,
+  };
+}
+
+async function failure(response: Response): Promise<string> {
+  return (await refusal(response)).message;
 }
 
 async function request<T>(
@@ -101,7 +129,12 @@ async function request<T>(
   body?: unknown,
 ): Promise<T> {
   const response = await send(method, url, body);
-  if (!response.ok) throw new Error(await failure(response));
+  if (!response.ok) {
+    const { message, field } = await refusal(response);
+    throw field === undefined
+      ? new Error(message)
+      : new FieldError(field, message);
+  }
   if (method !== 'GET') dataChanged();
   return response.status === 204
     ? (undefined as T)
@@ -284,6 +317,14 @@ export const api = {
   /** Ask KoboldCpp at `address` which model it has loaded. */
   checkKoboldCpp: (address: string) =>
     request<KoboldCppStatus>('POST', '/api/koboldcpp/check', { address }),
+  /** The profile of the model KoboldCpp has loaded. */
+  getModelProfile: () =>
+    request<LoadedModelProfile>('GET', '/api/koboldcpp/profile'),
+  /** Throws `FieldError` for a value that is refused. */
+  saveModelProfile: (update: LoadedModelProfileUpdate) =>
+    request<LoadedModelProfile>('PUT', '/api/koboldcpp/profile', update),
+  resetModelProfile: () =>
+    request<LoadedModelProfile>('DELETE', '/api/koboldcpp/profile'),
   /** The thinking levels a model takes. The first ask for a model may take a few seconds. */
   modelReasoning: (model: string) =>
     request<ModelReasoning>(

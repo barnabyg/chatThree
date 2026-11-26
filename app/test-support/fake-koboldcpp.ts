@@ -4,6 +4,9 @@
 //
 // - `GET /v1/models` lists the one loaded model;
 // - `GET /api/extra/true_max_context_length` gives its context length;
+// - `POST /api/extra/tokencount` counts a text's tokens (`fakeTokenCount`);
+// - `POST /api/extra/abort` stops every generation in progress, which then
+//   ends as a real one does, with `finish_reason: "length"`;
 // - `POST /v1/chat/completions` streams a reply as OpenAI's chat completions
 //   do, with a thinking model's thoughts in `reasoning_content`, or answers a
 //   request that does not stream (the scene call) in one piece.
@@ -21,6 +24,11 @@ import { setTimeout as delay } from 'node:timers/promises';
 /** The model the fake has loaded unless a test loads another. */
 export const FAKE_KOBOLDCPP_MODEL = 'koboldcpp/gemma-4-31B-it-Q4_K_S';
 export const FAKE_CONTEXT_LENGTH = 8192;
+
+/** The fake's tokeniser: a token per four characters, as English prose roughly is. */
+export function fakeTokenCount(text: string): number {
+  return Math.ceil(text.length / 4);
+}
 
 export type KoboldBehaviour =
   /**
@@ -44,14 +52,17 @@ export type KoboldBehaviour =
 
 /** How a request that does not stream is answered. */
 export type KoboldAnswer =
-  /** The message's content is this text, which may not be JSON. */
-  | { kind: 'text'; text: string; reasoning?: string }
+  /**
+   * The message's content is this text, which may not be JSON. With `held`,
+   * the answer waits for `release()`, or an abort.
+   */
+  | { kind: 'text'; text: string; reasoning?: string; held?: boolean }
   /** The request is rejected. */
   | { kind: 'http-error'; status: number; body: unknown };
 
 export interface KoboldRequest {
   body: Record<string, unknown>;
-  /** True once the client has given up on the response before its end. */
+  /** True once the client has given up on the response, or it was aborted, before its end. */
   abandoned: boolean;
 }
 
@@ -64,6 +75,15 @@ export interface FakeKoboldCpp {
   structuredRequests: Record<string, unknown>[];
   /** How many times the loaded model was asked for. */
   modelChecks: number;
+  /** How many texts were counted. */
+  tokenCounts: number;
+  /** How many times KoboldCpp was asked to abort. */
+  aborts: number;
+  /**
+   * What happened, in order: `reply` and `answer` when a chat completion
+   * request arrives (streamed or not), `abort` for each abort.
+   */
+  events: string[];
   /** Load another model, or none with `undefined`. */
   load(model: string | undefined, contextLength?: number): void;
   /**
@@ -135,11 +155,19 @@ function chunk(
   })}\n\n`;
 }
 
+/** A generation in progress, which an abort stops. */
+interface Generation {
+  /** Settles when the generation is aborted. */
+  stopped: Promise<void>;
+  isStopped(): boolean;
+}
+
 async function stream(
   behaviour: KoboldBehaviour,
   model: string,
   response: ServerResponse,
   released: Promise<void>,
+  generation: Generation,
 ): Promise<void> {
   if (behaviour.kind === 'http-error') {
     sendJson(response, behaviour.status, behaviour.body);
@@ -155,29 +183,42 @@ async function stream(
     response.write(chunk(model, { reasoning_content: thought }));
   }
   for (const [index, text] of behaviour.chunks.entries()) {
-    if (index === behaviour.holdAfter) await released;
+    if (index === behaviour.holdAfter) {
+      await Promise.race([released, generation.stopped]);
+    }
     if (behaviour.chunkDelayMs !== undefined) {
       await delay(behaviour.chunkDelayMs);
     }
     if (response.destroyed) return;
+    if (generation.isStopped()) break;
     response.write(chunk(model, { content: text }));
   }
   response.write(
-    chunk(model, { content: '' }, behaviour.finishReason ?? 'stop'),
+    chunk(
+      model,
+      { content: '' },
+      generation.isStopped() ? 'length' : (behaviour.finishReason ?? 'stop'),
+    ),
   );
   response.write('data: [DONE]\n\n');
   response.end();
 }
 
-function answer(
+async function answer(
   next: KoboldAnswer,
   model: string,
   response: ServerResponse,
-): void {
+  released: Promise<void>,
+  generation: Generation,
+): Promise<void> {
   if (next.kind === 'http-error') {
     sendJson(response, next.status, next.body);
     return;
   }
+  if (next.held === true) {
+    await Promise.race([released, generation.stopped]);
+  }
+  if (response.destroyed) return;
   sendJson(response, 200, {
     id: 'chatcmpl-B1',
     object: 'chat.completion',
@@ -213,6 +254,9 @@ export async function startFakeKoboldCpp(): Promise<FakeKoboldCpp> {
     requests: [],
     structuredRequests: [],
     modelChecks: 0,
+    tokenCounts: 0,
+    aborts: 0,
+    events: [],
     load(next, length = FAKE_CONTEXT_LENGTH) {
       model = next;
       contextLength = length;
@@ -227,6 +271,25 @@ export async function startFakeKoboldCpp(): Promise<FakeKoboldCpp> {
       release();
     },
     close: () => Promise.resolve(),
+  };
+
+  /** Stops each generation in progress. */
+  const running = new Set<() => void>();
+  const generation = (): Generation & { end(): void } => {
+    let stopped = false;
+    let stop = (): void => undefined;
+    const settled = new Promise<void>((resolve) => {
+      stop = () => {
+        stopped = true;
+        resolve();
+      };
+    });
+    running.add(stop);
+    return {
+      stopped: settled,
+      isStopped: () => stopped,
+      end: () => running.delete(stop),
+    };
   };
 
   const server = createServer((request, response) => {
@@ -259,6 +322,25 @@ export async function startFakeKoboldCpp(): Promise<FakeKoboldCpp> {
         sendJson(response, 200, { value: contextLength });
         return;
       }
+      if (
+        request.method === 'POST' &&
+        request.url === '/api/extra/tokencount'
+      ) {
+        const { prompt } = JSON.parse(await readBody(request)) as {
+          prompt: string;
+        };
+        fake.tokenCounts += 1;
+        sendJson(response, 200, { value: fakeTokenCount(prompt), ids: [] });
+        return;
+      }
+      if (request.method === 'POST' && request.url === '/api/extra/abort') {
+        await readBody(request);
+        fake.aborts += 1;
+        fake.events.push('abort');
+        for (const stop of running) stop();
+        sendJson(response, 200, { success: 'true', done: 'true' });
+        return;
+      }
       if (request.method !== 'POST' || request.url !== '/v1/chat/completions') {
         sendJson(response, 404, {
           detail: { msg: `Unknown path ${String(request.url)}` },
@@ -269,16 +351,28 @@ export async function startFakeKoboldCpp(): Promise<FakeKoboldCpp> {
         string,
         unknown
       >;
+      const current = generation();
+      response.on('close', () => {
+        current.end();
+      });
       if (body.stream !== true) {
         fake.structuredRequests.push(body);
+        fake.events.push('answer');
         const next = answers.length > 1 ? answers.shift() : answers[0];
-        answer(next ?? DEFAULT_ANSWER, String(body.model), response);
+        await answer(
+          next ?? DEFAULT_ANSWER,
+          String(body.model),
+          response,
+          released,
+          current,
+        );
         return;
       }
+      fake.events.push('reply');
       const recorded: KoboldRequest = { body, abandoned: false };
       fake.requests.push(recorded);
       response.on('close', () => {
-        recorded.abandoned = !response.writableEnded;
+        recorded.abandoned = !response.writableEnded || current.isStopped();
       });
       const next = behaviours.length > 1 ? behaviours.shift() : behaviours[0];
       await stream(
@@ -286,6 +380,7 @@ export async function startFakeKoboldCpp(): Promise<FakeKoboldCpp> {
         String(body.model),
         response,
         released,
+        current,
       );
     })();
   });

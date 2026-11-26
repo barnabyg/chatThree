@@ -20,6 +20,7 @@ import {
 } from '../../shared/replyPrompt.ts';
 import type { PromptMessage } from './provider.ts';
 import { countNotSent } from './trim.ts';
+import type { ConversationWindow } from './window.ts';
 
 export type PromptCharacter = Pick<
   CharacterInput,
@@ -88,12 +89,23 @@ export function buildPrompt(
   player: PromptPlayer,
   replyPrompt: PromptReply,
   conversation: readonly Message[],
-  tokenBudget: number,
+  /** A token budget, or the window that says how much is sent. */
+  window: number | Pick<ConversationWindow, 'notSent'>,
 ): Prompt {
+  const instructions = buildInstructions(
+    character,
+    scenario,
+    player,
+    replyPrompt,
+  );
+  const notSent =
+    typeof window === 'number'
+      ? countNotSent(conversation, window)
+      : window.notSent(instructions, conversation);
   return {
-    instructions: buildInstructions(character, scenario, player, replyPrompt),
+    instructions,
     messages: conversation
-      .slice(countNotSent(conversation, tokenBudget))
+      .slice(notSent)
       .map(({ role, content }) => ({ role, content })),
   };
 }

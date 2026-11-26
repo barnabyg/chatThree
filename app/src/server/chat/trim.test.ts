@@ -1,5 +1,5 @@
-import { expect, test } from 'vitest';
-import { countNotSent, estimateTokens } from './trim.ts';
+import { describe, expect, test } from 'vitest';
+import { countNotSent, estimateTokens, notSentInBlocks } from './trim.ts';
 
 // A message of 36 characters is estimated at 36 / 4 + 4 = 13 tokens.
 const message = (label: string) => ({ content: label.padEnd(36, '.') });
@@ -66,4 +66,38 @@ test('the newest message is always sent, even when it alone is over the budget',
 
 test('an empty conversation leaves nothing out', () => {
   expect(countNotSent([], 100)).toBe(0);
+});
+
+describe('trimming in blocks', () => {
+  /** Where sending starts for conversations of 1 to `turns` messages of 100 tokens. */
+  function starts(turns: number): number[] {
+    return Array.from({ length: turns }, (_, index) =>
+      notSentInBlocks(Array<number>(index + 1).fill(100), 1000, 250),
+    );
+  }
+
+  test('a conversation that fits is sent whole', () => {
+    expect(notSentInBlocks([100, 100, 100], 1000, 250)).toBe(0);
+  });
+
+  test('the start moves a block at a time, so it stays put for several turns in between', () => {
+    expect(starts(20)).toEqual([
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 6, 6, 6, 9, 9, 9, 12,
+    ]);
+  });
+
+  test('what is sent always fits the budget', () => {
+    const counts = [30, 400, 20, 250, 90, 600, 10, 10, 300, 80, 120];
+    for (let length = 1; length <= counts.length; length++) {
+      const conversation = counts.slice(0, length);
+      const start = notSentInBlocks(conversation, 1000, 250);
+      const sent = conversation.slice(start).reduce((a, b) => a + b, 0);
+      expect(sent).toBeLessThanOrEqual(1000);
+    }
+  });
+
+  test('the newest message is sent even when it alone is over the budget', () => {
+    expect(notSentInBlocks([100, 100, 5000], 1000, 250)).toBe(2);
+    expect(notSentInBlocks([5000], 1000, 250)).toBe(0);
+  });
 });

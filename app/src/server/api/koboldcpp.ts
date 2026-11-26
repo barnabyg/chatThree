@@ -1,7 +1,17 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import type { KoboldCppStatus } from '../../shared/api.ts';
-import { koboldCppAddress, type KoboldCppProvider } from '../chat/koboldcpp.ts';
+import type { KoboldCppStatus, LoadedModelProfile } from '../../shared/api.ts';
+import {
+  koboldCppAddress,
+  type KoboldCppProvider,
+  type LoadedModel,
+} from '../chat/koboldcpp.ts';
+import {
+  type ModelProfiles,
+  PRESETS,
+  ProfileError,
+  ProfileFileError,
+} from '../chat/profiles.ts';
 import { ProviderError } from '../chat/provider.ts';
 import { ApiError, readBody } from './errors.ts';
 
@@ -13,9 +23,74 @@ const check = z.strictObject({
   address: z.string().max(500, 'The KoboldCpp address is too long.'),
 });
 
-/** Testing the connection to KoboldCpp, before or after it is saved. */
-export function koboldCppRoutes(koboldcpp: KoboldCppProvider): Hono {
+const profileUpdate = z.strictObject({
+  preset: z.string().max(100).nullable(),
+  // Each field is checked by the profiles, so that a refusal names it.
+  overrides: z.record(z.string(), z.unknown()),
+});
+
+/**
+ * Testing the connection to KoboldCpp, before or after it is saved, and
+ * editing the loaded model's profile.
+ */
+export function koboldCppRoutes(
+  koboldcpp: KoboldCppProvider,
+  profiles: ModelProfiles,
+): Hono {
   const routes = new Hono();
+
+  /** The model KoboldCpp has loaded, or a 502 that says why it is not known. */
+  const loaded = async (): Promise<LoadedModel> => {
+    try {
+      return await koboldcpp.loadedModel();
+    } catch (error) {
+      if (error instanceof ProviderError) {
+        throw new ApiError(502, error.message);
+      }
+      throw error;
+    }
+  };
+
+  const view = ({ id, contextLength }: LoadedModel): LoadedModelProfile => ({
+    model: id,
+    contextLength,
+    ...profiles.view(id),
+    presets: PRESETS.map(({ name, profile }) => ({ name, profile })),
+  });
+
+  /** Run `change` on the profiles, reporting what is refused as a 400. */
+  const changing = (change: () => void): void => {
+    try {
+      change();
+    } catch (error) {
+      if (error instanceof ProfileError) {
+        throw new ApiError(400, error.message, error.field);
+      }
+      if (error instanceof ProfileFileError) {
+        throw new ApiError(409, error.message);
+      }
+      throw error;
+    }
+  };
+
+  routes.get('/profile', async (c) => c.json(view(await loaded())));
+
+  routes.put('/profile', async (c) => {
+    const update = await readBody(c, profileUpdate);
+    const model = await loaded();
+    changing(() => {
+      profiles.save(model.id, update);
+    });
+    return c.json(view(model));
+  });
+
+  routes.delete('/profile', async (c) => {
+    const model = await loaded();
+    changing(() => {
+      profiles.reset(model.id);
+    });
+    return c.json(view(model));
+  });
 
   routes.post('/check', async (c) => {
     const { address: typed } = await readBody(c, check);

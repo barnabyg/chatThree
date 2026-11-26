@@ -17,10 +17,13 @@ import type { CharacterStore } from '../store/characters.ts';
 import type { PlayerStore } from '../store/players.ts';
 import type { ReplyPromptStore } from '../store/replyPrompts.ts';
 import type { ScenarioStore } from '../store/scenarios.ts';
-import { buildPrompt } from './prompt.ts';
+import { buildInstructions, buildPrompt } from './prompt.ts';
 import { type ChatProvider, ProviderError, withEffort } from './provider.ts';
+import type { ConversationWindow } from './window.ts';
 
 const STOP_ALL_TIMEOUT_MS = 2_000;
+/** How long a saved reply's token count may hold up the end of the reply. */
+const COUNT_REPLY_TIMEOUT_MS = 2_000;
 
 /** A request the chat cannot take right now. */
 export class ChatBusyError extends Error {
@@ -47,6 +50,7 @@ export class ReplyService {
   readonly #replyPrompts: ReplyPromptStore;
   readonly #settings: SettingsStore;
   readonly #provider: ChatProvider;
+  readonly #window: ConversationWindow;
   /** One entry per chat that has a reply in progress. */
   readonly #inProgress = new Map<string, AbortController>();
   readonly #savedListeners = new Set<
@@ -61,6 +65,7 @@ export class ReplyService {
     replyPrompts: ReplyPromptStore,
     settings: SettingsStore,
     provider: ChatProvider,
+    window: ConversationWindow,
   ) {
     this.#chats = chats;
     this.#characters = characters;
@@ -69,6 +74,18 @@ export class ReplyService {
     this.#replyPrompts = replyPrompts;
     this.#settings = settings;
     this.#provider = provider;
+    this.#window = window;
+  }
+
+  /**
+   * How many of `messages`, the chat's conversation, from the oldest, the
+   * next reply would leave out, as far as is known now.
+   */
+  notSent(chatId: string, messages: readonly Message[]): number {
+    return this.#window.notSent(
+      buildInstructions(...this.#pairing(chatId)),
+      messages,
+    );
   }
 
   /**
@@ -211,14 +228,13 @@ export class ReplyService {
     replacing?: Message,
   ): AsyncGenerator<ReplyEvent> {
     let text = '';
+    let instructions = '';
     try {
       const pairing = this.#pairing(chatId);
       const [character, , player] = pairing;
-      const prompt = buildPrompt(
-        ...pairing,
-        conversation,
-        this.#settings.contextTokenBudget(),
-      );
+      instructions = buildInstructions(...pairing);
+      await this.#window.prepare(instructions, conversation, signal);
+      const prompt = buildPrompt(...pairing, conversation, this.#window);
       const pieces = this.#provider.streamReply({
         model: this.#settings.model(),
         ...withEffort(this.#settings.reasoningEffort()),
@@ -227,6 +243,10 @@ export class ReplyService {
         signal,
       });
       for await (const piece of pieces) {
+        if (typeof piece !== 'string') {
+          yield { type: 'thinking' };
+          continue;
+        }
         text += piece;
         yield { type: 'delta', text: piece };
       }
@@ -247,6 +267,13 @@ export class ReplyService {
       replacing === undefined
         ? this.#chats.addMessage(chatId, 'assistant', text)
         : this.#chats.replaceMessage(chatId, replacing, text);
+    // Counted now, so that where sending starts is shown as the next reply
+    // will send it.
+    await this.#window.prepare(
+      instructions,
+      [saved],
+      AbortSignal.timeout(COUNT_REPLY_TIMEOUT_MS),
+    );
     for (const listener of this.#savedListeners) {
       try {
         listener(chatId, saved);

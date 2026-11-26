@@ -741,3 +741,46 @@ legend {
   overflow-wrap: anywhere;
   overflow-y: auto;
 }
+
+/* The profile editor of a local model. */
+
+.field-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.changed {
+  padding: 0 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.profile-editor button.small {
+  padding: 0.1rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+.stop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.stop-row,
+.tag-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.stop-row input {
+  flex: 1;
+  font-family: ui-monospace, monospace;
+}
+
+.tag-row {
+  margin-top: 0.35rem;
+}

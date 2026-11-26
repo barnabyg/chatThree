@@ -187,6 +187,11 @@ export interface ChatSummary {
 export type ReplyEvent =
   /** The user's message has been saved. */
   | { type: 'user-message'; message: Message }
+  /**
+   * The model has begun to think before it replies. Its thinking is never
+   * sent; the reply's text follows.
+   */
+  | { type: 'thinking' }
   /** The next piece of the reply's text. */
   | { type: 'delta'; text: string }
   /** The reply is finished and saved. `null` if it was stopped before any text arrived. */
@@ -251,6 +256,101 @@ export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
  */
 export const TEXT_BACKENDS = ['openai', 'koboldcpp'] as const;
 export type TextBackend = (typeof TEXT_BACKENDS)[number];
+
+/** How a local model's thinking is handled. */
+export type Thinking =
+  | { mode: 'none' }
+  /** Thinking between `open` and `close` is not part of the answer. */
+  | { mode: 'strip'; open: string; close: string };
+
+/**
+ * The settings that belong to one local model, so that the app works with
+ * whichever GGUF the user loads into KoboldCpp. See docs/adr/0002.
+ */
+export interface ModelProfile {
+  /** The context length to plan for, in tokens; `null` for what KoboldCpp reports. */
+  contextLength: number | null;
+  /** `max_tokens` on replies. */
+  maxReplyTokens: number;
+  /** Samplers on replies, by KoboldCpp's names. */
+  temperature: number;
+  top_p: number;
+  top_k: number;
+  min_p: number;
+  rep_pen: number;
+  rep_pen_range: number;
+  /** The temperature of the scene call: low, so it keeps to the facts. */
+  sceneTemperature: number;
+  /** Stop sequences on replies. `{user}` and `{character}` are filled in. */
+  stop: string[];
+  /**
+   * `system` sends the instructions as a system message.
+   * `merge-into-first-user` puts them before the first user message's text,
+   * for chat templates that have no system role.
+   */
+  systemRole: 'system' | 'merge-into-first-user';
+  thinking: Thinking;
+  /** Merged into every request body, for KoboldCpp fields the app does not know. */
+  extraBody: Record<string, unknown>;
+}
+
+export type ProfileField = keyof ModelProfile;
+
+/** The fields of a profile that are numbers. */
+export type ProfileNumberField =
+  | 'contextLength'
+  | 'maxReplyTokens'
+  | 'temperature'
+  | 'top_p'
+  | 'top_k'
+  | 'min_p'
+  | 'rep_pen'
+  | 'rep_pen_range'
+  | 'sceneTemperature';
+
+/** The range of each number in a profile, checked by the browser and the server. */
+export const PROFILE_NUMBERS: Record<
+  ProfileNumberField,
+  { min: number; max: number; whole: boolean }
+> = {
+  contextLength: { min: 256, max: 1_048_576, whole: true },
+  maxReplyTokens: { min: 1, max: 131_072, whole: true },
+  temperature: { min: 0, max: 5, whole: false },
+  top_p: { min: 0, max: 1, whole: false },
+  top_k: { min: 0, max: 1000, whole: true },
+  min_p: { min: 0, max: 1, whole: false },
+  rep_pen: { min: 0, max: 10, whole: false },
+  rep_pen_range: { min: 0, max: 1_048_576, whole: true },
+  sceneTemperature: { min: 0, max: 5, whole: false },
+};
+
+/** The profile of the model KoboldCpp has loaded, for the profile editor. */
+export interface LoadedModelProfile {
+  /** The model's id, such as `koboldcpp/gemma-4-31B-it-Q4_K_S`. */
+  model: string;
+  /** The context length KoboldCpp was started with, in tokens. */
+  contextLength: number;
+  /** The preset in use. */
+  preset: string;
+  /** The preset the model's id matches. */
+  matchedPreset: string;
+  /** Whether the preset was chosen by hand, in place of the one matched. */
+  presetChosen: boolean;
+  /** Every preset, first match first, with its values. */
+  presets: { name: string; profile: ModelProfile }[];
+  /** The values in use: the preset's, with the overrides on top. */
+  profile: ModelProfile;
+  /** The fields the user has changed from the preset. */
+  overridden: ProfileField[];
+}
+
+/** A new set of overrides for the loaded model, in place of the old. */
+export interface LoadedModelProfileUpdate {
+  /** A preset chosen by hand, or `null` for the one matched. */
+  preset: string | null;
+  /** Only the fields that differ from the preset. */
+  overrides: Partial<ModelProfile>;
+}
 
 /** The model KoboldCpp has loaded, as a connection test finds it. */
 export interface KoboldCppStatus {
