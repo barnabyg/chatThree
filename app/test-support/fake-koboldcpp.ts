@@ -4,6 +4,7 @@
 //
 // - `GET /v1/models` lists the one loaded model;
 // - `GET /api/extra/true_max_context_length` gives its context length;
+// - `POST /api/extra/tokencount` counts a text's tokens (`fakeTokenCount`);
 // - `POST /v1/chat/completions` streams a reply as OpenAI's chat completions
 //   do, with a thinking model's thoughts in `reasoning_content`, or answers a
 //   request that does not stream (the scene call) in one piece.
@@ -21,6 +22,11 @@ import { setTimeout as delay } from 'node:timers/promises';
 /** The model the fake has loaded unless a test loads another. */
 export const FAKE_KOBOLDCPP_MODEL = 'koboldcpp/gemma-4-31B-it-Q4_K_S';
 export const FAKE_CONTEXT_LENGTH = 8192;
+
+/** The fake's tokeniser: a token per four characters, as English prose roughly is. */
+export function fakeTokenCount(text: string): number {
+  return Math.ceil(text.length / 4);
+}
 
 export type KoboldBehaviour =
   /**
@@ -64,6 +70,8 @@ export interface FakeKoboldCpp {
   structuredRequests: Record<string, unknown>[];
   /** How many times the loaded model was asked for. */
   modelChecks: number;
+  /** How many texts were counted. */
+  tokenCounts: number;
   /** Load another model, or none with `undefined`. */
   load(model: string | undefined, contextLength?: number): void;
   /**
@@ -213,6 +221,7 @@ export async function startFakeKoboldCpp(): Promise<FakeKoboldCpp> {
     requests: [],
     structuredRequests: [],
     modelChecks: 0,
+    tokenCounts: 0,
     load(next, length = FAKE_CONTEXT_LENGTH) {
       model = next;
       contextLength = length;
@@ -257,6 +266,17 @@ export async function startFakeKoboldCpp(): Promise<FakeKoboldCpp> {
         request.url === '/api/extra/true_max_context_length'
       ) {
         sendJson(response, 200, { value: contextLength });
+        return;
+      }
+      if (
+        request.method === 'POST' &&
+        request.url === '/api/extra/tokencount'
+      ) {
+        const { prompt } = JSON.parse(await readBody(request)) as {
+          prompt: string;
+        };
+        fake.tokenCounts += 1;
+        sendJson(response, 200, { value: fakeTokenCount(prompt), ids: [] });
         return;
       }
       if (request.method !== 'POST' || request.url !== '/v1/chat/completions') {

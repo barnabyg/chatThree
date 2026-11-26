@@ -5,6 +5,7 @@ import {
   FAKE_CONTEXT_LENGTH,
   FAKE_KOBOLDCPP_MODEL,
   type FakeKoboldCpp,
+  fakeTokenCount,
   startFakeKoboldCpp,
 } from '../../../test-support/fake-koboldcpp.ts';
 import type { Chat, Settings } from '../../shared/api.ts';
@@ -274,4 +275,40 @@ test("a reply carries the loaded model's profile, with the overrides in local-mo
     stop: [`\n${player?.name ?? ''}:`, '###'],
     top_k: 64,
   });
+});
+
+test("with KoboldCpp, a request never asks for more than the model's context length, and the chat marks where sending started", async () => {
+  kobold.load(FAKE_KOBOLDCPP_MODEL, 2048);
+  const app = await koboldApp();
+  const chat = await app.startChat();
+  // 400 characters: 100 tokens to the fake.
+  const long = 'The sea was grey and the wind was cold. '.repeat(10);
+  kobold.respondWith({ kind: 'reply', chunks: [long] });
+
+  for (let turn = 0; turn < 16; turn++) {
+    await replyEvents(await send(app, chat, long));
+    const body = kobold.requests.at(-1)?.body as {
+      messages: { content: string }[];
+      max_tokens: number;
+    };
+    const tokens = body.messages.reduce(
+      (sum, { content }) => sum + fakeTokenCount(content),
+      0,
+    );
+    expect(tokens + body.max_tokens).toBeLessThanOrEqual(2048);
+  }
+  // A reply that fails leaves the conversation as it was sent.
+  kobold.respondWith({ kind: 'http-error', status: 503, body: 'busy' });
+  await replyEvents(await send(app, chat, long));
+  const view = (await (
+    await app.call('GET', `/api/chats/${chat.id}`)
+  ).json()) as Chat;
+  const sent = (
+    kobold.requests.at(-1)?.body as { messages: { content: string }[] }
+  ).messages.slice(1);
+
+  expect(view.notSent).toBeGreaterThan(0);
+  expect(
+    view.messages.slice(view.notSent).map(({ content }) => content),
+  ).toEqual(sent.map(({ content }) => content));
 });

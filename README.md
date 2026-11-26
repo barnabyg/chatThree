@@ -89,7 +89,9 @@ scenario or player deletes the chats that use it, after asking.
 A long chat is not sent whole. Each turn sends the character and scenario,
 then as much of the conversation as fits a token budget (a setting, 16,000 by
 default), counted back from the newest message. Older messages stay in the
-chat, and a line in the conversation marks where sending now starts.
+chat, and a line in the conversation marks where sending now starts. With
+KoboldCpp, the budget comes from the loaded model instead (see
+[Conversation budget with KoboldCpp](#conversation-budget-with-koboldcpp)).
 
 Chats and settings are kept on this computer, outside the repository:
 
@@ -156,6 +158,24 @@ supported: start KoboldCpp without one. Chats cross the network unencrypted
 over plain HTTP. The choice takes effect on the next request, without a
 restart; settings saved before the choice existed load as OpenAI.
 
+### Conversation budget with KoboldCpp
+
+With KoboldCpp, how much of a conversation is sent follows the loaded model's
+context length, and the **Conversation budget** setting is hidden (it still
+applies to OpenAI). The conversation gets the context length (the profile's
+`contextLength`, or else what KoboldCpp reports), less the reply's
+`maxReplyTokens`, less the instructions, less a margin of 64 tokens and 10
+tokens a message for the chat template's own marks. Each text is counted once
+by KoboldCpp's tokeniser (`/api/extra/tokencount`) and the count remembered.
+
+KoboldCpp reuses its work on the prompt only as far as the prompt starts the
+same as the last one. When the oldest message sent drops out, it reads the
+whole prompt again: about 5 seconds before the first word for 6,000 tokens on
+the PC it was measured on, against under a second when the prompt only grows.
+So once the conversation fills its budget, a block of old messages, at least a
+quarter of the budget, stops being sent at once. Where sending starts then
+stays put for several turns, and the line in the chat moves with it.
+
 ### Thinking models
 
 A thinking model, such as Qwen3 or a DeepSeek R1 distill, writes its reasoning
@@ -197,7 +217,7 @@ Each profile has these fields:
 
 | Field | Use |
 |---|---|
-| `contextLength` | The context length to plan for; `null` means what KoboldCpp reports. Not used yet: the conversation budget will come from it |
+| `contextLength` | The context length to plan for; `null` means what KoboldCpp reports. The conversation budget comes from it |
 | `maxReplyTokens` | `max_tokens` on replies |
 | `temperature`, `top_p`, `top_k`, `min_p`, `rep_pen`, `rep_pen_range` | Samplers on replies |
 | `sceneTemperature` | The temperature of the scene call, low by default |
@@ -376,9 +396,11 @@ Everything works without any of these. They are read when the app starts.
 - **A sentence already sent to the engine is always finished.** Stopping
   speech stops the sound at once, but the engine completes the clip it is
   making.
-- **Token counts are estimates.** The conversation budget counts four
-  characters as a token, which suits English prose and undercounts some
-  other languages.
+- **Token counts are estimates with OpenAI.** The conversation budget
+  counts four characters as a token, which suits English prose and
+  undercounts some other languages. KoboldCpp counts tokens itself; only a
+  text it could not count is estimated, at a cautious three characters a
+  token.
 
 ## Manual check: the engine stops with the app
 

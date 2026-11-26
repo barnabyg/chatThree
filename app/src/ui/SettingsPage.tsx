@@ -294,7 +294,9 @@ export function SettingsPage({ tab }: { tab: SettingsTab }) {
               </label>
               <p className="hint">
                 The model loaded in KoboldCpp writes everything. To use another,
-                load it in KoboldCpp.
+                load it in KoboldCpp. How much of a conversation is sent follows
+                its context length, less room for the reply and the character's
+                instructions.
               </p>
             </>
           )}
@@ -337,7 +339,7 @@ export function SettingsPage({ tab }: { tab: SettingsTab }) {
               />
             </>
           )}
-          {tab === 'connection' && (
+          {tab === 'connection' && !local && (
             <>
               <label>
                 Conversation budget (tokens)

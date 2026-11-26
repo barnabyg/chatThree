@@ -97,7 +97,6 @@ export function createApp(dependencies: AppDependencies): Hono {
       scenes,
       replies,
       illustrator,
-      settings,
       media,
     }),
   );

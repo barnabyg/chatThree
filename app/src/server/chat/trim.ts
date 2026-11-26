@@ -35,3 +35,36 @@ export function countNotSent(
   }
   return firstSent;
 }
+
+/**
+ * As `countNotSent`, from token counts, but the start of what is sent moves a
+ * block of at least `block` tokens at a time. A server that caches the
+ * prompt by its leading text (KoboldCpp) must read the whole prompt again
+ * whenever its start moves, so it should move every several turns, not on
+ * every turn once the conversation is long.
+ *
+ * The blocks are counted from the oldest message, so their edges stay where
+ * they are as the conversation grows: sending starts at the first edge from
+ * which the rest fits `budget`.
+ */
+export function notSentInBlocks(
+  counts: readonly number[],
+  budget: number,
+  block: number,
+): number {
+  const newest = counts.length - 1;
+  let rest = counts.reduce((sum, count) => sum + count, 0);
+  let start = 0;
+  while (start < newest && rest > budget) {
+    let dropped = 0;
+    while (start < newest && dropped < Math.max(block, 1)) {
+      const count = counts[start] ?? 0;
+      dropped += count;
+      rest -= count;
+      start += 1;
+    }
+  }
+  if (rest <= budget) return start;
+  // Only the newest message is left, and it alone is over the budget.
+  return Math.max(0, newest);
+}

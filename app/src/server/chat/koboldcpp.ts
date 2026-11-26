@@ -59,6 +59,15 @@ export interface KoboldCppProvider extends ChatProvider {
    * Throws `ProviderError` when it cannot be found out.
    */
   loadedModel(): Promise<LoadedModel>;
+  /** The loaded model, if it has been found out: never waits. */
+  knownModel(): LoadedModel | undefined;
+  /** The profile of model `id`, as requests use it. */
+  profileOf(id: string): ModelProfile;
+  /**
+   * How many tokens `text` is to the loaded model, by KoboldCpp's own count.
+   * Throws `ProviderError` when it cannot be counted.
+   */
+  countTokens(text: string, signal?: AbortSignal): Promise<number>;
   /**
    * Ask `address` now which model it has loaded. Remembered when `address`
    * is the saved one. Throws `ProviderError` when it cannot be found out.
@@ -218,7 +227,17 @@ export function koboldCppProvider(
   options: KoboldCppOptions,
 ): KoboldCppProvider {
   /** The loaded model being found out, or found out, for one address. */
-  let loaded: { address: string; model: Promise<LoadedModel> } | undefined;
+  let loaded:
+    | {
+        address: string;
+        model: Promise<LoadedModel>;
+        /** The model, once found out. */
+        known?: LoadedModel;
+      }
+    | undefined;
+
+  const profileOf = (id: string): ModelProfile =>
+    options.profile?.(id) ?? presetFor(id).profile;
 
   /** The saved address, or the reason there is none. */
   const savedAddress = (): string => {
@@ -283,11 +302,16 @@ export function koboldCppProvider(
 
   /** Remember `model` as what `address` has loaded, unless it fails. */
   const remember = (address: string, model: Promise<LoadedModel>): void => {
-    const entry = { address, model };
+    const entry: NonNullable<typeof loaded> = { address, model };
     loaded = entry;
-    model.catch(() => {
-      if (loaded === entry) loaded = undefined;
-    });
+    model.then(
+      (found) => {
+        entry.known = found;
+      },
+      () => {
+        if (loaded === entry) loaded = undefined;
+      },
+    );
   };
 
   const loadedModel = (): Promise<LoadedModel> => {
@@ -324,7 +348,7 @@ export function koboldCppProvider(
   }> => {
     const address = savedAddress();
     const model = await loadedModel();
-    const profile = options.profile?.(model.id) ?? presetFor(model.id).profile;
+    const profile = profileOf(model.id);
     const extra = Object.fromEntries(
       Object.entries(profile.extraBody).filter(
         ([field]) => !OWN_FIELDS.has(field),
@@ -449,6 +473,37 @@ export function koboldCppProvider(
 
   return {
     loadedModel,
+
+    knownModel() {
+      return loaded?.address === options.address() ? loaded.known : undefined;
+    },
+
+    profileOf,
+
+    async countTokens(text, signal) {
+      const address = savedAddress();
+      const response = await send(address, '/api/extra/tokencount', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ prompt: text }),
+        ...(signal !== undefined && { signal }),
+      });
+      let count: unknown;
+      try {
+        count = ((await response.json()) as { value?: unknown } | null)?.value;
+      } catch {
+        count = undefined;
+      }
+      if (typeof count !== 'number' || count < 0) {
+        throw new ProviderError(
+          `KoboldCpp at ${address} did not say how many tokens a text is.`,
+        );
+      }
+      return count;
+    },
 
     check(address) {
       const model = findOut(address);

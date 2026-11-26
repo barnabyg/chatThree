@@ -29,6 +29,8 @@ test('with KoboldCpp as the text backend, the connection is tested and replies c
   // The OpenAI fields give way to KoboldCpp's.
   await expect(page.getByLabel('OpenAI API key')).toHaveCount(0);
   await expect(page.getByLabel('Thinking level')).toHaveCount(0);
+  // How much is sent follows the model's context length instead.
+  await expect(page.getByLabel('Conversation budget (tokens)')).toHaveCount(0);
   await page.getByLabel('Server address').fill(kobold.address);
   await page.getByRole('button', { name: 'Test connection' }).click();
   await expect(page.getByRole('status').getByText(/^Connected/)).toHaveText(
