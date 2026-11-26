@@ -27,6 +27,7 @@ test('with nothing saved, the model is the default and the key comes from the en
     illustrationCooldown: 3,
     imageStyle: 'realistic',
     contextTokenBudget: DEFAULT_CONTEXT_TOKEN_BUDGET,
+    replyLengthWords: null,
     speechMuted: false,
     speechScope: 'dialogue',
     apiKey: 'environment',
@@ -187,4 +188,15 @@ test('a hand-edited unknown text backend is ignored for OpenAI', async () => {
   await writeFile(file, JSON.stringify({ textBackend: 'llamacpp' }));
 
   expect(new SettingsStore(file, undefined).textBackend()).toBe('openai');
+});
+
+test('a suggested reply length survives a restart, and can be cleared', () => {
+  const file = settingsFile();
+  new SettingsStore(file, undefined).update({ replyLengthWords: 150 });
+  const reloaded = new SettingsStore(file, undefined);
+  expect(reloaded.replyLengthWords()).toBe(150);
+
+  reloaded.update({ replyLengthWords: null });
+
+  expect(new SettingsStore(file, undefined).view().replyLengthWords).toBe(null);
 });

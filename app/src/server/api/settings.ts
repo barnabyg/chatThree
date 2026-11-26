@@ -10,7 +10,9 @@ import { isWellFormedApiKey } from '../apiKey.ts';
 import { koboldCppAddress } from '../chat/koboldcpp.ts';
 import {
   MAX_ILLUSTRATION_COOLDOWN,
+  MAX_REPLY_LENGTH_WORDS,
   MIN_ILLUSTRATION_COOLDOWN,
+  MIN_REPLY_LENGTH_WORDS,
   type SettingsStore,
 } from '../settings.ts';
 import { readBody } from './errors.ts';
@@ -91,6 +93,18 @@ const update = z.strictObject({
       `The conversation budget can be at most ${String(MAX_TOKEN_BUDGET)} tokens.`,
     )
     .optional(),
+  replyLengthWords: z
+    .int('The suggested reply length must be a whole number of words.')
+    .min(
+      MIN_REPLY_LENGTH_WORDS,
+      `The suggested reply length must be at least ${String(MIN_REPLY_LENGTH_WORDS)} words.`,
+    )
+    .max(
+      MAX_REPLY_LENGTH_WORDS,
+      `The suggested reply length can be at most ${String(MAX_REPLY_LENGTH_WORDS)} words.`,
+    )
+    .nullable()
+    .optional(),
   speechMuted: z
     .boolean('Whether replies are spoken must be true or false.')
     .optional(),
@@ -137,6 +151,7 @@ export function settingsRoutes(
       illustrationCooldown,
       imageStyle,
       contextTokenBudget,
+      replyLengthWords,
       speechMuted,
       speechScope,
       apiKey,
@@ -152,6 +167,7 @@ export function settingsRoutes(
       ...(illustrationCooldown !== undefined && { illustrationCooldown }),
       ...(imageStyle !== undefined && { imageStyle }),
       ...(contextTokenBudget !== undefined && { contextTokenBudget }),
+      ...(replyLengthWords !== undefined && { replyLengthWords }),
       ...(speechMuted !== undefined && { speechMuted }),
       ...(speechScope !== undefined && { speechScope }),
       ...(apiKey !== undefined && { apiKey }),

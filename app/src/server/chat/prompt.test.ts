@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import type { Message } from '../../shared/api.ts';
 import { DEFAULT_REPLY_PROMPT } from '../../shared/replyPrompt.ts';
-import { buildPrompt } from './prompt.ts';
+import { buildPrompt, withReplyLength } from './prompt.ts';
 
 const character = {
   name: 'Mara',
@@ -253,4 +253,25 @@ test('a reply prompt names the user as "the user" in a chat with no player', () 
   );
 
   expect(instructions).toContain('Let the user speak for themself.');
+});
+
+test('a suggested reply length ends the reply instructions', () => {
+  const { instructions } = buildPrompt(
+    character,
+    scenario,
+    player,
+    withReplyLength(DEFAULT_REPLY_PROMPT, 120),
+    [],
+    BUDGET,
+  );
+
+  expect(instructions.endsWith('Keep each reply to about 120 words.')).toBe(
+    true,
+  );
+});
+
+test('with no suggested reply length, the reply prompt is unchanged', () => {
+  expect(withReplyLength(DEFAULT_REPLY_PROMPT, undefined)).toBe(
+    DEFAULT_REPLY_PROMPT,
+  );
 });

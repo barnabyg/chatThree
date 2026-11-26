@@ -53,6 +53,20 @@ function section(heading: string, ...parts: string[]): string[] {
   return text === '' ? [] : [`${heading}\n${text}`];
 }
 
+/**
+ * The reply prompt with a suggested length after it, or as it is when no
+ * length is suggested. It is a suggestion: the model may run over.
+ */
+export function withReplyLength(
+  replyPrompt: PromptReply,
+  words: number | undefined,
+): PromptReply {
+  if (words === undefined) return replyPrompt;
+  return `${replyPrompt.trimEnd()}
+
+Keep each reply to about ${String(words)} words.`;
+}
+
 /** The fixed prefix: the character first, then the scenario, then how to reply. */
 export function buildInstructions(
   character: PromptCharacter,

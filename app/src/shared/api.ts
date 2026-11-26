@@ -395,6 +395,11 @@ export interface Settings {
   imageStyle: ImageStyle;
   /** How many tokens of conversation are sent to the model each turn, at most. */
   contextTokenBudget: number;
+  /**
+   * About how many words a reply should be, told to the model as a
+   * suggestion, or `null` for no suggestion.
+   */
+  replyLengthWords: number | null;
   /** When true, replies are not spoken aloud. */
   speechMuted: boolean;
   speechScope: SpeechScope;
@@ -417,6 +422,8 @@ export interface SettingsUpdate {
   illustrationCooldown?: number;
   imageStyle?: ImageStyle;
   contextTokenBudget?: number;
+  /** `null` stops suggesting a reply length. */
+  replyLengthWords?: number | null;
   speechMuted?: boolean;
   speechScope?: SpeechScope;
   /** A new key to save, or `null` to forget the saved one. */
